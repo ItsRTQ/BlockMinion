@@ -1,0 +1,6 @@
+{
+  "parent": "block/cube_all",
+  "textures": {
+    "all": "kitchen_sink:block/crystal_station"
+  }
+}

@@ -8,7 +8,7 @@ assets/<mod>/geo/entity/<id>.geo.json, animations/entity/<id>.animation.json, te
 """
 from __future__ import annotations
 import json
-from .spec import Spec, Mob, resolve_result, coerce_mob_drop
+from .spec import Spec, Mob, resolve_result, coerce_mob_drop, coerce_spawn
 
 GECKOLIB_VERSION = "4.7.3"
 GECKOLIB_MAVEN = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/"
@@ -123,6 +123,11 @@ def main_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
         return [], [], []
     imports = ["net.minecraft.world.entity.EntityType", "net.minecraft.world.entity.MobCategory", "net.minecraft.world.item.SpawnEggItem",
                "net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry"] + [f"{spec.package}.entity.{class_name(m)}Entity" for m in spec.mobs]
+    if any(coerce_spawn(m.spawn) for m in spec.mobs):
+        imports += ["net.fabricmc.fabric.api.biome.v1.BiomeModifications", "net.fabricmc.fabric.api.biome.v1.BiomeSelectors",
+                    "net.minecraft.world.entity.SpawnPlacementTypes", "net.minecraft.world.entity.SpawnPlacements", "net.minecraft.world.level.levelgen.Heightmap",
+                    "net.minecraft.world.entity.Mob", "net.minecraft.world.entity.monster.Monster", "net.minecraft.core.registries.Registries",
+                    "net.minecraft.resources.ResourceKey", "net.minecraft.resources.ResourceLocation", "net.minecraft.tags.TagKey", "net.minecraft.world.level.biome.Biome"]
     fields, init = [], []
     for m in spec.mobs:
         cls, const = class_name(m) + "Entity", m.identifier.upper()
@@ -132,8 +137,24 @@ def main_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
         fields.append(f'    public static final Item {const}_SPAWN_EGG = Registry.register(BuiltInRegistries.ITEM, id("{m.identifier}_spawn_egg"),')
         fields.append(f"        new SpawnEggItem({const}, 0x{m.egg_colors[0]:06X}, 0x{m.egg_colors[1]:06X}, new Item.Properties()));")
         init.append(f"        FabricDefaultAttributeRegistry.register({const}, {cls}.createAttributes());")
+        sp = coerce_spawn(m.spawn)
+        if sp:
+            rules = "Monster::checkMonsterSpawnRules" if m.behavior == "hostile" else "Mob::checkMobSpawnRules"
+            init.append(f"        SpawnPlacements.register({const}, SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, {rules});")
+            for b in sp.biomes:
+                init.append(f"        BiomeModifications.addSpawn({biome_selector_java(b)}, {cat}, {const}, {int(sp.weight)}, {int(sp.min_group)}, {int(sp.max_group)});")
         init.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.SPAWN_EGGS).register(entries -> entries.accept({const}_SPAWN_EGG));")
     return imports, fields, init
+
+
+def biome_selector_java(b: str) -> str:
+    if b == "overworld": return "BiomeSelectors.foundInOverworld()"
+    if b == "nether": return "BiomeSelectors.foundInTheNether()"
+    if b == "end": return "BiomeSelectors.foundInTheEnd()"
+    ns, path = b.lstrip("#").split(":", 1)
+    if b.startswith("#"):
+        return f'BiomeSelectors.tag(TagKey.create(Registries.BIOME, ResourceLocation.fromNamespaceAndPath("{ns}", "{path}")))'
+    return f'BiomeSelectors.includeByKey(ResourceKey.create(Registries.BIOME, ResourceLocation.fromNamespaceAndPath("{ns}", "{path}")))'
 
 
 def placeholder_geo(m: Mob) -> dict:

@@ -29,6 +29,8 @@ class Feature:
     label: str
     shape: str = ""        # placeholder texture silhouette: gem | ingot | food | block (default by kind)
     color: str = ""        # optional hex (#RRGGBB) tint for the placeholder texture
+    tool: str = ""         # blocks: pickaxe | axe | shovel | hoe | none (default pickaxe); "none" = breaks by hand
+    mining_level: str = "" # blocks: wood | stone | iron | diamond | netherite (default wood = any pickaxe)
 
 @dataclass(frozen=True)
 class Recipe:
@@ -78,6 +80,15 @@ def coerce_mob_drop(value) -> MobDrop:
 
 
 @dataclass(frozen=True)
+class Spawn:
+    """Natural spawning: where (biome tags like #minecraft:is_forest, biome ids, or 'overworld'), how often, group size."""
+    biomes: tuple = ("overworld",)
+    weight: int = 10            # relative to other mobs in the biome (zombie 95, cow 8)
+    min_group: int = 1
+    max_group: int = 3
+
+
+@dataclass(frozen=True)
 class Mob:
     """v1 criterion 6 'simple mob': GeckoLib-rendered entity with idle + walk, basic AI, spawn egg, loot."""
     identifier: str
@@ -89,6 +100,7 @@ class Mob:
     height: float = 0.9
     attack_damage: float = 3.0         # hostile only
     drops: tuple = ()                  # MobDrop entries (strings and dicts are coerced on read)
+    spawn: object = None               # Spawn or None (egg-only)
     egg_colors: tuple[int, int] = DEFAULT_EGG_COLORS
 
 
@@ -135,6 +147,14 @@ class Food:
 
 
 @dataclass(frozen=True)
+class Sound:
+    """A SoundEvent `<mod>:<identifier>` backed by assets/<mod>/sounds/<identifier>.ogg (the user uploads the .ogg)."""
+    identifier: str
+    label: str                 # subtitle shown with "show subtitles"
+    category: str = "neutral"  # master|music|record|weather|block|hostile|neutral|player|ambient|voice
+
+
+@dataclass(frozen=True)
 class Spec:
     schema_version: int
     name: str
@@ -153,6 +173,7 @@ class Spec:
     materials: list[Material] = field(default_factory=list)
     foods: list[Food] = field(default_factory=list)
     theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
+    sounds: list[Sound] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -243,6 +264,17 @@ def validate_drop(spec: "Spec", d: Drop) -> None:
 
 
 MOB_BEHAVIORS = ("passive", "neutral", "hostile")
+TOOLS_FOR_BLOCKS = ("pickaxe", "axe", "shovel", "hoe", "none")
+BIOME_RE = re.compile(r"^(#?[a-z0-9_.-]+:[a-z0-9_./-]+|overworld|nether|end)$")
+
+
+def coerce_spawn(value):
+    if value is None or isinstance(value, Spawn):
+        return value
+    if isinstance(value, dict):
+        return Spawn(biomes=tuple(str(b) for b in value.get("biomes", ("overworld",))), weight=int(value.get("weight", 10)),
+                     min_group=int(value.get("min_group", 1)), max_group=int(value.get("max_group", 3)))
+    raise InputError(f"Bad spawn: {value!r}")
 
 
 def validate_mob(spec: "Spec", m: Mob) -> None:
@@ -265,6 +297,12 @@ def validate_mob(spec: "Spec", m: Mob) -> None:
             raise InputError(f"Mob drop {d.item}: chance must be in (0, 1]")
     if len(m.egg_colors) != 2 or any(not (0 <= c <= 0xFFFFFF) for c in m.egg_colors):
         raise InputError("egg_colors must be two 24-bit RGB ints")
+    sp = coerce_spawn(m.spawn)
+    if sp is not None:
+        if not sp.biomes or any(not BIOME_RE.match(b) for b in sp.biomes):
+            raise InputError("spawn.biomes: use biome ids (minecraft:plains), biome tags (#minecraft:is_forest) or overworld|nether|end")
+        if not (1 <= sp.weight <= 1000) or not (1 <= sp.min_group <= sp.max_group <= 16):
+            raise InputError("spawn: weight 1-1000, 1 <= min_group <= max_group <= 16")
 
 
 EFFECT_RE = re.compile(r"^minecraft:[a-z_]+$")
@@ -305,11 +343,21 @@ def validate_spec_content(spec: "Spec") -> None:
     seen_all: dict[str, str] = {}
     for f in spec.features:
         seen_all[f.identifier] = "feature"
+        if f.kind == "block":
+            if f.tool and f.tool not in TOOLS_FOR_BLOCKS:
+                raise InputError(f"Block {f.identifier}: tool must be one of {TOOLS_FOR_BLOCKS}")
+            if f.mining_level and f.mining_level not in MINING_LEVELS:
+                raise InputError(f"Block {f.identifier}: mining_level must be one of {MINING_LEVELS}")
     for mat in spec.materials:
         validate_material(spec, mat)
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
             seen_all[i] = f"material {mat.identifier}"
+    for sd in spec.sounds:
+        if not re.fullmatch(r"[a-z][a-z0-9_.]{1,49}", sd.identifier):
+            raise InputError(f"Sound identifier must be snake_case: {sd.identifier!r}")
+        if sd.category not in ("master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient", "voice"):
+            raise InputError("Sound category must be a vanilla SoundSource name")
     for fd in spec.foods:
         validate_food(spec, fd)
         if fd.identifier in seen_all: raise InputError(f"Food {fd.identifier!r} collides with {seen_all[fd.identifier]}")
@@ -441,7 +489,8 @@ def read_spec(raw: dict) -> Spec:
         materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2)))}) for m in raw.get("materials", [])],
         foods=[Food(**{**f, "effects": tuple(f.get("effects", ()))}) for f in raw.get("foods", [])],
         theme=str(raw.get("theme") or "")[:600],
-        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())),
+        sounds=[Sound(**x) for x in raw.get("sounds", [])],
+        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],
     )

@@ -25,7 +25,7 @@ from .evidence import record_evidence
 from .fabric import validate_generated
 from .redact import redact
 
-MAX_BODY = 3_000_000  # texture uploads are base64 PNGs (≤2 MB)
+MAX_BODY = 7_000_000  # texture (≤2 MB) and sound (≤5 MB) uploads arrive base64-encoded
 
 def serve(store: Store, port: int = 8765) -> None:
     if not 1024 <= port <= 65535:
@@ -179,11 +179,12 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .models import add_mob_after_generation
                         from .spec import Mob
                         from .specedit import add_mob as add_mob_spec
+                        from .spec import coerce_spawn
                         m = Mob(identifier=str(payload.get("identifier", "")).strip(), label=str(payload.get("label", "")).strip() or str(payload.get("identifier", "")),
-                                behavior=str(payload.get("behavior", "passive")), drops=tuple(payload.get("drops") or ()))
+                                behavior=str(payload.get("behavior", "passive")), drops=tuple(payload.get("drops") or ()), spawn=coerce_spawn(payload.get("spawn")))
                         if store.project(pid)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
                             return add_mob_after_generation(store, pid, m)
-                        return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops))
+                        return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops), spawn=payload.get("spawn"))
                     if op == "autopilot":
                         from .dispatch import AUTOPILOT_DEFAULT
                         policy = {k: bool(payload.get(k, False)) for k in AUTOPILOT_DEFAULT}
@@ -201,7 +202,8 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "add-feature":
                         from .content import add_feature
                         return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None,
-                                           shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""))
+                                           shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""),
+                                           tool=str(payload.get("tool") or ""), mining_level=str(payload.get("mining_level") or ""))
                     if op == "add-material":
                         from .content import add_material_any
                         return add_material_any(store, pid, **{k: v for k, v in payload.items()})
@@ -237,6 +239,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "retint-armor":
                         from .content import retint_armor
                         return retint_armor(store, pid, str(payload.get("material", "")), str(payload.get("color") or ""), str(payload.get("accent") or ""), match_icon=bool(payload.get("match_icon")))
+                    if op == "set-sound":
+                        from .content import set_sound_file
+                        return set_sound_file(store, pid, identifier=str(payload.get("identifier", "")), ogg_base64=str(payload.get("ogg_base64", "")))
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))

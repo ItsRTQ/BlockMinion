@@ -1,0 +1,9 @@
+{
+  "crystal_chime": {
+    "category": "block",
+    "subtitle": "subtitles.kitchen_sink.crystal_chime",
+    "sounds": [
+      "kitchen_sink:crystal_chime"
+    ]
+  }
+}

@@ -6,6 +6,11 @@ skills:
   - coder
   - recipes
   - gui
+  - events
+  - client-ui
+  - commands
+  - loot-and-trades
+  - polish
 model: inherit
 ---
 

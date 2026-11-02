@@ -83,12 +83,19 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--item", required=True)
     a.add_argument("--min", type=int, default=1); a.add_argument("--max", type=int, default=1)
     a.add_argument("--fortune", action="store_true"); a.add_argument("--silk-touch", action="store_true")
+    a = sub.add_parser("add-feature", help="USER-ONLY: add a simple item or block (before generation: spec; after: files + coder task)")
+    a.add_argument("project"); a.add_argument("--kind", required=True, choices=["item", "block"]); a.add_argument("--label", required=True); a.add_argument("--id", default=None)
+    a.add_argument("--shape", choices=["gem", "ingot", "food", "block"], default=""); a.add_argument("--color", default="")
+    a.add_argument("--tool", choices=["pickaxe", "axe", "shovel", "hoe", "none"], default="", help="blocks: effective tool (default pickaxe)")
+    a.add_argument("--mining-level", choices=["wood", "stone", "iron", "diamond", "netherite"], default="", help="blocks: tier needed to drop items (default wood)")
     a = sub.add_parser("add-mob", help="USER-ONLY (before generate): add a GeckoLib mob (idle+walk, basic AI, spawn egg, loot)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
     a.add_argument("--behavior", choices=["passive", "hostile"], default="passive"); a.add_argument("--health", type=float, default=10.0)
     a.add_argument("--speed", type=float, default=0.25); a.add_argument("--width", type=float, default=0.8); a.add_argument("--height", type=float, default=0.9)
     a.add_argument("--attack", type=float, default=3.0, help="hostile only"); a.add_argument("--drops", nargs="*", default=None, help="local ids or minecraft:ids dropped on death")
     a.add_argument("--egg-colors", nargs=2, default=None, help="two hex colors, e.g. 8A6DD1 E6D8FF")
+    a.add_argument("--spawn", nargs="*", default=None, help="natural spawning: biomes (overworld | minecraft:plains | #minecraft:is_forest ...)")
+    a.add_argument("--spawn-weight", type=int, default=10); a.add_argument("--spawn-group", nargs=2, type=int, default=(1, 3), metavar=("MIN", "MAX"))
     a = sub.add_parser("remove-mob", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("add-material", help="USER-ONLY (before generate): a tier + tool/armor set (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
@@ -105,6 +112,8 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--effect", nargs="*", default=None, help="minecraft:regeneration:100:0:1.0 (id:duration_ticks:amplifier:chance)")
     a.add_argument("--always-edible", action="store_true"); a.add_argument("--fast", action="store_true")
     a = sub.add_parser("remove-food", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("add-sound", help="USER-ONLY (before generate): register a sound event; you upload the .ogg to assets/<mod>/sounds/<id>.ogg")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True, help="subtitle"); a.add_argument("--category", default="neutral")
     a = sub.add_parser("set-tab", help="USER-ONLY (before generate): give the mod its own creative tab")
     a.add_argument("project"); a.add_argument("--label", default=None, help="omit to remove the tab"); a.add_argument("--icon", default=None, help="local item/block id")
     a = sub.add_parser("request-smoke", help="USER-ONLY: request a one-use approval to run the dedicated server with the built mod")
@@ -253,17 +262,21 @@ def dispatch(args: argparse.Namespace) -> object:
         from .specedit import add_drop
         return add_drop(store, args.project, block=args.block, item=args.item, count_min=args.min, count_max=args.max,
                         fortune=args.fortune, silk_touch=args.silk_touch)
+    if args.command == "add-feature":
+        from .content import add_feature
+        return add_feature(store, args.project, kind=args.kind, label=args.label, identifier=args.id, shape=args.shape, color=args.color, tool=args.tool, mining_level=args.mining_level)
     if args.command == "add-mob":
         from .specedit import add_mob
         colors = tuple(int(c, 16) for c in args.egg_colors) if args.egg_colors else None
+        spawn = {"biomes": args.spawn, "weight": args.spawn_weight, "min_group": args.spawn_group[0], "max_group": args.spawn_group[1]} if args.spawn else None
         if store.project(args.project)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
             from .models import add_mob_after_generation
-            from .spec import Mob
+            from .spec import Mob, coerce_spawn
             return add_mob_after_generation(store, args.project, Mob(identifier=args.id, label=args.label, behavior=args.behavior, health=args.health,
                                                                      speed=args.speed, width=args.width, height=args.height, attack_damage=args.attack,
-                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF)))
+                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn)))
         return add_mob(store, args.project, identifier=args.id, label=args.label, behavior=args.behavior, health=args.health, speed=args.speed,
-                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors)
+                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn)
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)
@@ -286,6 +299,9 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "remove-food":
         from .specedit import remove_food
         return remove_food(store, args.project, args.id)
+    if args.command == "add-sound":
+        from .specedit import add_sound
+        return add_sound(store, args.project, identifier=args.id, label=args.label, category=args.category)
     if args.command == "set-tab":
         from .specedit import set_tab
         return set_tab(store, args.project, label=args.label, icon=args.icon)

@@ -73,7 +73,7 @@ def _save_spec(store: Store, pid: str, spec, reason: str) -> None:
         store.event(con, pid, "user", "SPEC_CHANGED", {"reason": reason})
 
 
-def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: str | None = None, shape: str = "", color: str = "") -> dict:
+def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: str | None = None, shape: str = "", color: str = "", tool: str = "", mining_level: str = "") -> dict:
     """Before generation: spec edit (approval reset). After generation: files + coder task."""
     if kind not in ("item", "block"):
         raise InputError("kind must be item or block")
@@ -86,7 +86,7 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         raise InputError("shape must be gem, ingot, food or block")
     if color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         raise InputError("color must be #RRGGBB")
-    feature = Feature(kind=kind, identifier=ident, label=label.strip() or ident, shape=shape, color=color)
+    feature = Feature(kind=kind, identifier=ident, label=label.strip() or ident, shape=shape, color=color, tool=tool if kind == "block" else "", mining_level=mining_level if kind == "block" else "")
     new_spec = replace(spec, features=list(spec.features) + [feature])
     check_java_name_collisions(new_spec.features)
     if proj["status"] not in GENERATED_STATUSES:
@@ -109,6 +109,10 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         put(assets / "models/item" / f"{ident}.json", (json.dumps({"parent": f"{pid}:block/{ident}"}, indent=2) + "\n").encode())
         put(assets / "textures/block" / f"{ident}.png", feature_texture(new_spec, feature))
         put(res / "data" / pid / "loot_table/blocks" / f"{ident}.json", (json.dumps(loot_table_json(new_spec, ident, None), indent=2) + "\n").encode())
+        from .fabric import block_tags
+        for tag, members in block_tags(new_spec).items():
+            tf = res / "data/minecraft/tags/block" / f"{tag}.json"; tf.parent.mkdir(parents=True, exist_ok=True)
+            tf.write_text(json.dumps({"replace": False, "values": members}, indent=2) + "\n", encoding="utf8"); written.append(str(tf.relative_to(ws)).replace("\\", "/"))
     lang_file = assets / "lang/en_us.json"
     lang = json.loads(lang_file.read_text(encoding="utf8")) if lang_file.is_file() else {}
     lang[f"{'block' if kind == 'block' else 'item'}.{pid}.{ident}"] = feature.label
@@ -122,7 +126,8 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         lines = [f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{ident}"), new Item(new Item.Properties()));']
         tab_line = f"            output.accept({const});"; group = "INGREDIENTS"; accept_const = const
     else:
-        lines = [f'    public static final Block {const} = Registry.register(BuiltInRegistries.BLOCK, id("{ident}"), new Block(BlockBehaviour.Properties.of().strength(3.0F)));',
+        props = "BlockBehaviour.Properties.of().strength(3.0F)" + ("" if (tool or "pickaxe") == "none" else ".requiresCorrectToolForDrops()")
+        lines = [f'    public static final Block {const} = Registry.register(BuiltInRegistries.BLOCK, id("{ident}"), new Block({props}));',
                  f'    public static final Item {const}_ITEM = Registry.register(BuiltInRegistries.ITEM, id("{ident}"), new BlockItem({const}, new Item.Properties()));']
         tab_line = f"            output.accept({const}_ITEM);"; group = "BUILDING_BLOCKS"; accept_const = const + "_ITEM"
     java_dir = f"src/main/java/{spec.package.replace('.', '/')}"
@@ -390,3 +395,26 @@ def restore_designer_sprites(store: Store, pid: str) -> dict:
     if not ids and not mats:
         raise StateError("models/sprites/ has no sprites matching this mod's content")
     return install_sprites(store, pid, "restore", ids, run_id=f"restore-{int(__import__('time').time())}", actor="user", armor_materials=mats)
+
+
+def set_sound_file(store: Store, pid: str, *, identifier: str, ogg_base64: str) -> dict:
+    """Install the user's .ogg for a registered sound event (assets/<mod>/sounds/<id>.ogg)."""
+    proj = store.project(pid)
+    if proj["status"] not in GENERATED_STATUSES:
+        raise StateError("Generate the project first")
+    spec = read_spec(proj["spec"])
+    if identifier not in {sd.identifier for sd in spec.sounds}:
+        raise InputError(f"No sound event {identifier!r} in the spec (craftctl add-sound before generating)")
+    try:
+        raw = _b64.b64decode(ogg_base64, validate=True)
+    except Exception:
+        raise InputError("ogg_base64 is not valid base64")
+    if not raw.startswith(b"OggS") or len(raw) > 5_000_000:
+        raise InputError("Not an Ogg file (or larger than 5 MB). Minecraft needs Ogg Vorbis, mono for positional sounds.")
+    ws = Path(proj["root"]); rel = f"src/main/resources/assets/{pid}/sounds/{identifier}.ogg"
+    (ws / rel).parent.mkdir(parents=True, exist_ok=True); (ws / rel).write_bytes(raw)
+    accepted = accept_changes(ws, run_id=f"sound:{identifier}", actor="user", changed=[rel])
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid); _reopen_build(store, pid)
+    store.add_event(pid, "user", "SOUND_UPLOADED", {"identifier": identifier, "file": rel, "bytes": len(raw)})
+    return {"file": rel, "accepted": accepted["accepted"], "note": "Sound installed; rebuild to apply."}

@@ -327,7 +327,8 @@ qs("addmob-form").onsubmit = async (e) => {
   e.preventDefault(); if (!selected) return;
   const drops = addMobDrops;
   try {
-    const out = await api(`/api/project/${selected}/add-mob`, { identifier: qs("am-id").value.trim(), label: qs("am-label").value.trim(), behavior: qs("am-behavior").value, drops });
+    const spawn = qs("am-spawn").checked ? { biomes: qs("am-biomes").value.split(",").map(s => s.trim()).filter(Boolean), weight: Number(qs("am-weight").value), min_group: Number(qs("am-gmin").value), max_group: Number(qs("am-gmax").value) } : null;
+    const out = await api(`/api/project/${selected}/add-mob`, { identifier: qs("am-id").value.trim(), label: qs("am-label").value.trim(), behavior: qs("am-behavior").value, drops, spawn });
     const desc = qs("am-desc").value.trim();
     if (desc) await api(`/api/project/${selected}/feedback`, { mob: qs("am-id").value.trim(), text: desc }).catch(() => {});
     qs("addmob-form").reset(); addMobDrops = []; qs("am-drops-summary").textContent = "nothing"; closeModal("modal-mob");
@@ -389,7 +390,7 @@ async function renderFeatures(p) {
   addForm.onsubmit = async (e) => {
     e.preventDefault();
     try {
-      const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value });
+      const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value, tool: qs("af-tool").value, mining_level: qs("af-level").value });
       addForm.reset(); delete qs("af-id").dataset.touched; closeModal("modal-feat");
       toast(out.generated ? `Added. Files written; the coder registers it (${out.task}) — see Now.` : "Added to the spec. Re-approve before generating.", "ok");
       await openProject(p.id);
@@ -451,6 +452,8 @@ qs("addfood-form").onsubmit = async (e) => {
     await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };
+qs("af-kind").onchange = () => { qs("af-block-row").style.display = qs("af-kind").value === "block" ? "" : "none"; }; qs("af-kind").onchange();
+qs("am-spawn").onchange = () => { qs("am-spawn-row").style.display = qs("am-spawn").checked ? "" : "none"; };
 qs("af-label").oninput = () => { if (!qs("af-id").dataset.touched) qs("af-id").value = qs("af-label").value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
 qs("af-id").oninput = () => { qs("af-id").dataset.touched = "1"; };
 

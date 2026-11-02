@@ -103,6 +103,18 @@ def gear_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
     return imports, fields, init
 
 
+def sound_registrations(spec: Spec) -> tuple[list[str], list[str]]:
+    """(imports, ModMain fields) for SoundEvents; sounds.json is written by the generator."""
+    if not spec.sounds:
+        return [], []
+    fields = [f'    public static final SoundEvent {sd.identifier.upper()}_SOUND = Registry.register(BuiltInRegistries.SOUND_EVENT, id("{sd.identifier}"), SoundEvent.createVariableRangeEvent(id("{sd.identifier}")));' for sd in spec.sounds]
+    return ["net.minecraft.sounds.SoundEvent"], fields
+
+
+def sounds_json(spec: Spec) -> dict:
+    return {sd.identifier: {"category": sd.category, "subtitle": f"subtitles.{spec.mod_id}.{sd.identifier}", "sounds": [f"{spec.mod_id}:{sd.identifier}"]} for sd in spec.sounds}
+
+
 def gear_item_ids(spec: Spec) -> list[str]:
     return [i for m in spec.materials for i in m.item_ids()] + [f.identifier for f in spec.foods]
 

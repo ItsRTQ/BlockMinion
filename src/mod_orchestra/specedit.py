@@ -5,7 +5,7 @@ same spec fields from the user's words. Every edit returns the spec to DRAFT.
 """
 from __future__ import annotations
 from dataclasses import replace
-from .spec import Drop, Food, Material, Mob, Recipe, default_egg_colors, read_spec, validate_spec_content
+from .spec import Drop, Food, Material, Mob, Recipe, Sound, default_egg_colors, read_spec, validate_spec_content
 from .state import Store
 
 
@@ -46,10 +46,11 @@ def add_drop(store: Store, pid: str, *, block: str, item: str, count_min: int = 
 
 def add_mob(store: Store, pid: str, *, identifier: str, label: str, behavior: str = "passive", health: float = 10.0,
             speed: float = 0.25, width: float = 0.8, height: float = 0.9, attack_damage: float = 3.0,
-            drops: list[str] | None = None, egg_colors: tuple[int, int] | None = None) -> dict:
+            drops: list[str] | None = None, egg_colors: tuple[int, int] | None = None, spawn: dict | None = None) -> dict:
+    from .spec import coerce_spawn
     spec = _load(store, pid)
     mob = Mob(identifier=identifier, label=label, behavior=behavior, health=health, speed=speed, width=width, height=height,
-              attack_damage=attack_damage, drops=tuple(drops or ()), egg_colors=tuple(egg_colors or default_egg_colors(identifier, behavior)))
+              attack_damage=attack_damage, drops=tuple(drops or ()), egg_colors=tuple(egg_colors or default_egg_colors(identifier, behavior)), spawn=coerce_spawn(spawn))
     mobs = [m for m in spec.mobs if m.identifier != identifier] + [mob]
     return _save(store, pid, replace(spec, mobs=mobs), f"add mob {identifier}")
 
@@ -101,3 +102,10 @@ def set_theme(store: Store, pid: str, theme: str) -> dict:
         con.execute("UPDATE projects SET spec_json=? WHERE id=?", (_json.dumps(new.to_dict(), sort_keys=True), pid))
         store.event(con, pid, "user", "THEME_SET", {"theme": theme[:200]})
     return {"project": pid, "theme": theme}
+
+
+def add_sound(store: Store, pid: str, *, identifier: str, label: str, category: str = "neutral") -> dict:
+    spec = _load(store, pid)
+    snd = Sound(identifier=identifier, label=label, category=category)
+    sounds = [x for x in spec.sounds if x.identifier != identifier] + [snd]
+    return _save(store, pid, replace(spec, sounds=sounds), f"add sound {identifier}")
