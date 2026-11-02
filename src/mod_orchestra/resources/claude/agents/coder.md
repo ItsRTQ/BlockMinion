@@ -11,6 +11,7 @@ skills:
   - commands
   - loot-and-trades
   - polish
+  - data
 model: inherit
 ---
 

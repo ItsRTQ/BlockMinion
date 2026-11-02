@@ -204,6 +204,9 @@ def serve(store: Store, port: int = 8765) -> None:
                         return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None,
                                            shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""),
                                            tool=str(payload.get("tool") or ""), mining_level=str(payload.get("mining_level") or ""))
+                    if op == "add-ore":
+                        from .content import add_ore_any
+                        return add_ore_any(store, pid, **{k: v for k, v in payload.items()})
                     if op == "add-material":
                         from .content import add_material_any
                         return add_material_any(store, pid, **{k: v for k, v in payload.items()})

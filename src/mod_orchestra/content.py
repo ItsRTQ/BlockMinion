@@ -51,7 +51,8 @@ def list_features(store: Store, pid: str) -> list[dict]:
         tex = f"src/main/resources/assets/{pid}/textures/{'block' if kind == 'block' else 'item'}/{key}.png"
         out.append({"kind": kind, "identifier": key, "label": f["label"], "texture": tex if (ws / tex).is_file() else None,
                     "recipes": [r["id"] for r in spec.get("recipes", []) if r["result"] == key or key in json.dumps(r)],
-                    "drop": next((d for d in spec.get("drops", []) if d["block"] == key), None)})
+                    "drop": next((d for d in spec.get("drops", []) if d["block"] == key), None),
+                    "ore": next((o for o in spec.get("ores", []) if o["block"] == key), None)})
     for m in spec.get("materials", []):
         for kind in list(m.get("tools", [])) + list(m.get("armor", [])):
             key = f"{m['identifier']}_{kind}"; tex = f"src/main/resources/assets/{pid}/textures/item/{key}.png"
@@ -418,3 +419,38 @@ def set_sound_file(store: Store, pid: str, *, identifier: str, ogg_base64: str) 
     _source_changed(store, pid); _reopen_build(store, pid)
     store.add_event(pid, "user", "SOUND_UPLOADED", {"identifier": identifier, "file": rel, "bytes": len(raw)})
     return {"file": rel, "accepted": accepted["accepted"], "note": "Sound installed; rebuild to apply."}
+
+
+def add_ore_any(store: Store, pid: str, **kw) -> dict:
+    """Before generation: spec. After: worldgen JSON written by the controller + a coder task for the ModMain line."""
+    from .specedit import add_ore
+    from .spec import Ore
+    from .gear import ore_worldgen_files, ore_registrations
+    proj = store.project(pid)
+    if proj["status"] not in GENERATED_STATUSES:
+        return add_ore(store, pid, **kw) | {"generated": False}
+    spec = read_spec(proj["spec"])
+    ore = Ore(block=kw["block"], vein_size=int(kw.get("vein_size", 9)), veins_per_chunk=int(kw.get("veins_per_chunk", 8)), min_y=int(kw.get("min_y", -64)), max_y=int(kw.get("max_y", 64)),
+              biomes=tuple(kw.get("biomes") or ("overworld",)), discard_on_air=float(kw.get("discard_on_air", 0.0)))
+    if any(o.block == ore.block for o in spec.ores):
+        raise InputError(f"{ore.block} already has worldgen; remove it first")
+    new_spec = replace(spec, ores=list(spec.ores) + [ore]); validate_spec_content(new_spec)
+    ws = Path(proj["root"]); written = []
+    for rel, data in ore_worldgen_files(replace(new_spec, ores=[ore])).items():
+        f = ws / "src/main/resources" / rel; f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(data, indent=2) + "\n", encoding="utf8"); written.append(str(f.relative_to(ws)).replace("\\", "/"))
+    _save_spec(store, pid, new_spec, f"ore worldgen {ore.block} after generation")
+    accepted = accept_changes(ws, run_id=f"ore:{ore.block}", actor="user", changed=written)
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid)
+    imports, lines = ore_registrations(replace(new_spec, ores=[ore]))
+    task_id = f"{pid}:ADD_ORE:{ore.block}"
+    instructions = [f"Register the ore worldgen for `{ore.block}` in src/main/java/{spec.package.replace('.', '/')}/ModMain.java (the datapack JSON is already written):",
+                    "1. Add these imports if missing:"] + ["   import " + i + ";" for i in imports] + ["2. In onInitialize(), add:"] + ["   " + l.strip() for l in lines] + [
+                    "3. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0."]
+    store.add_task(pid, task_id, "coder", f"Register ore worldgen for {ore.block}")
+    with store.tx() as con:
+        con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
+    _reopen_build(store, pid)
+    store.add_event(pid, "controller", "FEATURE_ADDED", {"kind": "ore", "identifier": ore.block, "files": written, "task": task_id})
+    return {"block": ore.block, "generated": True, "files": written, "accepted": accepted["accepted"], "task": task_id, "next": {"action": "dispatch", "payload": {"task": task_id}}}

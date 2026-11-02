@@ -1,5 +1,6 @@
 package com.example.kitchensink.client;
 
+import com.example.kitchensink.ManaSyncPayload;
 import com.example.kitchensink.ModMain;
 import com.example.kitchensink.OpenPayload;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -25,11 +26,12 @@ public final class ClientUiExample {
             Minecraft mc = Minecraft.getInstance();
             if (mc.player == null || mc.options.hideGui) return;
             int w = mc.getWindow().getGuiScaledWidth();
-            float ratio = mc.player.getHealth() / mc.player.getMaxHealth();
+            float ratio = Math.min(1f, ClientState.mana / 100f);
             g.fill(w - 110, 10, w - 10, 20, 0xAA000000);
             g.fill(w - 109, 11, w - 109 + (int) (98 * ratio), 19, 0xFF4FD1FF);
-            g.drawString(mc.font, "Example bar", w - 108, 0, 0xFFFFFF);
+            g.drawString(mc.font, "Mana " + ClientState.mana, w - 108, 0, 0xFFFFFF);
         });
         MenuScreens.register(ModMain.STATION_MENU, StationScreen::new);
+        ClientPlayNetworking.registerGlobalReceiver(ManaSyncPayload.TYPE, (payload, context) -> context.client().execute(() -> ClientState.mana = payload.mana()));
     }
 }

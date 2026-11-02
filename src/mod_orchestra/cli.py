@@ -114,6 +114,10 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("remove-food", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("add-sound", help="USER-ONLY (before generate): register a sound event; you upload the .ogg to assets/<mod>/sounds/<id>.ogg")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True, help="subtitle"); a.add_argument("--category", default="neutral")
+    a = sub.add_parser("add-ore", help="USER-ONLY (before generate): make a block generate as ore veins in the world")
+    a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--vein-size", type=int, default=9); a.add_argument("--veins-per-chunk", type=int, default=8)
+    a.add_argument("--min-y", type=int, default=-64); a.add_argument("--max-y", type=int, default=64); a.add_argument("--biomes", nargs="*", default=None); a.add_argument("--discard-on-air", type=float, default=0.0)
+    a = sub.add_parser("remove-ore", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--block", required=True)
     a = sub.add_parser("set-tab", help="USER-ONLY (before generate): give the mod its own creative tab")
     a.add_argument("project"); a.add_argument("--label", default=None, help="omit to remove the tab"); a.add_argument("--icon", default=None, help="local item/block id")
     a = sub.add_parser("request-smoke", help="USER-ONLY: request a one-use approval to run the dedicated server with the built mod")
@@ -302,6 +306,12 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "add-sound":
         from .specedit import add_sound
         return add_sound(store, args.project, identifier=args.id, label=args.label, category=args.category)
+    if args.command == "add-ore":
+        from .specedit import add_ore
+        return add_ore(store, args.project, block=args.block, vein_size=args.vein_size, veins_per_chunk=args.veins_per_chunk, min_y=args.min_y, max_y=args.max_y, biomes=args.biomes, discard_on_air=args.discard_on_air)
+    if args.command == "remove-ore":
+        from .specedit import remove_ore
+        return remove_ore(store, args.project, args.block)
     if args.command == "set-tab":
         from .specedit import set_tab
         return set_tab(store, args.project, label=args.label, icon=args.icon)

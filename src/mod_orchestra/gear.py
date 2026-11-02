@@ -115,6 +115,37 @@ def sounds_json(spec: Spec) -> dict:
     return {sd.identifier: {"category": sd.category, "subtitle": f"subtitles.{spec.mod_id}.{sd.identifier}", "sounds": [f"{spec.mod_id}:{sd.identifier}"]} for sd in spec.sounds}
 
 
+def ore_worldgen_files(spec: Spec) -> dict[str, dict]:
+    """Datapack JSON for each ore: configured_feature (what/where it replaces) + placed_feature (how often/height)."""
+    out = {}
+    for o in spec.ores:
+        state = {"Name": f"{spec.mod_id}:{o.block}"}
+        nether = any(b == "nether" for b in o.biomes)
+        targets = ([{"target": {"predicate_type": "minecraft:tag_match", "tag": "minecraft:base_stone_nether"}, "state": state}] if nether else
+                   [{"target": {"predicate_type": "minecraft:tag_match", "tag": "minecraft:stone_ore_replaceables"}, "state": state},
+                    {"target": {"predicate_type": "minecraft:tag_match", "tag": "minecraft:deepslate_ore_replaceables"}, "state": state}])
+        out[f"data/{spec.mod_id}/worldgen/configured_feature/{o.block}.json"] = {"type": "minecraft:ore", "config": {"size": int(o.vein_size), "discard_chance_on_air_exposure": float(o.discard_on_air), "targets": targets}}
+        out[f"data/{spec.mod_id}/worldgen/placed_feature/{o.block}.json"] = {"feature": f"{spec.mod_id}:{o.block}", "placement": [
+            {"type": "minecraft:count", "count": int(o.veins_per_chunk)}, {"type": "minecraft:in_square"},
+            {"type": "minecraft:height_range", "height": {"type": "minecraft:trapezoid", "min_inclusive": {"absolute": int(o.min_y)}, "max_inclusive": {"absolute": int(o.max_y)}}},
+            {"type": "minecraft:biome"}]}
+    return out
+
+
+def ore_registrations(spec: Spec) -> tuple[list[str], list[str]]:
+    """(imports, onInitialize lines) adding each placed feature to its biomes (Fabric has no JSON biome modifiers)."""
+    if not spec.ores:
+        return [], []
+    from .geckolib import biome_selector_java
+    imports = ["net.fabricmc.fabric.api.biome.v1.BiomeModifications", "net.fabricmc.fabric.api.biome.v1.BiomeSelectors", "net.minecraft.core.registries.Registries",
+               "net.minecraft.resources.ResourceKey", "net.minecraft.resources.ResourceLocation", "net.minecraft.tags.TagKey", "net.minecraft.world.level.levelgen.GenerationStep"]
+    lines = []
+    for o in spec.ores:
+        for b in o.biomes:
+            lines.append(f'        BiomeModifications.addFeature({biome_selector_java(b)}, GenerationStep.Decoration.UNDERGROUND_ORES, ResourceKey.create(Registries.PLACED_FEATURE, id("{o.block}")));')
+    return imports, lines
+
+
 def gear_item_ids(spec: Spec) -> list[str]:
     return [i for m in spec.materials for i in m.item_ids()] + [f.identifier for f in spec.foods]
 

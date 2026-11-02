@@ -100,7 +100,11 @@
       "Bash(craftctl add-feature*)",
       "PowerShell(craftctl add-feature*)",
       "Bash(craftctl add-sound*)",
-      "PowerShell(craftctl add-sound*)"
+      "PowerShell(craftctl add-sound*)",
+      "Bash(craftctl add-ore*)",
+      "Bash(craftctl remove-ore*)",
+      "PowerShell(craftctl add-ore*)",
+      "PowerShell(craftctl remove-ore*)"
     ]
   },
   "hooks": {

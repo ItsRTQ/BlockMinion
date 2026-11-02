@@ -356,8 +356,10 @@ async function renderFeatures(p) {
     const mid = el("div"); const nm = el("div", null, "fname"); nm.append(document.createTextNode(f.label), el("span", f.kind, "fk")); mid.append(nm, el("div", `${p.id}:${f.identifier}`, "fid"));
     const bits = []; if (f.recipes?.length) bits.push("recipes: " + f.recipes.join(", ")); if (f.drop) bits.push(`drops ${f.drop.item} ${f.drop.count_min}-${f.drop.count_max}`);
     if (f.food) bits.push(`nutrition ${f.food.nutrition} · saturation ${f.food.saturation}` + (f.food.effects?.length ? " · " + f.food.effects.map(e => e.effect.replace("minecraft:", "")).join(", ") : ""));
+    if (f.ore) bits.push(`worldgen: ${f.ore.vein_size}-block veins ×${f.ore.veins_per_chunk}/chunk, y ${f.ore.min_y}..${f.ore.max_y}`);
     if (bits.length) mid.append(el("small", bits.join(" · ")));
     const right = el("div", null, "actions"); right.style.marginTop = "0";
+    if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = prompt(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"));
     right.append(btn("Rename", async () => { const label = prompt("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
@@ -391,7 +393,8 @@ async function renderFeatures(p) {
     e.preventDefault();
     try {
       const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value, tool: qs("af-tool").value, mining_level: qs("af-level").value });
-      addForm.reset(); delete qs("af-id").dataset.touched; closeModal("modal-feat");
+      if (qs("af-kind").value === "block" && qs("af-ore").checked) { try { await api(`/api/project/${p.id}/add-ore`, { block: out.identifier, ...oreFromForm() }); } catch (e2) { toast("Block added but worldgen failed: " + e2.message, "bad"); } }
+      addForm.reset(); delete qs("af-id").dataset.touched; closeModal("modal-feat"); qs("af-kind").onchange();
       toast(out.generated ? `Added. Files written; the coder registers it (${out.task}) — see Now.` : "Added to the spec. Re-approve before generating.", "ok");
       await openProject(p.id);
     } catch (err) { toast(err.message, "bad"); }
@@ -452,7 +455,9 @@ qs("addfood-form").onsubmit = async (e) => {
     await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };
-qs("af-kind").onchange = () => { qs("af-block-row").style.display = qs("af-kind").value === "block" ? "" : "none"; }; qs("af-kind").onchange();
+qs("af-kind").onchange = () => { const b = qs("af-kind").value === "block"; qs("af-block-row").style.display = b ? "" : "none"; qs("af-ore-row").style.display = b ? "" : "none"; }; qs("af-kind").onchange();
+qs("af-ore").onchange = () => { qs("af-ore-fields").style.display = qs("af-ore").checked ? "" : "none"; };
+const oreFromForm = () => ({ vein_size: Number(qs("af-ore-size").value), veins_per_chunk: Number(qs("af-ore-count").value), min_y: Number(qs("af-ore-miny").value), max_y: Number(qs("af-ore-maxy").value), biomes: qs("af-ore-biomes").value.split(",").map(s => s.trim()).filter(Boolean), discard_on_air: Number(qs("af-ore-discard").value) });
 qs("am-spawn").onchange = () => { qs("am-spawn-row").style.display = qs("am-spawn").checked ? "" : "none"; };
 qs("af-label").oninput = () => { if (!qs("af-id").dataset.touched) qs("af-id").value = qs("af-label").value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
 qs("af-id").oninput = () => { qs("af-id").dataset.touched = "1"; };
