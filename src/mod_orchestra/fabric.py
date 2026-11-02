@@ -270,6 +270,8 @@ Your idea: {spec.idea}
         "import net.minecraft.world.item.Item;",
         "import net.minecraft.world.level.block.Block;",
         "import net.minecraft.world.level.block.state.BlockBehaviour;",
+        "import org.slf4j.Logger;",
+        "import org.slf4j.LoggerFactory;",
     ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + ([
         "import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;",
         "import net.minecraft.core.registries.Registries;",
@@ -281,6 +283,7 @@ Your idea: {spec.idea}
         "",
         "public class ModMain implements ModInitializer {",
         f'    public static final String MOD_ID = "{spec.mod_id}";',
+        "    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);",
         "",
         "    private static ResourceLocation id(String path) {",
         "        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);",

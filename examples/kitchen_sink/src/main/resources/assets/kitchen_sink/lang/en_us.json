@@ -1,0 +1,13 @@
+{
+  "block.kitchen_sink.crystal_ore": "crystal ore",
+  "block.kitchen_sink.crystal_station": "Crystal Station",
+  "category.kitchen_sink": "Kitchen Sink",
+  "container.kitchen_sink.station": "Crystal Station",
+  "entity.kitchen_sink.sky_critter": "Sky Critter",
+  "item.kitchen_sink.backpack": "Backpack",
+  "item.kitchen_sink.sky_critter_spawn_egg": "Sky Critter Spawn Egg",
+  "item.kitchen_sink.sky_crystal": "sky crystal",
+  "itemGroup.kitchen_sink.kitchen_sink_tab": "Kitchen Sink",
+  "key.kitchen_sink.open": "Open Crystal Station",
+  "subtitles.kitchen_sink.crystal_chime": "Crystal chimes"
+}

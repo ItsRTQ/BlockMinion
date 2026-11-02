@@ -116,6 +116,31 @@ jobs:
           grep -nE "error:|Caused by|What went wrong" build_tail.txt | head -40 | while IFS= read -r line; do echo "::error title=craftctl build::${line:0:400}"; done
           cat build_tail.txt
 
+  kitchen-sink:
+    name: Build examples/kitchen_sink (every knowledge skill's code, compiled)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build with the shipped wrapper
+        working-directory: examples/kitchen_sink
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew build --no-daemon --console=plain 2>&1 | tee build.log
+      - name: Surface javac errors as annotations
+        if: failure()
+        working-directory: examples/kitchen_sink
+        shell: bash
+        run: |
+          grep -nE "error:|FAILURE|Caused by|What went wrong" build.log | head -40 | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
+          grep -A3 -E "error:" build.log | head -80
+
   blockbench-oracle:
     name: blockbench-mcp-safe vs upstream oracle (Linux only)
     runs-on: ubuntu-latest
