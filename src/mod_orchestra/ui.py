@@ -131,6 +131,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "items":
                         from .catalog import item_catalog
                         return item_catalog(store, pid)
+                    if op == "map":
+                        from .modmap import mod_map
+                        return mod_map(store, pid)
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
@@ -205,6 +208,20 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "add-food":
                         from .content import add_food_any
                         return add_food_any(store, pid, **{k: v for k, v in payload.items()})
+                    if op == "map-layout":
+                        store.set_setting(pid, "map_layout", {str(k): v for k, v in (payload.get("layout") or {}).items() if isinstance(v, dict)})
+                        return {"saved": True}
+                    if op == "feature":
+                        from .modmap import request_feature
+                        return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
+                                               acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "change":
+                        from .modmap import request_change
+                        return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")))
+                    if op == "card":
+                        from .modmap import update_card
+                        return update_card(store, pid, str(payload.get("card", "")), by="user", description=payload.get("description"),
+                                           acceptance=payload.get("acceptance"), note=payload.get("note") or "edited by the user")
                     if op == "armor-design":
                         from .models import request_armor_design
                         return request_armor_design(store, pid, str(payload.get("material", "")), str(payload.get("notes") or ""))

@@ -72,6 +72,12 @@ UPDATE tasks SET role='user' WHERE id LIKE '%:GAME';
 UPDATE tasks SET state='READY', lease_owner=NULL, lease_expiry=NULL, version=version+1
   WHERE (id LIKE '%:SCAFFOLD' OR id LIKE '%:CONTENT:__') AND state IN ('LEASED','RUNNING','WAITING_USER','FAILED','BLOCKED');
 """),
+    (7, "feature cards for the mod map (custom features, change history)", """
+CREATE TABLE IF NOT EXISTS feature_cards (
+  id TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id), kind TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
+  owner TEXT NOT NULL, status TEXT NOT NULL, derived_from_json TEXT NOT NULL, produces_json TEXT NOT NULL, files_json TEXT NOT NULL,
+  acceptance_json TEXT NOT NULL, history_json TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY (project_id, id));
+"""),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 
@@ -294,6 +300,7 @@ class Store:
             counts = {}
             # every table that references the project or its tasks (schema v1-v4); children first
             counts["project_settings"] = con.execute("DELETE FROM project_settings WHERE project_id=?", (pid,)).rowcount
+            counts["feature_cards"] = con.execute("DELETE FROM feature_cards WHERE project_id=?", (pid,)).rowcount
             counts["task_instructions"] = con.execute("DELETE FROM task_instructions WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)", (pid,)).rowcount
             counts["runs"] = con.execute("DELETE FROM runs WHERE project_id=?", (pid,)).rowcount
             for table in ("evidence", "approvals", "events"):

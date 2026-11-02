@@ -83,6 +83,7 @@
       </details>
 
       <div class="tabs" id="tabs">
+        <button data-tab="map" class="tab">Map</button>
         <button data-tab="features" class="tab">Features</button>
         <button data-tab="spec" class="tab">Spec</button>
         <button data-tab="activity" class="tab active">Activity</button>
@@ -90,6 +91,18 @@
         <button data-tab="tasks" class="tab">Tasks</button>
       </div>
 
+      <div id="tab-map" class="tabpane hidden">
+        <div class="card map-card">
+          <div class="card-head map-head">
+            <div><h3>Mod map</h3><p class="muted">Every feature as a card; arrows show what derives from what. Click a card for details and to request a change — the coder gets that card's files and relations, not the whole project. Drag to arrange, wheel to zoom.</p></div>
+            <div class="actions" style="margin:0"><button type="button" class="primary" id="map-new-feature">＋ New feature</button><button type="button" class="secondary" id="map-fit">Fit</button></div>
+          </div>
+          <div class="map-wrap">
+            <svg id="map-svg" class="map-svg"></svg>
+            <aside id="map-side" class="map-side hidden"></aside>
+          </div>
+        </div>
+      </div>
       <div id="tab-features" class="tabpane hidden">
         <div class="subtabs" id="subtabs">
           <button data-sub="mobs" class="subtab active">Mobs</button>
@@ -242,6 +255,17 @@
   <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all placeholders</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
   <label>Style notes (optional) <textarea id="sprites-notes" rows="2" placeholder="e.g. deep red rubies with a pink highlight; chunky outlines like vanilla"></textarea></label>
   <div class="actions"><button type="button" class="primary" id="sprites-go">Create task and run designer</button></div>
+</div></div>
+<div id="modal-feature" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>New feature</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Anything the generator has no form for (a backpack, a minimap, a magic system). A card is created and a coder implements it with the card as its brief; you check the acceptance criteria in-game.</p>
+  <form id="feature-form" class="form">
+    <label>Title <input id="ft-title" required placeholder="Ovis Backpack"></label>
+    <label>Description <textarea id="ft-desc" rows="3" required placeholder="A backpack item crafted from 8 leather around an ovis ingot. Right-click opens a 27-slot inventory that persists on the item."></textarea></label>
+    <label>Acceptance criteria (one per line) <textarea id="ft-accept" rows="3" placeholder="right-click opens a 27-slot inventory&#10;items stay after closing and reopening&#10;craftable with 8 leather + 1 ovis ingot"></textarea><small>What you will verify in the game. Be concrete.</small></label>
+    <label>Builds on (optional) <input id="ft-from" placeholder="ovis_ingot, raw_ovis"><small>Ids of existing cards, comma separated. The coder is told what they are and where they live.</small></label>
+    <div class="actions"><button class="primary" type="submit">Create card and run coder</button></div>
+  </form>
 </div></div>
 <div id="modal-delete" class="lightbox hidden"><div class="modal">
   <div class="modal-head"><h3>Delete project</h3><button type="button" class="secondary mini modal-close">✕</button></div>
