@@ -86,6 +86,7 @@ public class ModMain implements ModInitializer {
         PayloadTypeRegistry.playC2S().register(OpenPayload.TYPE, OpenPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(OpenPayload.TYPE, (payload, context) ->
             context.server().execute(() -> context.player().openMenu(new SimpleMenuProvider((syncId, inv, p) -> new StationMenu(syncId, inv), Component.literal("Crystal Station")))));
+        DataExample.register();
         EventsExample.register();
         CommandsExample.register();
         LootAndTradesExample.register();

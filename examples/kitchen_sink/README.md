@@ -10,7 +10,8 @@ stops compiling against the pinned Fabric/Minecraft versions, the build fails an
 | commands | `CommandsExample` |
 | loot-and-trades | `LootAndTradesExample` |
 | polish (config) | `ModConfig` |
-| client-ui | `client/ClientUiExample`, `OpenPayload` |
+| client-ui | `client/ClientUiExample`, `OpenPayload` (C2S), `ManaSyncPayload` (S2C with data), `client/ClientState` |
+| data | `DataExample` (player attachment, item component), `ModSaveData` (world data) |
 | gui | `BackpackItem` (vanilla chest menu), `StationMenu` + `client/StationScreen` |
 
 Press **B** in-game to open the example menu; `/sky give 3`; the HUD shows an example bar; the Backpack is in the Kitchen Sink tab.
