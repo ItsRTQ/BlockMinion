@@ -1,5 +1,7 @@
 # Minecraft Mod Orchestra
 
+> New here? Start with **[docs/SETUP.md](docs/SETUP.md)** — a clean machine to a verified mod, step by step.
+
 **A local-first orchestration foundation for turning Minecraft Java ideas into managed Fabric mod projects.**
 
 [![CI](https://img.shields.io/badge/CI-Python%20unit%20tests-informational)](#testing) ![Version](https://img.shields.io/badge/version-0.1.0--prealpha-yellow) ![Loader](https://img.shields.io/badge/loader-Fabric-blue) ![License](https://img.shields.io/badge/license-MIT-green)
