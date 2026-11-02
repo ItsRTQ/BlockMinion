@@ -1,12 +1,13 @@
 # Verification evidence — crystal_example
 
-## Current content (regenerated 2026-10-22, v1 criterion 6 scaffold)
+## Current content (regenerated 2026-10-27, v1 tool/armor sets + food)
 
 Items `sky_crystal`, `lunar_gem`; blocks `crystal_stone`, `crystal_ore`; creative tab "Crystal Example".
 Recipes: `crystal_stone` (shaped, 9 sky_crystal), `sky_crystal_from_stone` (shapeless, 1 stone → 9 crystal),
 `lunar_gem` (shapeless, sky_crystal + minecraft:ender_pearl), `sky_crystal_smelting` (crystal_ore → sky_crystal, 0.7 xp).
 Drop: `crystal_ore` → 1–2 `sky_crystal`, Fortune, Silk Touch returns the ore.
 Mob: `crystal_critter` (passive, GeckoLib, placeholder 6-bone quadruped, idle + walk, spawn egg, drops sky_crystal). GeckoLib 4.7.3.
+Material `crystal` (diamond-like numbers, from sky_crystal): sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots with standard recipes and placeholder armor layers. Food `crystal_berry` (nutrition 4, saturation 0.6, night vision 20 s).
 
 | Level | Evidence |
 |---|---|

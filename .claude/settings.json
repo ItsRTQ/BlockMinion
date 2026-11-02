@@ -86,7 +86,17 @@
       "Bash(craftctl add-mob*)",
       "Bash(craftctl remove-mob*)",
       "PowerShell(craftctl add-mob*)",
-      "PowerShell(craftctl remove-mob*)"
+      "PowerShell(craftctl remove-mob*)",
+      "Bash(craftctl add-material*)",
+      "Bash(craftctl remove-material*)",
+      "Bash(craftctl add-food*)",
+      "Bash(craftctl remove-food*)",
+      "PowerShell(craftctl add-material*)",
+      "PowerShell(craftctl remove-material*)",
+      "PowerShell(craftctl add-food*)",
+      "PowerShell(craftctl remove-food*)",
+      "Bash(craftctl autopilot*)",
+      "PowerShell(craftctl autopilot*)"
     ]
   },
   "hooks": {

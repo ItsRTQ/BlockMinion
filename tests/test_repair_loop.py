@@ -41,6 +41,12 @@ class Base(unittest.TestCase):
     def tasks(self):
         return {t["id"]: t for t in self.store.tasks("r_mod")}
 
+    def fake_server(self, lines, exit_code=0):
+        f = Path(self.tmp.name) / "server.sh"
+        body = "\n".join(f"echo '{l}'" for l in lines)
+        f.write_text(f"#!/bin/sh\n{body}\nread cmd\necho \"got $cmd\"\nexit {exit_code}\n")
+        f.chmod(f.stat().st_mode | stat.S_IEXEC); return f
+
 
 @unittest.skipIf(os.name == "nt", "POSIX shell fixtures")
 class RepairLoop(Base):
@@ -102,13 +108,13 @@ class RepairLoop(Base):
         self.assertIn("confirm with the trusted build", out["stopped_because"])
         self.assertEqual(self.tasks()["r_mod:REPAIR:2"]["state"], "DONE")
 
-    def test_game_task_waits_for_trusted_build_pass_on_current_source(self):
-        # host run 5: after a repair, orchestrate dispatched the qa GAME task ($2.11) whose evidence cannot be accepted.
-        from mod_orchestra.dispatch import pick_task
-        self.controller_build(0)  # BUILD DONE -> GAME READY, and BUILD_PASS on current source
-        self.assertEqual(pick_task(self.store, "r_mod", None)["id"], "r_mod:GAME")
-        inject_fault(self.store, "r_mod", "missing-import")  # source changed: BUILD_PASS no longer applies
-        with self.assertRaisesRegex(StateError, "trusted BUILD_PASS"):
+    def test_game_task_is_never_dispatched_to_an_agent(self):
+        # host run 5: a qa worker on GAME cost $2.11 and produced no acceptable evidence. GAME is now the user's task.
+        from mod_orchestra.dispatch import pick_task, DISPATCHABLE_ROLES
+        self.assertNotIn("user", DISPATCHABLE_ROLES); self.assertNotIn("controller", DISPATCHABLE_ROLES)
+        self.controller_build(0)
+        tasks = self.tasks(); self.assertEqual(tasks["r_mod:GAME"]["role"], "user"); self.assertEqual(tasks["r_mod:BUILD"]["state"], "DONE")
+        with self.assertRaisesRegex(StateError, "No READY task"):
             pick_task(self.store, "r_mod", None)
 
 
@@ -132,11 +138,6 @@ class Faults(Base):
 
 @unittest.skipIf(os.name == "nt", "POSIX shell fixtures")
 class ServerSmoke(Base):
-    def fake_server(self, lines, exit_code=0):
-        f = Path(self.tmp.name) / "server.sh"
-        body = "\n".join(f"echo '{l}'" for l in lines)
-        f.write_text(f"#!/bin/sh\n{body}\nread cmd\necho \"got $cmd\"\nexit {exit_code}\n")
-        f.chmod(f.stat().st_mode | stat.S_IEXEC); return f
 
     def build_pass(self):
         from mod_orchestra.evidence import record_evidence
@@ -209,3 +210,69 @@ class ServerSmoke(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(os.name == "nt", "POSIX shell fixtures")
+class FullAutopilot(Base):
+    """User-authorised gates: Autopilot goes from approved spec through generate, build and server smoke."""
+    def test_policy_crosses_gates_until_the_client(self):
+        from mod_orchestra.dispatch import autopilot_policy
+        from mod_orchestra import smoke as smoke_mod
+        self.store.set_setting("r_mod", "autopilot", {"approve_spec": True, "generate": True, "build": True, "server_smoke": True})
+        self.assertTrue(autopilot_policy(self.store, "r_mod")["build"])
+        # scaffold/content tasks are DONE by generate in setUp; BUILD/GAME are tasks a worker does not need here
+        srv = self.fake_server(["\t- r_mod 1.0.0", "[Server thread/INFO] (Minecraft) Done (1.2s)! For help, type \"help\""])
+        with patch.object(build_mod, "_gradle_launcher", return_value=self.fake_gradle(0)), patch.object(smoke_mod, "_gradle_launcher", return_value=srv):
+            out = orchestrate(self.store, "r_mod", max_runs=4, provider=FakeProvider(reply(GOOD)))
+        self.assertEqual([g["gate"] for g in out["gates"]], ["build", "server_smoke"])
+        self.assertEqual(out["gates"][0]["status"], "BUILD_PASS"); self.assertEqual(out["gates"][1]["status"], "SERVER_BOOT_PASS")
+        self.assertIn("ready for your eyes", out["stopped_because"])
+        self.assertEqual(self.store.project("r_mod")["status"], "BUILD_PASSED_GAME_UNTESTED")
+
+    def test_build_failure_under_autopilot_runs_the_repair_and_rebuilds(self):
+        self.store.set_setting("r_mod", "autopilot", {"build": True})
+        calls = {"n": 0}
+        def launcher(root):
+            calls["n"] += 1
+            return self.fake_gradle(1 if calls["n"] == 1 else 0)
+        with patch.object(build_mod, "_gradle_launcher", side_effect=launcher):
+            out = orchestrate(self.store, "r_mod", max_runs=4, provider=FakeProvider(reply(GOOD | {"task": "r_mod:REPAIR:1"})))
+        self.assertEqual([g["status"] for g in out["gates"]], ["BUILD_FAILED", "BUILD_PASS"])
+        self.assertEqual([r["task"] for r in out["runs"]], ["r_mod:REPAIR:1"])
+        self.assertIn("server smoke", out["stopped_because"])
+
+    def test_questions_always_stop(self):
+        from mod_orchestra import workflow as wf
+        wf.new_project(self.store, name="Q", mod_id="q_mod", package="com.x.q", idea="a mod about something vague")
+        self.store.set_setting("q_mod", "autopilot", {"approve_spec": True, "generate": True})
+        h = {"task": "q_mod:SPEC", "status": "WAITING_USER", "scope": "s", "changed_files": [], "checks_run": [], "evidence": {"level": "NONE", "pointer": "-"},
+             "risks": [], "unknowns": [], "needs_user": [], "next_agent": "planner", "spec": {"features": [{"kind": "item", "identifier": "thing", "label": "Thing"}]}, "questions": ["Which colour?"]}
+        out = orchestrate(self.store, "q_mod", max_runs=3, provider=FakeProvider(reply(h)))
+        self.assertIn("questions for you", out["stopped_because"]); self.assertEqual(out["gates"], [])
+        self.assertEqual(self.store.project("q_mod")["spec_state"], "DRAFT")
+
+
+class PlannerTasksNeverDispatched(unittest.TestCase):
+    def test_old_role_rows_are_migrated_and_guarded(self):
+        from mod_orchestra.dispatch import pick_task, _dispatchable_now
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            workflow.new_project(store, name="P", mod_id="p_mod", package="com.x.p", idea="items: gem")
+            workflow.plan_project(store, "p_mod"); workflow.approve_spec(store, "p_mod")
+            # simulate a pre-v6 row: SCAFFOLD as coder, leased by a worker
+            with store.tx() as con:
+                con.execute("UPDATE tasks SET role='coder', state='WAITING_USER' WHERE id='p_mod:SCAFFOLD'")
+            # the id-based guard refuses regardless of role
+            t = next(x for x in store.tasks("p_mod") if x["id"] == "p_mod:SCAFFOLD")
+            self.assertFalse(_dispatchable_now(store, "p_mod", t))
+            with self.assertRaisesRegex(StateError, "controller/user work"):
+                pick_task(store, "p_mod", "p_mod:SCAFFOLD")
+            # and the migration SQL repairs the row on a fresh open
+            from mod_orchestra.state import MIGRATIONS
+            sql = MIGRATIONS[-1][2]
+            with store.tx() as con:
+                con.executescript(sql)
+            t = next(x for x in store.tasks("p_mod") if x["id"] == "p_mod:SCAFFOLD")
+            self.assertEqual((t["role"], t["state"]), ("controller", "READY"))

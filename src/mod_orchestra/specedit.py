@@ -5,7 +5,7 @@ same spec fields from the user's words. Every edit returns the spec to DRAFT.
 """
 from __future__ import annotations
 from dataclasses import replace
-from .spec import Drop, Mob, Recipe, default_egg_colors, read_spec, validate_spec_content
+from .spec import Drop, Food, Material, Mob, Recipe, default_egg_colors, read_spec, validate_spec_content
 from .state import Store
 
 
@@ -17,7 +17,7 @@ def _save(store: Store, pid: str, spec, reason: str) -> dict:
     validate_spec_content(spec)
     store.replace_spec(pid, spec.to_dict(), actor="user", reason=reason)
     return {"project": pid, "spec_state": "DRAFT", "recipes": [r.id for r in spec.recipes], "drops": [d.block for d in spec.drops], "tab": spec.tab,
-            "mobs": [f"{m.identifier} ({m.behavior})" for m in spec.mobs]}
+            "mobs": [f"{m.identifier} ({m.behavior})" for m in spec.mobs], "materials": [m.identifier for m in spec.materials], "foods": [f.identifier for f in spec.foods]}
 
 
 def add_recipe(store: Store, pid: str, *, recipe_id: str, kind: str, result: str, count: int = 1,
@@ -62,3 +62,42 @@ def remove_mob(store: Store, pid: str, identifier: str) -> dict:
 def set_tab(store: Store, pid: str, *, label: str | None, icon: str | None) -> dict:
     spec = _load(store, pid)
     return _save(store, pid, replace(spec, tab=label, tab_icon=(icon if label else None)), f"tab {label!r}")
+
+
+def add_material(store: Store, pid: str, *, identifier: str, label: str, ingredient: str, tools: list[str], armor: list[str], **numbers) -> dict:
+    spec = _load(store, pid)
+    mat = Material(identifier=identifier, label=label, ingredient=ingredient, tools=tuple(tools), armor=tuple(armor),
+                   **{k: v for k, v in numbers.items() if v is not None})
+    mats = [m for m in spec.materials if m.identifier != identifier] + [mat]
+    return _save(store, pid, replace(spec, materials=mats), f"add material {identifier}") | {"items": mat.item_ids()}
+
+
+def remove_material(store: Store, pid: str, identifier: str) -> dict:
+    spec = _load(store, pid)
+    return _save(store, pid, replace(spec, materials=[m for m in spec.materials if m.identifier != identifier]), f"remove material {identifier}")
+
+
+def add_food(store: Store, pid: str, *, identifier: str, label: str, nutrition: int = 4, saturation: float = 0.3,
+             effects: list[dict] | None = None, always_edible: bool = False, fast: bool = False) -> dict:
+    spec = _load(store, pid)
+    food = Food(identifier=identifier, label=label, nutrition=nutrition, saturation=saturation, effects=tuple(effects or ()), always_edible=always_edible, fast=fast)
+    foods = [f for f in spec.foods if f.identifier != identifier] + [food]
+    return _save(store, pid, replace(spec, foods=foods), f"add food {identifier}")
+
+
+def remove_food(store: Store, pid: str, identifier: str) -> dict:
+    spec = _load(store, pid)
+    return _save(store, pid, replace(spec, foods=[f for f in spec.foods if f.identifier != identifier]), f"remove food {identifier}")
+
+
+def set_theme(store: Store, pid: str, theme: str) -> dict:
+    """Visual brief for every designer task. Allowed at any time (it only changes future art, never files)."""
+    theme = theme.strip()[:600]
+    proj = store.project(pid)
+    spec = read_spec(proj["spec"])
+    new = replace(spec, theme=theme)
+    import json as _json
+    with store.tx() as con:
+        con.execute("UPDATE projects SET spec_json=? WHERE id=?", (_json.dumps(new.to_dict(), sort_keys=True), pid))
+        store.event(con, pid, "user", "THEME_SET", {"theme": theme[:200]})
+    return {"project": pid, "theme": theme}

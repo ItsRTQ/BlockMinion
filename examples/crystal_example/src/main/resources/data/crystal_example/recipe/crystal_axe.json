@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XX",
+    "XS",
+    " S"
+  ],
+  "key": {
+    "X": {
+      "item": "crystal_example:sky_crystal"
+    },
+    "S": {
+      "item": "minecraft:stick"
+    }
+  },
+  "result": {
+    "id": "crystal_example:crystal_axe",
+    "count": 1
+  }
+}

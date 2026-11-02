@@ -138,3 +138,21 @@ details > summary{list-style:none}details > summary::before{content:"▸ ";color
 .feature{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-s);margin:6px 0;background:var(--panel-2)}
 .feature img{width:40px;height:40px;image-rendering:pixelated;background:var(--bg);border-radius:6px}.feature .fname{font-weight:700}.feature small{color:var(--muted);display:block}
 .feature .fid{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.checks{display:flex;gap:10px;flex-wrap:wrap;font-weight:400}.checks label{flex-direction:row;align-items:center;gap:4px;margin:0}.checks input{width:auto}
+.numbers{grid-template-columns:repeat(3,1fr)!important}.numbers label{font-size:12px}
+.feature .fk{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:var(--bg);border:1px solid var(--line-2);color:var(--muted);margin-left:6px}
+.add-bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.modal{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--radius);padding:18px 20px;width:min(760px,94vw);max-height:90vh;overflow:auto}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.modal-head h3{margin:0}
+/* custom checkboxes: dark, accent when checked */
+input[type=checkbox]{appearance:none;-webkit-appearance:none;width:16px;height:16px;min-width:16px;border:1px solid var(--line-2);border-radius:4px;background:var(--bg);display:inline-grid;place-items:center;cursor:pointer;padding:0;margin:0;vertical-align:middle}
+input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after{content:"";width:9px;height:5px;border-left:2px solid #0b0e14;border-bottom:2px solid #0b0e14;transform:translateY(-1px) rotate(-45deg)}
+input[type=checkbox]:focus-visible{outline:2px solid rgba(124,156,255,.5);outline-offset:1px}
+.check{display:grid!important;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;font-weight:600}.check small{grid-column:2;margin-top:-2px}
+.checks label{display:inline-flex!important;gap:6px;align-items:center}
+.numbers small{line-height:1.3}
+button.danger{border-color:rgba(255,107,107,.5);color:var(--bad)}button.danger:hover{background:rgba(255,107,107,.12)}
+.policy{margin-top:12px;border:1px dashed var(--line-2);border-radius:var(--radius-s);padding:8px 12px}.policy summary{font-weight:600;cursor:pointer}
+.policy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 16px;margin-top:8px}
+.colour-row{display:flex;gap:8px;align-items:center}.colour-row input[type=color]{width:44px;height:36px;padding:2px;border-radius:6px;background:var(--bg);border:1px solid var(--line-2)}.colour-row input[type=text]{width:110px;font-family:var(--mono)}

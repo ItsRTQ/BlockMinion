@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 from mod_orchestra import dispatch as dmod, ui, workflow
 from mod_orchestra.provider import FakeProvider
-from mod_orchestra.state import Store
+from mod_orchestra.state import Store, StateError
 
-REPLY = '```handoff\n' + json.dumps({"task": "u_mod:SCAFFOLD", "status": "WAITING_USER", "scope": "s", "changed_files": [],
+REPLY = '```handoff\n' + json.dumps({"task": "u_mod:WORK", "status": "WAITING_USER", "scope": "s", "changed_files": [],
         "checks_run": [], "evidence": {"level": "STATIC", "pointer": "src"}, "risks": [], "unknowns": [],
         "needs_user": ["craftctl request-build u_mod"], "next_agent": "none"}) + '\n```'
 
@@ -48,6 +48,7 @@ class UiApi(unittest.TestCase):
             raise RuntimeError("UI server did not start in time")
         workflow.new_project(cls.store, name="U", mod_id="u_mod", package="com.x.u", idea="items: gem")
         workflow.plan_project(cls.store, "u_mod"); workflow.approve_spec(cls.store, "u_mod")
+        cls.store.add_task("u_mod", "u_mod:WORK", "coder", "ad-hoc coder work")
 
     @classmethod
     def tearDownClass(cls):
@@ -87,7 +88,7 @@ class UiApi(unittest.TestCase):
         self.assertFalse(self.call("/api/project/u_mod")[1]["dispatching"])
 
     def test_3_requeue_and_evidence_from_ui(self):
-        code, out = self.call("/api/task/u_mod:SCAFFOLD/requeue", {})
+        code, out = self.call("/api/task/u_mod:WORK/requeue", {})
         self.assertEqual((code, out["state"]), (200, "READY"))
         code, out = self.call("/api/project/u_mod/evidence", {"level": "CLIENT_BOOT_PASS", "note": "x"})
         self.assertEqual(code, 400); self.assertIn("cannot be attached", out["error"])
@@ -168,3 +169,94 @@ class GuidanceGalleryFeedback(unittest.TestCase):
         self.assertIn("g_mod:MODEL:shadow", ids); self.assertIn("g_mod:MODEL:sky_critter", ids)
         self.assertEqual(next(t["state"] for t in self.store.tasks("g_mod") if t["id"] == "g_mod:SPEC"), "DONE")
         self.assertIn("TASK_GRAPH_REPLANNED", [e["kind"] for e in self.store.events("g_mod")])
+
+
+class DeleteFromUi(unittest.TestCase):
+    def test_delete_requires_exact_id_and_removes_project(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            proj = workflow.new_project(store, name="D", mod_id="d_mod", package="com.x.d", idea="items: gem")
+            root = Path(proj["root"]); root.mkdir(parents=True, exist_ok=True); (root / "x.txt").write_text("x")
+            out = workflow.delete_project(store, "d_mod", remove_workspace=True)
+            self.assertTrue(out["workspace_removed"]); self.assertFalse(root.exists())
+            with self.assertRaises(StateError):
+                store.project("d_mod")
+
+
+class DeleteWithRunsAndInstructions(unittest.TestCase):
+    def test_delete_removes_every_dependent_row(self):
+        # host run 11: FOREIGN KEY constraint failed — runs and task_instructions were not deleted.
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            workflow.new_project(store, name="D", mod_id="d_mod", package="com.x.d", idea="items: gem; mobs: fox")
+            workflow.plan_project(store, "d_mod"); workflow.approve_spec(store, "d_mod"); workflow.generate_project(store, "d_mod")
+            h = {"task": "d_mod:MODEL:fox", "status": "FAILED", "scope": "s", "changed_files": [], "checks_run": [], "evidence": {"level": "NONE", "pointer": "-"}, "risks": ["x"], "unknowns": [], "needs_user": [], "next_agent": "none"}
+            dmod.dispatch(store, "d_mod", task_id="d_mod:MODEL:fox", provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
+            from mod_orchestra.content import add_feature
+            add_feature(store, "d_mod", kind="item", label="Moon Shard")  # creates a task with task_instructions
+            self.assertTrue(store.runs("d_mod")); self.assertTrue(store.task_instructions("d_mod:ADD_ITEM:moon_shard"))
+            out = workflow.delete_project(store, "d_mod", remove_workspace=True)
+            self.assertGreaterEqual(out["rows"]["runs"], 1); self.assertGreaterEqual(out["rows"]["task_instructions"], 1)
+            self.assertEqual(store.projects(), [])
+
+
+class PercentEncodedIds(unittest.TestCase):
+    def test_requeue_accepts_encoded_task_id(self):
+        # host run 11: "Task not found: ovis_moon%3ASPEC" — the path segment was not URL-decoded.
+        import mod_orchestra.ui as uimod
+        from urllib.parse import unquote
+        self.assertIn("unquote(", __import__("inspect").getsource(uimod.serve))
+        self.assertEqual(unquote("ovis_moon%3ASPEC"), "ovis_moon:SPEC")
+
+
+class ReplanKeepsUserTasks(unittest.TestCase):
+    def test_add_task_survives_approve_spec_replan(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            workflow.new_project(store, name="K", mod_id="k_mod", package="com.x.k", idea="items: gem")
+            workflow.plan_project(store, "k_mod")
+            store.add_task("k_mod", "k_mod:EXTRA", "coder", "user-added", after=["k_mod:SPEC"])
+            workflow.approve_spec(store, "k_mod")
+            ids = {t["id"]: t for t in store.tasks("k_mod")}
+            self.assertIn("k_mod:EXTRA", ids); self.assertEqual(ids["k_mod:SCAFFOLD"]["role"], "controller"); self.assertEqual(ids["k_mod:CONTENT:01"]["role"], "controller")
+            self.assertEqual(ids["k_mod:EXTRA"]["state"], "READY", "edge from the (DONE) SPEC task survived")
+
+
+class ExpiredApprovals(unittest.TestCase):
+    def test_guidance_ignores_expired_pending_approval(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            workflow.new_project(store, name="E", mod_id="e_mod", package="com.x.e", idea="items: gem")
+            workflow.plan_project(store, "e_mod"); workflow.approve_spec(store, "e_mod"); workflow.generate_project(store, "e_mod")
+            from mod_orchestra import build as build_mod
+            from mod_orchestra.guidance import guidance
+            a = build_mod.request_build(store, "e_mod")
+            self.assertEqual(guidance(store, "e_mod")["steps"][0]["action"], "decide")
+            with store.tx() as con:
+                con.execute("UPDATE approvals SET expires_at=? WHERE id=?", (time.time() - 1, a["id"]))
+            self.assertEqual(guidance(store, "e_mod")["steps"][0]["action"], "request-build", "expired approvals must not be offered")
+
+
+class FrontendConsistency(unittest.TestCase):
+    """The static files must move together: every element id app.js reads with qs("…") must exist in index.html,
+    and every handler the HTML expects must be wired (regression: an Items rewrite dropped the sprites modal code)."""
+    def test_every_qs_id_exists_in_html_and_key_handlers_are_wired(self):
+        import re
+        static = Path(__file__).resolve().parents[1] / "src" / "mod_orchestra" / "static"
+        html = (static / "index.html").read_text(encoding="utf8"); js = (static / "app.js").read_text(encoding="utf8")
+        ids = set(re.findall(r'id="([^"]+)"', html))
+        used = set(re.findall(r'qs\("([a-zA-Z0-9_-]+)"\)', js))
+        missing = sorted(u for u in used if u not in ids)
+        self.assertEqual(missing, [], f"app.js references ids absent from index.html: {missing}")
+        for handler in ("sprites-btn", "sprites-go", "addmob-form", "addmat-form", "addfood-form", "p-delete", "del-go", "theme-save", "pol-all"):
+            self.assertRegex(js, re.escape(f'qs("{handler}")') + r"\.(onclick|onsubmit)", f"{handler} has no handler")
+        self.assertIn('const addForm = qs("addfeature-form");', js); self.assertIn("addForm.onsubmit", js)
+        self.assertIn("let featureCache", js)

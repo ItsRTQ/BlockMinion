@@ -20,4 +20,4 @@ craftctl = "mod_orchestra.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mod_orchestra = ["static/*", "resources/gradle-wrapper/*", "resources/gradle-wrapper/gradle/wrapper/*", "resources/claude/*", "resources/claude/agents/*", "resources/claude/hooks/*", "resources/claude/skills/*/*", "resources/blockbench-mcp-safe/*", "resources/blockbench-mcp-safe/src/*"]
+mod_orchestra = ["static/*", "resources/gradle-wrapper/*", "resources/gradle-wrapper/gradle/wrapper/*", "resources/claude/*", "resources/claude/agents/*", "resources/claude/hooks/*", "resources/claude/skills/*/*", "resources/blockbench-mcp-safe/*", "resources/blockbench-mcp-safe/src/*", "resources/blockbench/*"]

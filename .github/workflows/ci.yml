@@ -52,7 +52,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build with the shipped wrapper
         working-directory: examples/crystal_example
-        run: ./gradlew build --no-daemon --console=plain
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew build --no-daemon --console=plain 2>&1 | tee build.log
+      - name: Surface javac errors as annotations
+        if: failure()
+        working-directory: examples/crystal_example
+        shell: bash
+        run: |
+          grep -nE "error:|FAILURE|Caused by|What went wrong" build.log | head -40 | while IFS= read -r line; do echo "::error title=gradle::${line:0:400}"; done
+          grep -A3 -E "error:" build.log | head -80
       - name: Inspect JAR
         working-directory: examples/crystal_example
         run: |
@@ -85,7 +95,9 @@ jobs:
           CRAFTCTL_HOME: ${{ runner.temp }}/craft
         run: |
           set -euo pipefail
-          craftctl new --name "CI Mod" --id ci_mod --package com.example.cimod --idea "items: ci gem, ci dust; blocks: ci ore; mobs: ci critter; tab: CI Mod" > /dev/null
+          craftctl new --name "CI Mod" --id ci_mod --package com.example.cimod --idea "items: ci gem, ci dust; blocks: ci ore; mobs: ci critter; tab: CI Mod"
+          craftctl add-material ci_mod --id ci --label CI --ingredient ci_gem --tools sword pickaxe --armor helmet boots > /dev/null
+          craftctl add-food ci_mod --id ci_snack --label "CI Snack" --nutrition 3 --effect minecraft:speed:100:0:1.0 > /dev/null > /dev/null
           craftctl plan ci_mod > /dev/null
           craftctl approve-spec ci_mod > /dev/null
           craftctl generate ci_mod > /dev/null
@@ -98,7 +110,11 @@ jobs:
         if: failure()
         env:
           CRAFTCTL_HOME: ${{ runner.temp }}/craft
-        run: craftctl logs ci_mod --lines 120 || true
+        shell: bash
+        run: |
+          craftctl logs ci_mod --lines 200 > build_tail.txt || true
+          grep -nE "error:|Caused by|What went wrong" build_tail.txt | head -40 | while IFS= read -r line; do echo "::error title=craftctl build::${line:0:400}"; done
+          cat build_tail.txt
 
   blockbench-oracle:
     name: blockbench-mcp-safe vs upstream oracle (Linux only)

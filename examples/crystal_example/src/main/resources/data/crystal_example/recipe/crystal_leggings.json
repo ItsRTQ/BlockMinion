@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XXX",
+    "X X",
+    "X X"
+  ],
+  "key": {
+    "X": {
+      "item": "crystal_example:sky_crystal"
+    }
+  },
+  "result": {
+    "id": "crystal_example:crystal_leggings",
+    "count": 1
+  }
+}

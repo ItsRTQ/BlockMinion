@@ -92,6 +92,11 @@ def record_evidence(store: Store, pid: str, level: str, *, actor: str, note: str
                              manifest_sha256=manifest_hash,
                              payload=dict(payload or {}, jar=str(jar) if jar else None))
     levels = levels_for_current_source(store, pid, root)
+    if level == "CONTENT_VERIFIED":
+        tid = pid + ":GAME"
+        lease = store.claim(tid, "user", ttl=60)
+        if lease:
+            store.finish(tid, "user", lease["version"], [{"kind": "CONTENT_VERIFIED", "value": note[:200]}])
     new_status = derive_status(proj["status"], levels)
     if new_status != proj["status"]:
         store.update_project(pid, status=new_status)

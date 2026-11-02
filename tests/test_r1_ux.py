@@ -92,11 +92,17 @@ class DeleteProject(Base):  # H4
 
 
 class UserOnlySurface(unittest.TestCase):
-    def test_mcp_and_ui_cannot_delete_or_force_release(self):
-        for module in (mcp, ui):
-            src = inspect.getsource(module)
-            for symbol in ("delete_project", "force_release"):
-                self.assertNotIn(symbol, src)
+    def test_mcp_cannot_delete_or_force_release(self):
+        src = inspect.getsource(mcp)
+        for symbol in ("delete_project", "force_release"):
+            self.assertNotIn(symbol, src)
+
+    def test_ui_cannot_force_release_and_deletes_only_with_typed_confirmation(self):
+        # Decision 2026-10-27: the UI is the user (per-process token + Origin check); deleting from it is
+        # allowed but only with the project id typed back. MCP (agents) never gets it.
+        src = inspect.getsource(ui)
+        self.assertNotIn("force_release", src)
+        self.assertIn('payload.get("confirm") != pid', src)
 
 
 if __name__ == "__main__":
