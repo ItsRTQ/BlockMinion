@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -60,6 +61,16 @@ ALTER TABLE tasks ADD COLUMN last_error TEXT;
 """),
     (4, "per-task worker instructions (add-mob after generation)", """
 CREATE TABLE IF NOT EXISTS task_instructions (task_id TEXT PRIMARY KEY, text TEXT NOT NULL);
+"""),
+    (5, "per-project settings (autopilot policy)", """
+CREATE TABLE IF NOT EXISTS project_settings (project_id TEXT NOT NULL REFERENCES projects(id), key TEXT NOT NULL, value_json TEXT NOT NULL,
+  PRIMARY KEY (project_id, key));
+"""),
+    (6, "planner tasks belong to the controller/user, never agents (host run 11, K4)", """
+UPDATE tasks SET role='controller' WHERE id LIKE '%:SCAFFOLD' OR id LIKE '%:BUILD' OR id LIKE '%:CONTENT:__';
+UPDATE tasks SET role='user' WHERE id LIKE '%:GAME';
+UPDATE tasks SET state='READY', lease_owner=NULL, lease_expiry=NULL, version=version+1
+  WHERE (id LIKE '%:SCAFFOLD' OR id LIKE '%:CONTENT:__') AND state IN ('LEASED','RUNNING','WAITING_USER','FAILED','BLOCKED');
 """),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
@@ -198,8 +209,11 @@ class Store:
             if existing and not replace:
                 raise StateError("Tasks already planned; use replan before generation")
             if existing:
-                con.execute("DELETE FROM task_edges WHERE predecessor IN (SELECT id FROM tasks WHERE project_id=?) OR successor IN (SELECT id FROM tasks WHERE project_id=?)", (pid, pid))
-                con.execute("DELETE FROM tasks WHERE project_id=?", (pid,))
+                # Replace only planner-owned tasks; user/controller-added ones (ADD_*, ad-hoc add-task, REPAIR) and their edges survive.
+                planner_ids = {t["id"] for t in tasks} | {i for i in existing if re.search(r":(SPEC|SCAFFOLD|BUILD|GAME)$|:(CONTENT|MODEL):", i)}
+                for old in planner_ids & set(existing):
+                    con.execute("DELETE FROM task_edges WHERE predecessor=? OR successor=?", (old, old))
+                    con.execute("DELETE FROM tasks WHERE id=?", (old,))
             for t in tasks:
                 state = "READY" if t.get("ready") else "BACKLOG"
                 prev = existing.get(t["id"])
@@ -234,6 +248,19 @@ class Store:
             self.event(con, row["project_id"], worker, "TASK_LEASED", {"task": task_id})
             return dict(con.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
 
+    def get_setting(self, pid: str, key: str, default=None):
+        with self.tx() as con:
+            row = con.execute("SELECT value_json FROM project_settings WHERE project_id=? AND key=?", (pid, key)).fetchone()
+        return json.loads(row["value_json"]) if row else default
+
+    def set_setting(self, pid: str, key: str, value, *, actor: str = "user") -> None:
+        """USER-ONLY (the UI and CLI are the user; MCP never calls this)."""
+        with self.tx() as con:
+            if con.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone() is None:
+                raise StateError(f"Project not found: {pid}")
+            con.execute("INSERT OR REPLACE INTO project_settings(project_id, key, value_json) VALUES(?,?,?)", (pid, key, json.dumps(value)))
+            self.event(con, pid, actor, "SETTING_CHANGED", {"key": key, "value": value})
+
     def task_instructions(self, task_id: str) -> str:
         with self.tx() as con:
             row = con.execute("SELECT text FROM task_instructions WHERE task_id=?", (task_id,)).fetchone()
@@ -265,6 +292,10 @@ class Store:
             if con.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone() is None:
                 raise StateError(f"Project not found: {pid}")
             counts = {}
+            # every table that references the project or its tasks (schema v1-v4); children first
+            counts["project_settings"] = con.execute("DELETE FROM project_settings WHERE project_id=?", (pid,)).rowcount
+            counts["task_instructions"] = con.execute("DELETE FROM task_instructions WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)", (pid,)).rowcount
+            counts["runs"] = con.execute("DELETE FROM runs WHERE project_id=?", (pid,)).rowcount
             for table in ("evidence", "approvals", "events"):
                 counts[table] = con.execute(f"DELETE FROM {table} WHERE project_id=?", (pid,)).rowcount
             counts["task_edges"] = con.execute(

@@ -17,6 +17,8 @@ from pathlib import Path
 from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
+from .textures import tinted_item_png, armor_layer_png, material_colors
+from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
                        client_init_java, placeholder_geo, placeholder_animation, entity_loot, class_name)
 from .validation import InputError, safe_inside, ensure_new_directory
@@ -268,7 +270,7 @@ Your idea: {spec.idea}
         "import net.minecraft.world.item.Item;",
         "import net.minecraft.world.level.block.Block;",
         "import net.minecraft.world.level.block.state.BlockBehaviour;",
-    ] + [f"import {i};" for i in main_registrations(spec)[0]] + ([
+    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + ([
         "import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;",
         "import net.minecraft.core.registries.Registries;",
         "import net.minecraft.network.chat.Component;",
@@ -294,6 +296,9 @@ Your idea: {spec.idea}
             lines.append(f'    public static final Item {varname}_ITEM = Registry.register(BuiltInRegistries.ITEM, id("{feature.identifier}"), new BlockItem({varname}, new Item.Properties()));')
     mob_imports, mob_fields, mob_init = main_registrations(spec)
     lines += mob_fields
+    gear_imports, gear_fields, gear_init = gear_registrations(spec)
+    if gear_fields:
+        lines += ["", "    // Tools, armor and food (generated from materials/foods in the spec)"] + gear_fields
     def item_const(feature):
         return feature.identifier.upper() + ("_ITEM" if feature.kind == "block" else "")
     if spec.tab:
@@ -309,11 +314,14 @@ Your idea: {spec.idea}
             lines.append(f"            output.accept({item_const(feature)});")
         for m in spec.mobs:
             lines.append(f"            output.accept({m.identifier.upper()}_SPAWN_EGG);")
+        for gid in gear_item_ids(spec):
+            lines.append(f"            output.accept({gid.upper()});")
         lines += ["        })", "        .build();"]
     lines += ["", "    @Override", "    public void onInitialize() {"]
     if spec.tab:
         lines.append("        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB_KEY, TAB);")
     lines += mob_init
+    lines += gear_init
     for feature in spec.features:
         group = "BUILDING_BLOCKS" if feature.kind == "block" else "INGREDIENTS"
         lines.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.{group}).register(entries -> entries.accept({item_const(feature)}));")
@@ -335,15 +343,36 @@ Your idea: {spec.idea}
         lang[f"{'block' if feature.kind == 'block' else 'item'}.{spec.mod_id}.{key}"] = feature.label
         if feature.kind == "item":
             put(f"{res}/models/item/{key}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{key}"}}, indent=2) + "\n")
-            put(f"{res}/textures/item/{key}.png", placeholder_png(spec.mod_id + "/" + key))
+            put(f"{res}/textures/item/{key}.png", feature_texture(spec, feature))
         else:
             put(f"{res}/blockstates/{key}.json", json.dumps({"variants": {"": {"model": f"{spec.mod_id}:block/{key}"}}}, indent=2) + "\n")
             put(f"{res}/models/block/{key}.json", json.dumps({"parent": "block/cube_all", "textures": {"all": f"{spec.mod_id}:block/{key}"}}, indent=2) + "\n")
             put(f"{res}/models/item/{key}.json", json.dumps({"parent": f"{spec.mod_id}:block/{key}"}, indent=2) + "\n")
-            put(f"{res}/textures/block/{key}.png", placeholder_png(spec.mod_id + "/" + key))
+            put(f"{res}/textures/block/{key}.png", feature_texture(spec, feature))
             drop = next((d for d in spec.drops if d.block == key), None)
             put(f"src/main/resources/data/{spec.mod_id}/loot_table/blocks/{key}.json", json.dumps(loot_table_json(spec, key, drop), indent=2) + "\n")
-    for recipe in spec.recipes:
+    for m in spec.materials:
+        put(f"{java_dir}/gear/{gear_cls(m.identifier)}Tier.java", tier_java(spec, m))
+        base, acc = material_colors(spec.mod_id + "/" + m.identifier, m.color or None, m.accent or None)
+        for kind in m.tools:
+            key = f"{m.identifier}_{kind}"
+            put(f"{res}/models/item/{key}.json", json.dumps({"parent": "item/handheld", "textures": {"layer0": f"{spec.mod_id}:item/{key}"}}, indent=2) + "\n")
+            put(f"{res}/textures/item/{key}.png", tinted_item_png(kind, base, acc))
+            lang[f"item.{spec.mod_id}.{key}"] = f"{m.label} {kind.capitalize()}"
+        for kind in m.armor:
+            key = f"{m.identifier}_{kind}"
+            put(f"{res}/models/item/{key}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{key}"}}, indent=2) + "\n")
+            put(f"{res}/textures/item/{key}.png", tinted_item_png("ingot" if kind in ("chestplate", "leggings") else "gem", base, acc))
+            lang[f"item.{spec.mod_id}.{key}"] = f"{m.label} {kind.capitalize()}"
+        if m.armor:
+            put(f"{res}/textures/models/armor/{m.identifier}_layer_1.png", armor_layer_png(1, base, acc, tuple(m.armor)))
+            put(f"{res}/textures/models/armor/{m.identifier}_layer_2.png", armor_layer_png(2, base, acc, tuple(m.armor)))
+    for f in spec.foods:
+        base, acc = material_colors(spec.mod_id + "/" + f.identifier, f.color or None)
+        put(f"{res}/models/item/{f.identifier}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{f.identifier}"}}, indent=2) + "\n")
+        put(f"{res}/textures/item/{f.identifier}.png", tinted_item_png("food", base, acc))
+        lang[f"item.{spec.mod_id}.{f.identifier}"] = f.label
+    for recipe in list(spec.recipes) + gear_recipes(spec):
         put(f"src/main/resources/data/{spec.mod_id}/recipe/{recipe.id}.json", json.dumps(recipe_json(spec, recipe), indent=2) + "\n")
         put(f"src/main/resources/data/{spec.mod_id}/advancement/recipes/{recipe.id}.json", json.dumps(recipe_advancement_json(spec, recipe), indent=2) + "\n")
     if spec.tab:
@@ -365,6 +394,13 @@ Your idea: {spec.idea}
     manifest = {"generator": "mod-orchestra 0.1.0", "generator_version": GENERATOR_VERSION, "status": "GENERATED_UNVERIFIED", "profile": p["id"], "files": written.copy(), "build_verified": False, "runtime_verified": False}
     put(".mod-orchestra/generation-manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return {"path": str(directory), "files": len(written), "status": "GENERATED_UNVERIFIED", "manifest": str(directory / ".mod-orchestra/generation-manifest.json")}
+
+
+def feature_texture(spec: Spec, feature) -> bytes:
+    """Tinted silhouette for a simple item/block (own masks, stable colour per identifier unless chosen)."""
+    shape = feature.shape or ("block" if feature.kind == "block" else "gem")
+    base, acc = material_colors(spec.mod_id + "/" + feature.identifier, feature.color or None)
+    return tinted_item_png(shape, base, acc)
 
 
 def tab_id(spec: Spec) -> str:

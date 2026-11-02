@@ -88,11 +88,28 @@ class Proposal(Base):
     def test_too_many_questions_or_bad_spec_fail_the_run(self):
         out = dispatch(self.store, "i_mod", task_id="i_mod:SPEC", provider=FakeProvider(handoff(questions=["a?", "b?", "c?", "d?"])))
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn(f"limit is {MAX_QUESTIONS}", out["error"])
-        self.store.requeue("i_mod:SPEC", "retry")
+        # first rejection: auto-retried with the reason in the packet (the task is READY again, no human needed)
+        self.assertEqual(out["auto_retry"]["attempt"], 1)
+        self.assertEqual(next(t["state"] for t in self.store.tasks("i_mod") if t["id"] == "i_mod:SPEC"), "READY")
+        self.assertIn("PREVIOUS ATTEMPT REJECTED", self.store.task_instructions("i_mod:SPEC"))
         bad = dict(PROPOSAL, recipes=[{"id": "x1", "kind": "shaped", "result": "crystal_block", "pattern": ["CC", "CCC"], "key": {"C": "sky_crystal"}}])
-        out = dispatch(self.store, "i_mod", task_id="i_mod:SPEC", provider=FakeProvider(handoff(spec=bad)))
+        fake = FakeProvider(handoff(spec=bad))
+        out = dispatch(self.store, "i_mod", task_id="i_mod:SPEC", provider=fake)
+        self.assertIn("PREVIOUS ATTEMPT REJECTED", fake.envelopes[0].extra_instructions)
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn("same width", out["error"])
+        self.assertNotIn("auto_retry", out, "second rejection stops: a human looks")
         self.assertEqual(self.spec()["features"], [], "a rejected proposal must not touch the stored spec")
+
+    def test_orchestrate_survives_one_format_failure(self):
+        calls = {"n": 0}
+        class Flaky(FakeProvider):
+            def run(self, envelope, log_path):
+                calls["n"] += 1
+                self.reply = handoff(spec=None) if calls["n"] == 1 else handoff()
+                return super().run(envelope, log_path)
+        out = orchestrate(self.store, "i_mod", max_runs=4, provider=Flaky(""))
+        self.assertEqual([r["task_state"] for r in out["runs"]], ["FAILED", "WAITING_USER"])
+        self.assertIn("approve-spec", out["stopped_because"])
 
     def test_proposal_cannot_change_identity_fields(self):
         cur = self.spec()
@@ -100,7 +117,7 @@ class Proposal(Base):
         self.assertEqual((spec.mod_id, spec.package, spec.name), ("i_mod", "com.x.i", "Crystals"))
 
     def test_proposal_without_features_is_rejected(self):
-        with self.assertRaisesRegex(InputError, "no items, blocks or mobs"):
+        with self.assertRaisesRegex(InputError, "no items, blocks, mobs"):
             spec_from_proposal(self.spec(), {"features": []})
 
     def test_orchestrate_runs_spec_first_and_stops_for_the_user(self):

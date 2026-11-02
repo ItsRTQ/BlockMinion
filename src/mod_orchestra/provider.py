@@ -130,17 +130,55 @@ def extract_handoff(text: str) -> tuple[dict | None, list[str]]:
 
 
 def parse_claude_json(raw: str) -> dict | None:
-    """Find the `--output-format json` envelope in a log that may also hold a command header, stderr
-    noise before it, and anything after it. First complete JSON object wins; nothing is assumed about order."""
+    """Find the final envelope in a worker log. Works for `--output-format json` (one object) and for
+    `--output-format stream-json` (one JSON object per line; the one with type "result" is the envelope).
+    The log may also hold a command header, stderr noise, and anything after; nothing is assumed about order."""
     decoder = json.JSONDecoder()
+    fallback = None
     for line_start in (m.start() for m in re.finditer(r"(?m)^\s*\{", raw)):
         try:
             obj, _ = decoder.raw_decode(raw, line_start + raw[line_start:].index("{"))
         except (ValueError, json.JSONDecodeError):
             continue
-        if isinstance(obj, dict) and ("result" in obj or "session_id" in obj or "is_error" in obj):
+        if not isinstance(obj, dict):
+            continue
+        if obj.get("type") == "result":
             return obj
-    return None
+        if fallback is None and obj.get("type") is None and ("result" in obj or "session_id" in obj or "is_error" in obj):
+            fallback = obj
+    return fallback
+
+
+def live_summary(raw: str, limit: int = 60) -> list[str]:
+    """Human-readable lines from a stream-json worker log while it runs: tool calls and text snippets."""
+    out: list[str] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = obj.get("type")
+        if t == "assistant":
+            for block in (obj.get("message") or {}).get("content") or []:
+                if block.get("type") == "tool_use":
+                    inp = block.get("input") or {}
+                    arg = inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("pattern") or inp.get("query") or ""
+                    out.append(f"→ {block.get('name')} {str(arg)[:140]}")
+                elif block.get("type") == "text" and block.get("text", "").strip():
+                    out.append("… " + block["text"].strip().replace("\n", " ")[:160])
+        elif t == "user":
+            for block in (obj.get("message") or {}).get("content") or []:
+                if block.get("type") == "tool_result":
+                    content = block.get("content")
+                    text = content if isinstance(content, str) else " ".join(c.get("text", "") for c in content or [] if isinstance(c, dict))
+                    if block.get("is_error"):
+                        out.append("   ✗ " + text.strip().replace("\n", " ")[:160])
+        elif t == "result":
+            out.append(f"■ finished: {obj.get('subtype')} · {obj.get('num_turns')} turns · ${float(obj.get('total_cost_usd') or 0):.2f}")
+    return out[-limit:]
 
 
 class AgentProvider:
@@ -239,7 +277,7 @@ class ClaudeCodeProvider(AgentProvider):
             (tmp / "prompt.md").write_text(prompt, encoding="utf8")
             cmd = [self.binary, "-p", "--agent", envelope.role, "--agents", str(agents),
                    "--settings", str(settings), "--mcp-config", str(mcp), "--strict-mcp-config",
-                   "--permission-mode", "acceptEdits", "--max-turns", str(self.max_turns), "--output-format", "json"]
+                   "--permission-mode", "acceptEdits", "--max-turns", str(self.max_turns), "--output-format", "stream-json", "--verbose"]
             env = controlled_env({"CRAFTCTL_HOME": str(HOME), "CLAUDE_PROJECT_DIR": str(envelope.workspace)})
             for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME"):
                 if passthrough in os.environ:

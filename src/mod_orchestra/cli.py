@@ -63,6 +63,8 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--id", required=True, help="Short task suffix, e.g. SAPPHIRE -> <project>:SAPPHIRE")
     a.add_argument("--role", required=True, choices=sorted(__import__("mod_orchestra.capabilities", fromlist=["CAPABILITIES"]).CAPABILITIES))
     a.add_argument("--title", required=True); a.add_argument("--after", nargs="*", default=None, help="Task ids this one depends on")
+    a = sub.add_parser("autopilot", help="USER-ONLY: set what Autopilot may do on its own for a project (gates it may cross)")
+    a.add_argument("project"); a.add_argument("--allow", nargs="*", choices=["approve_spec", "generate", "build", "server_smoke", "all", "none"], default=None)
     a = sub.add_parser("orchestrate", help="USER-ONLY: dispatch READY tasks one after another until you are needed or a budget is hit")
     a.add_argument("project"); a.add_argument("--max-runs", type=int, default=5); a.add_argument("--max-cost-usd", type=float, default=5.0)
     a.add_argument("--max-seconds", type=int, default=3600)
@@ -88,6 +90,21 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--attack", type=float, default=3.0, help="hostile only"); a.add_argument("--drops", nargs="*", default=None, help="local ids or minecraft:ids dropped on death")
     a.add_argument("--egg-colors", nargs=2, default=None, help="two hex colors, e.g. 8A6DD1 E6D8FF")
     a = sub.add_parser("remove-mob", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("add-material", help="USER-ONLY (before generate): a tier + tool/armor set (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots)")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
+    a.add_argument("--ingredient", required=True, help="local item id or minecraft:id used for repair and recipes")
+    a.add_argument("--tools", nargs="*", default=[], choices=["sword", "pickaxe", "axe", "shovel", "hoe"]); a.add_argument("--armor", nargs="*", default=[], choices=["helmet", "chestplate", "leggings", "boots"])
+    a.add_argument("--durability", type=int, default=None); a.add_argument("--mining-speed", type=float, default=None); a.add_argument("--attack-bonus", type=float, default=None)
+    a.add_argument("--mining-level", choices=["wood", "stone", "iron", "diamond", "netherite"], default=None); a.add_argument("--enchantability", type=int, default=None)
+    a.add_argument("--defense", nargs=4, type=int, default=None, metavar=("HELMET", "CHEST", "LEGS", "BOOTS")); a.add_argument("--armor-durability", type=int, default=None)
+    a.add_argument("--toughness", type=float, default=None); a.add_argument("--knockback-resistance", type=float, default=None); a.add_argument("--no-recipes", action="store_true")
+    a = sub.add_parser("remove-material", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("add-food", help="USER-ONLY (before generate): an edible item")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
+    a.add_argument("--nutrition", type=int, default=4); a.add_argument("--saturation", type=float, default=0.3)
+    a.add_argument("--effect", nargs="*", default=None, help="minecraft:regeneration:100:0:1.0 (id:duration_ticks:amplifier:chance)")
+    a.add_argument("--always-edible", action="store_true"); a.add_argument("--fast", action="store_true")
+    a = sub.add_parser("remove-food", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("set-tab", help="USER-ONLY (before generate): give the mod its own creative tab")
     a.add_argument("project"); a.add_argument("--label", default=None, help="omit to remove the tab"); a.add_argument("--icon", default=None, help="local item/block id")
     a = sub.add_parser("request-smoke", help="USER-ONLY: request a one-use approval to run the dedicated server with the built mod")
@@ -209,6 +226,13 @@ def dispatch(args: argparse.Namespace) -> object:
         kind, _, rest = args.id.partition(":")
         tid = f"{args.project}:{kind.upper()}" + (f":{rest}" if rest else "")
         return store.add_task(args.project, tid, args.role, args.title, after=args.after)
+    if args.command == "autopilot":
+        from .dispatch import autopilot_policy, AUTOPILOT_DEFAULT
+        if args.allow is not None:
+            allow = set(args.allow)
+            policy = {k: (k in allow or "all" in allow) and "none" not in allow for k in AUTOPILOT_DEFAULT}
+            store.set_setting(args.project, "autopilot", policy)
+        return autopilot_policy(store, args.project)
     if args.command == "orchestrate":
         from .dispatch import orchestrate
         from .provider import FakeProvider
@@ -243,6 +267,25 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)
+    if args.command == "add-material":
+        from .specedit import add_material
+        return add_material(store, args.project, identifier=args.id, label=args.label, ingredient=args.ingredient, tools=args.tools, armor=args.armor,
+                            durability=args.durability, mining_speed=args.mining_speed, attack_damage_bonus=args.attack_bonus, mining_level=args.mining_level,
+                            enchantability=args.enchantability, armor_defense=tuple(args.defense) if args.defense else None, armor_durability=args.armor_durability,
+                            toughness=args.toughness, knockback_resistance=args.knockback_resistance, recipes=(not args.no_recipes))
+    if args.command == "remove-material":
+        from .specedit import remove_material
+        return remove_material(store, args.project, args.id)
+    if args.command == "add-food":
+        from .specedit import add_food
+        effects = []
+        for raw in (args.effect or []):
+            parts = raw.split(":")
+            effects.append({"effect": ":".join(parts[:2]), "duration": int(parts[2]) if len(parts) > 2 else 100, "amplifier": int(parts[3]) if len(parts) > 3 else 0, "chance": float(parts[4]) if len(parts) > 4 else 1.0})
+        return add_food(store, args.project, identifier=args.id, label=args.label, nutrition=args.nutrition, saturation=args.saturation, effects=effects, always_edible=args.always_edible, fast=args.fast)
+    if args.command == "remove-food":
+        from .specedit import remove_food
+        return remove_food(store, args.project, args.id)
     if args.command == "set-tab":
         from .specedit import set_tab
         return set_tab(store, args.project, label=args.label, icon=args.icon)

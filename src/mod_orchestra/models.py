@@ -30,6 +30,18 @@ def blockbench_server_config(workspace: Path) -> dict:
     return {"command": "node", "args": [str(SAFE_SERVER), "--root", str(root), "--allow-write"]}
 
 
+def _safe_dirname(name: str) -> str:
+    """Windows forbids : * ? " < > | and friends in directory names."""
+    return re.sub(r'[<>:"/\\|?*]', "-", name)
+
+
+def theme_block(store: Store, pid: str) -> str:
+    theme = (store.project(pid)["spec"].get("theme") or "").strip()
+    if not theme:
+        return "\n## Visual theme\nNo theme set for this mod yet: pick a coherent palette and motif family from the mod's idea and state it in `assumptions`.\n"
+    return f"\n## Visual theme of this mod (follow it in every colour and motif)\n{theme}\n"
+
+
 def model_task_id(pid: str, mob_id: str) -> str:
     return f"{pid}:MODEL:{mob_id}"
 
@@ -111,7 +123,7 @@ def install_model(store: Store, pid: str, mob_id: str, *, run_id: str, actor: st
         shutil.copyfile(ws / info["files"][key], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
     # Keep this run's previews + texture so the UI can show versions after feedback rounds.
-    history = ws / ".mod-orchestra" / "previews" / run_id
+    history = ws / ".mod-orchestra" / "previews" / _safe_dirname(run_id)
     history.mkdir(parents=True, exist_ok=True)
     for png in sorted((ws / MODEL_DIR).glob(f"{mob_id}_*.png")) + [ws / info["files"]["png"]]:
         shutil.copyfile(png, history / png.name)
@@ -229,4 +241,227 @@ def set_mob_drops(store: Store, pid: str, mob_id: str, drops: list) -> dict:
         from .dispatch import _source_changed, _reopen_build
         _source_changed(store, pid); _reopen_build(store, pid)
         out |= {"file": rel, "accepted": accepted["accepted"], "note": "Loot table rewritten; rebuild to apply."}
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# SPRITES task: the designer paints 16x16 item/block sprites by script (path A). The controller
+# validates (size, transparency, not flat) and installs them over the tinted placeholders.
+# ---------------------------------------------------------------------------------------------
+SPRITES_INSTRUCTIONS = """
+## Your job on this task (designer — sprites)
+Paint 16x16 pixel-art sprites for the items listed under "Sprites to paint" and write each one to
+`models/sprites/<identifier>.png` (exact names). Use a small Python script with the stdlib only (zlib/struct,
+no PIL) that writes RGBA PNGs; keep the script at `models/sprites/paint.py` so it can be rerun.
+Rules: transparent background (blocks are the exception: fully opaque 16x16 tile); 4–8 colours per sprite; a
+1px darker outline around the shape; a lighter highlight on the top-left; readable silhouette at 1x (a sword
+is a diagonal blade with a guard; a gem is a faceted lozenge; food is a round shape with a stem/leaf).
+Minecraft's own style is 16x16 with soft shading, no anti-aliasing. Then write a contact sheet
+`models/sprites/contact_sheet.png` scaled x8 with every sprite side by side so the user can judge them in the
+UI. Re-read your own PNGs' pixel grids before finishing: a sprite whose silhouette is not readable at 1x
+(blob, no outline, wrong proportions) must be repainted, not reported.
+Report every PNG path in `changed_files`. Do not touch `src/` or `assets/`; the controller installs them.
+"""
+
+
+ARMOR_LAYER_GUIDE = """
+Worn-armor layers (64x32 RGBA, classic player-model layout, transparent where there is no armor):
+- layer 1 = helmet + chestplate + boots; layer 2 = leggings.
+- Head box (helmet): x 0–31, y 0–15 (6 faces of an 8x8 cube: top at (8,0), front at (8,8), right (0,8), left (16,8), back (24,8), bottom (16,0)).
+- Body (chestplate / leggings upper): x 16–39, y 16–31 (front 20–27, back 32–39, sides 16–19 and 28–31; top 20–27 y 16–19).
+- Arm (chestplate sleeves): x 40–55, y 16–31 (front 44–47). Leg (leggings / boots): x 0–15, y 16–31 (front 4–7).
+- Boots: only the lower ~5 rows of the leg box (y 27–31). Leggings: body lower rows (y 20–31) + the leg box.
+Write `models/sprites/<material>_layer_1.png` and `models/sprites/<material>_layer_2.png`.
+FIRST read the existing inventory icons of the set (src/main/resources/assets/<mod>/textures/item/<material>_helmet.png,
+_chestplate.png, _leggings.png, _boots.png — decode the PNGs in your script and print their colour counts): the worn
+armor must use the SAME palette and the same visual motifs (plates, rivets, trim lines, gem inlays) so the equipped
+armor looks like the icon's material. Add a slightly darker underside and outline every face edge.
+"""
+
+
+def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str = "", armor_materials: list[str] | None = None) -> dict:
+    proj = store.project(pid)
+    if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
+        raise StateError("Generate the project first")
+    spec = read_spec(proj["spec"])
+    catalogue = {}
+    for f in spec.features:
+        catalogue[f.identifier] = {"kind": f.kind, "label": f.label, "hint": f.shape or ("cube" if f.kind == "block" else "")}
+    for m in spec.materials:
+        for k in m.tools: catalogue[f"{m.identifier}_{k}"] = {"kind": "tool", "label": f"{m.label} {k}", "hint": f"{k}, material colour {m.color or 'any'}"}
+        for k in m.armor: catalogue[f"{m.identifier}_{k}"] = {"kind": "armor", "label": f"{m.label} {k}", "hint": f"{k} icon, material colour {m.color or 'any'}"}
+    for fd in spec.foods:
+        catalogue[fd.identifier] = {"kind": "food", "label": fd.label, "hint": "food"}
+    unknown = [i for i in identifiers if i not in catalogue]
+    if unknown:
+        raise InputError(f"Unknown identifiers: {unknown}")
+    armor_materials = [a for a in (armor_materials or []) if a]
+    mats = {m.identifier: m for m in spec.materials}
+    bad = [a for a in armor_materials if a not in mats or not mats[a].armor]
+    if bad:
+        raise InputError(f"Not materials with armor: {bad}")
+    if not identifiers and not armor_materials:
+        raise InputError("Pick at least one item or armor set")
+    n = sum(1 for t in store.tasks(pid) if ":SPRITES:" in t["id"]) + 1
+    task_id = f"{pid}:SPRITES:{n}"
+    lines = ["Sprites to paint (identifier → what it is):"] + [f"- {i}: {catalogue[i]['label']} ({catalogue[i]['kind']}{', ' + catalogue[i]['hint'] if catalogue[i]['hint'] else ''})" for i in identifiers]
+    if armor_materials:
+        lines += ["", "Worn-armor layers to paint for material(s): " + ", ".join(f"{a} (pieces: {', '.join(mats[a].armor)})" for a in armor_materials), ARMOR_LAYER_GUIDE]
+    if notes.strip():
+        lines += ["", "Style notes from the user:", notes.strip()[:800]]
+    store.add_task(pid, task_id, "designer", f"Paint {len(identifiers)} item sprite(s)" + (f" + armor layers for {', '.join(armor_materials)}" if armor_materials else ""))
+    with store.tx() as con:
+        con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(lines)))
+    store.add_event(pid, "user", "SPRITES_REQUESTED", {"task": task_id, "items": identifiers, "armor": armor_materials, "notes": notes[:300]})
+    return {"task": task_id, "items": identifiers, "armor": armor_materials, "next": {"action": "dispatch", "payload": {"task": task_id}}}
+
+
+def _png_info(raw: bytes) -> tuple[int, int, bool]:
+    """(width, height, has_alpha_variation) using zlib only."""
+    import zlib as _z, struct as _s
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise InputError("not a PNG")
+    w, h, depth, ctype = _s.unpack(">IIBB", raw[16:26])
+    if depth != 8 or ctype not in (2, 6):
+        raise InputError("PNG must be 8-bit RGB or RGBA")
+    pos, idat = 8, b""
+    while pos < len(raw):
+        ln = _s.unpack(">I", raw[pos:pos + 4])[0]; kind = raw[pos + 4:pos + 8]
+        if kind == b"IDAT": idat += raw[pos + 8:pos + 8 + ln]
+        pos += 12 + ln
+    px = _z.decompress(idat); bpp = 4 if ctype == 6 else 3
+    alphas = set(); colours = set()
+    for y in range(h):
+        row = px[y * (w * bpp + 1) + 1:(y + 1) * (w * bpp + 1)]
+        for x in range(w):
+            p = row[x * bpp:(x + 1) * bpp]
+            colours.add(p[:3]); alphas.add(p[3] if bpp == 4 else 255)
+    return w, h, len(alphas) > 1, len(colours)
+
+
+def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str], *, run_id: str, actor: str, armor_materials: list[str] | None = None) -> dict:
+    proj = store.project(pid); ws = Path(proj["root"]); spec = read_spec(proj["spec"])
+    blocks = {f.identifier for f in spec.features if f.kind == "block"}
+    installed, rejected = [], {}
+    for mat in (armor_materials or []):
+        for n in (1, 2):
+            src = ws / "models" / "sprites" / f"{mat}_layer_{n}.png"
+            key = f"{mat}_layer_{n}"
+            if not src.is_file():
+                rejected[key] = "missing"; continue
+            try:
+                w, h, alpha_var, ncol = _png_info(src.read_bytes())
+            except InputError as exc:
+                rejected[key] = str(exc); continue
+            if (w, h) != (64, 32):
+                rejected[key] = f"{w}x{h}, need 64x32"; continue
+            if not alpha_var:
+                rejected[key] = "fully opaque: armor layers need transparent areas"; continue
+            rel = f"src/main/resources/assets/{pid}/textures/models/armor/{key}.png"
+            (ws / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, ws / rel); installed.append(rel)
+    for ident in identifiers:
+        src = ws / "models" / "sprites" / f"{ident}.png"
+        if not src.is_file():
+            rejected[ident] = "missing"; continue
+        try:
+            w, h, alpha_var, ncol = _png_info(src.read_bytes())
+        except InputError as exc:
+            rejected[ident] = str(exc); continue
+        if (w, h) != (16, 16):
+            rejected[ident] = f"{w}x{h}, need 16x16"; continue
+        if ncol < 2:
+            rejected[ident] = "flat single colour"; continue
+        if ident not in blocks and not alpha_var:
+            rejected[ident] = "no transparency (items need a transparent background)"; continue
+        rel = f"src/main/resources/assets/{pid}/textures/{'block' if ident in blocks else 'item'}/{ident}.png"
+        (ws / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, ws / rel); installed.append(rel)
+    if not installed:
+        raise InputError("no sprite passed validation: " + "; ".join(f"{k}: {v}" for k, v in rejected.items()))
+    accepted = accept_changes(ws, run_id=run_id, actor=actor, changed=installed)
+    sheet = ws / "models" / "sprites" / "contact_sheet.png"
+    history = ws / ".mod-orchestra" / "previews" / _safe_dirname(run_id); history.mkdir(parents=True, exist_ok=True)
+    if sheet.is_file():
+        shutil.copyfile(sheet, history / "sprites_contact_sheet.png")
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid); _reopen_build(store, pid)
+    store.add_event(pid, "controller", "SPRITES_INSTALLED", {"task": task_id, "run": run_id, "installed": installed, "rejected": rejected})
+    return {"installed": installed, "rejected": rejected, "accepted": accepted["accepted"], "contact_sheet": f".mod-orchestra/previews/{_safe_dirname(run_id)}/sprites_contact_sheet.png" if sheet.is_file() else None}
+
+
+# ---------------------------------------------------------------------------------------------
+# ARMOR task: the designer paints the two worn-armor layers for a material and MUST look at them
+# worn, using the shipped player template (resources/blockbench/player_armor.bbmodel) + bbmodel_render.
+# ---------------------------------------------------------------------------------------------
+TEMPLATE_DIR = Path(__file__).resolve().parent / "resources" / "blockbench"
+
+ARMOR_INSTRUCTIONS = """
+## Your job on this task (designer — worn armor for material `<material>`)
+Paint the two armor layer textures (64x32 RGBA) so the set looks good WORN, in the mod's theme and matching
+the material's inventory icons (read `src/main/resources/assets/<mod>/textures/item/<material>_*.png` first
+and reuse their palette and motifs).
+Files to write, exact names, in `models/`:
+- `models/sprites/<material>_layer_1.png` — helmet + chestplate (body and both arms) + boots (lower rows of the leg box)
+- `models/sprites/<material>_layer_2.png` — leggings (lower body rows + leg boxes)
+Layout (classic 64x32 player-model nets; everything else transparent):
+- head cube net at (0,0): top (8,0), bottom (16,0), right (0,8), front (8,8), left (16,8), back (24,8); each 8x8. Leave an
+  opening on the front face (eyes/mouth area, about cols 1–6, rows 3–7) unless the helmet is a full-face design.
+- body net at (16,16): top (20,16) 8x4, bottom (28,16) 8x4, right (16,20) 4x12, front (20,20) 8x12, left (28,20) 4x12, back (32,20) 8x12.
+- arm net at (40,16): top (44,16) 4x4, bottom (48,16) 4x4, right (40,20) 4x12, front (44,20) 4x12, left (48,20) 4x12, back (52,20) 4x12.
+- leg net at (0,16): top (4,16) 4x4, bottom (8,16) 4x4, right (0,20) 4x12, front (4,20) 4x12, left (8,20) 4x12, back (12,20) 4x12.
+Craft (edges matter most, owner feedback): NO hard dark outlines. Edges are a soft 1px gradient step, 15–20% darker
+than the fill (never black or near-black), and adjacent faces of the same piece share their edge colour so the
+piece reads as one surface, not a grid of boxes. Shade by light: top faces lighter, sides mid, bottoms darker,
+with a 2-step gradient toward the edges. Reserve strong lines for deliberate seams, straps or trim. Add plates,
+rivets, gems or motifs as the theme suggests; keep 4–8 colours per material. Write the PNGs with a stdlib Python script
+(`models/sprites/paint_armor.py`, rerunnable).
+LOOK AT IT WORN before finishing (mandatory): `models/<material>_armor.bbmodel` is a player template already
+placed in `models/`. For each layer: `bbmodel_geckolib_set_texture {file: "<material>_armor.bbmodel",
+png_file: "sprites/<material>_layer_1.png", expected_revision: ...}` then `bbmodel_render {file, output_file:
+"<material>_armor_layer1.png", overwrite: true}` (and the same with layer 2 → `<material>_armor_layer2.png`).
+Inspect the renders; if a region is misplaced, the face is covered, or it reads as a flat blob, fix the PNG and
+render again. Report the two layer PNGs and the two renders in `changed_files`. Never touch `src/` or `assets/`.
+"""
+
+
+def request_armor_design(store: Store, pid: str, material: str, notes: str = "") -> dict:
+    proj = store.project(pid)
+    if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
+        raise StateError("Generate the project first")
+    spec = read_spec(proj["spec"])
+    m = next((x for x in spec.materials if x.identifier == material), None)
+    if m is None or not m.armor:
+        raise InputError(f"{material!r} is not a material with armor pieces")
+    ws = Path(proj["root"])
+    (ws / MODEL_DIR / "sprites").mkdir(parents=True, exist_ok=True)
+    target = ws / MODEL_DIR / f"{material}_armor.bbmodel"
+    if not target.is_file():
+        shutil.copyfile(TEMPLATE_DIR / "player_armor.bbmodel", target)
+    n = sum(1 for t in store.tasks(pid) if f":ARMOR:{material}" in t["id"]) + 1
+    task_id = f"{pid}:ARMOR:{material}" + (f":{n}" if n > 1 else "")
+    lines = [f"Material: {material} ({m.label}); pieces: {', '.join(m.armor)}; material colour hint: {m.color or 'derive from icons'}"]
+    prior = [e["payload"].get("notes", "") for e in store.events(pid, 300) if e["kind"] == "ARMOR_REQUESTED" and e["payload"].get("material") == material and e["payload"].get("notes")]
+    if notes.strip():
+        lines += ["", "User notes for this round:", notes.strip()[:800]]
+    if prior:
+        lines += ["", "Earlier user notes on this armor (apply them too):"] + [f"- {p}" for p in prior[-5:]]
+    store.add_task(pid, task_id, "designer", f"Design worn armor textures for {m.label}")
+    with store.tx() as con:
+        con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(lines)))
+    store.add_event(pid, "user", "ARMOR_REQUESTED", {"task": task_id, "material": material, "notes": notes[:300]})
+    return {"task": task_id, "material": material, "next": {"action": "dispatch", "payload": {"task": task_id}}}
+
+
+def install_armor_design(store: Store, pid: str, task_id: str, material: str, *, run_id: str, actor: str) -> dict:
+    ws = Path(store.project(pid)["root"])
+    renders = sorted((ws / MODEL_DIR).glob(f"{material}_armor_layer*.png"))
+    if not renders:
+        raise InputError("no worn-armor render found (models/<material>_armor_layer1.png); the designer must look at it worn")
+    out = install_sprites(store, pid, task_id, [], run_id=run_id, actor=actor, armor_materials=[material])
+    if not out["installed"]:
+        raise InputError("no armor layer passed validation: " + "; ".join(f"{k}: {v}" for k, v in out["rejected"].items()))
+    history = ws / ".mod-orchestra" / "previews" / _safe_dirname(run_id); history.mkdir(parents=True, exist_ok=True)
+    for r in renders:
+        shutil.copyfile(r, history / r.name)
+    out["previews"] = [f".mod-orchestra/previews/{_safe_dirname(run_id)}/{r.name}" for r in renders]
+    store.add_event(pid, "controller", "ARMOR_INSTALLED", {"task": task_id, "run": run_id, "material": material, "installed": out["installed"], "rejected": out["rejected"]})
     return out

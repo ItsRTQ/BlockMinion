@@ -271,6 +271,27 @@ First autonomous model: `craftctl dispatch critter_test --task critter_test:MODE
 
 Owner session on the UI (host run 10, 2026-10-26): drops edited through the picker → rebuild → client launched from the UI; feedback, Add-a-mob form, Autopilot; three UX findings fixed during the session (stale needs_user shown as pending; Autopilot buried in Verification; evidence from older sources mixed in). **v1 criterion 7 observed.** `models/sky_critter.bbmodel` opened in Blockbench via the new button: rig, animations and texture load — the last unverified claim of the blockbench-mcp-safe audit is now verified. I3 (hitbox from model bounds) closed as not needed: the owner judged the in-game hitbox adequate.
 
+## Host run 11 — 2026-10-27 · RTQ · Windows · sandbox review of `claude-feature/v1-tool-sets`
+
+| ID | Sev | Area | Finding | Status |
+|---|---|---|---|---|
+| K1 | High | delete | `FOREIGN KEY constraint failed`: `runs` and `task_instructions` rows were not deleted. | FIXED |
+| K2 | Med | ui | `Task not found: ovis_moon%3ASPEC` — path segments were not URL-decoded. | FIXED |
+| K3 | Med | interpreter | Handoff without `spec` was rejected and the loop stopped. Now auto-retried once with the reason; Autopilot continues. | FIXED |
+| K4 | High | orchestrate | Autopilot dispatched a coder to `SCAFFOLD` ($0.58, deadlock against the generator's own lease) and earlier a coder to `BUILD` / a qa to `GAME`. All four are planner tasks owned by the controller/user, never agents: roles changed, `DISPATCHABLE_ROLES` excludes them. | FIXED |
+| K5 | High | autopilot | "Run alone until the mod is ready": added per-project Autopilot permissions (approve spec, generate, build, server smoke) set only by the user; Autopilot crosses those gates and stops for questions, exhausted repairs, budget, and the client. | FIXED |
+| K6 | Low | ui | Policy checkboxes appeared to reset while a job ran: busy guidance omitted the policy. | FIXED |
+| K7 | Med | plan | Replanning on approval dropped user-added tasks. Replan now touches only planner-owned tasks. | FIXED |
+| K8 | Low | ui | Worker log could not be closed; no live output while running. Toggle + stream-json live summary. | FIXED |
+
+## Host run 12 — 2026-10-28 · RTQ · Windows · art pipeline on `ovis_moon` (`claude-feature/v1-tool-sets`)
+
+- Sprites task: 11/11 icons painted and installed (browser cache hid them at first → cache-busted URLs).
+- Retint (first version) overwrote designer icons and painted the worn armor as a solid box → retint now touches layers only; layers painted as shaded cube nets with an open visor; `Restore designer icons`; WinError 267 on `:` in preview dir names fixed.
+- ARMOR designer task with the player template + mandatory worn render: run `DONE` ($1.69, 3 min 22). **Owner: "way better"**; feedback: outlines too dark/bold → brief changed to soft gradient edges, no black outlines, shared edge colour between adjacent faces.
+- Expired build approval left the Now panel stuck → expired approvals are never offered; UI marks them EXPIRED.
+- Items grouped by material set (set-level actions once; a helmet-only set has the same actions).
+
 ## Not yet tested
 
 - MCP server **as connected by Claude Code** (only the hand-driven stdio run in Round 3; needs a restart after A1).

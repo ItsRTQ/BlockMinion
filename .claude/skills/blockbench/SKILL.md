@@ -30,3 +30,11 @@ body [-4,6,-6]→[4,12,6] pivot [0,6,0]; head [-3,12,-10]→[3,16,-6] pivot [0,1
 
 ## Report
 `changed_files`: `models/<mob>.bbmodel`, `models/<mob>.geo.json`, `models/<mob>.animation.json`, `models/<mob>.png`. `checks_run`: the validate call and its result. Evidence level `STATIC` (the controller installs and the user verifies in-game).
+
+## Worn-armor preview (ARMOR tasks)
+`models/<material>_armor.bbmodel` is a player template (head, body, arms, legs; box UV at the classic 64x32 armor
+layout; inflate 1). Do not edit its geometry. Paint `models/sprites/<material>_layer_1.png` / `_layer_2.png`, then
+`bbmodel_geckolib_set_texture {file: "<material>_armor.bbmodel", png_file: "sprites/<material>_layer_1.png"}` and
+`bbmodel_render {file, output_file: "<material>_armor_layer1.png", overwrite: true}`; repeat for layer 2. The render
+shows front/right/back/iso: if the face is covered, a region is shifted, or it reads flat, fix the PNG and render again.
+Edges: soft gradient steps 15–20% darker than the fill, never black outlines; adjacent faces of one piece share edge colour.

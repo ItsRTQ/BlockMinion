@@ -5,6 +5,7 @@ carries an `action` the UI can run directly (POST /api/project/<id>/<action>) or
 for the terminal, and a `who` (user | agent | controller).
 """
 from __future__ import annotations
+import time
 from pathlib import Path
 from .evidence import levels_for_current_source
 from .state import Store, StateError
@@ -44,8 +45,10 @@ def guidance(store: Store, pid: str) -> dict:
     questions = spec.get("questions") or []
     runs = store.runs(pid)
     running = [r for r in runs if r["state"] == "RUNNING"]
-    pending = [a for a in store.approvals(pid) if a["state"] == "PENDING"]
-    granted = [a for a in store.approvals(pid) if a["state"] == "GRANTED"]
+    now = time.time()
+    live = [a for a in store.approvals(pid) if a["expires_at"] > now]   # expired approvals are dead ends; never offer them
+    pending = [a for a in live if a["state"] == "PENDING"]
+    granted = [a for a in live if a["state"] == "GRANTED"]
     waiting = [t for t in tasks if t["state"] in ("WAITING_USER", "BLOCKED", "FAILED")]
     ready = [t for t in tasks if t["state"] == "READY"]
     steps: list[dict] = []
@@ -53,11 +56,14 @@ def guidance(store: Store, pid: str) -> dict:
     def step(label, who, *, action=None, payload=None, command=None, detail=None):
         steps.append({"label": label, "who": who, "action": action, "payload": payload or {}, "command": command, "detail": detail})
 
+    from .dispatch import autopilot_policy
+    cost = round(sum(float(r.get("cost_usd") or 0) for r in runs), 2)
     if running:
         r = running[0]
         return {"stage": stage, "stages": STAGES, "headline": f"A {r['role']} worker is running on {r['task_id']}",
                 "detail": "Started by the controller with your installed Claude Code. This page refreshes until it finishes.",
-                "steps": [], "busy": True, "questions": questions, "levels": sorted(levels)}
+                "steps": [], "busy": True, "questions": questions, "levels": sorted(levels), "cost_usd": cost, "runs": len(runs),
+                "autopilot": autopilot_policy(store, pid)}
 
     if stage == "idea":
         step("Let the interpreter propose a spec from your idea", "agent", action="dispatch", payload={"task": f"{pid}:SPEC"},
@@ -107,12 +113,18 @@ def guidance(store: Store, pid: str) -> dict:
             continue
         step(f"{t['id']} is {t['state']}", "user", action="requeue", payload={"task": t["id"]}, detail=t.get("last_error") or "Requeue to try again")
     for t in ready:
-        if ":ADD_ITEM:" in t["id"] or ":ADD_BLOCK:" in t["id"]:
+        if any(k in t["id"] for k in (":ADD_ITEM:", ":ADD_BLOCK:", ":ADD_MATERIAL:", ":ADD_FOOD:")):
             steps.insert(0, {"label": f"Dispatch the coder to register the new {t['id'].split(':')[-2].split('_')[1].lower()} ({t['id'].split(':')[-1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Its model, texture and lang are already written; the coder only adds the registration lines and compiles."})
         elif ":ADD_MOB:" in t["id"]:
             steps.insert(0, {"label": f"Dispatch the coder to register the new mob ({t['id'].split(':ADD_MOB:')[1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "The mob's own files are already written; the coder only wires ModMain/ModClient and compiles."})
+        elif ":ARMOR:" in t["id"]:
+            steps.insert(0, {"label": f"Dispatch the designer to paint worn armor ({t['id'].split(':ARMOR:')[1]})", "who": "agent", "action": "dispatch",
+                             "payload": {"task": t["id"]}, "command": None, "detail": "Paints both armor layers in the mod's theme, renders them worn on the player template, installs. ~$1."})
+        elif ":SPRITES:" in t["id"]:
+            steps.insert(0, {"label": f"Dispatch the designer to paint sprites ({t['id']})", "who": "agent", "action": "dispatch",
+                             "payload": {"task": t["id"]}, "command": None, "detail": "Paints 16×16 icons by script and a contact sheet; the controller validates and installs. ~$0.5–1."})
         elif ":MODEL:" in t["id"] and stage not in ("model",):
             steps.insert(0, {"label": f"Dispatch the designer for {t['id'].split(':MODEL:')[1]}", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Authors the .bbmodel, texture, idle/walk; renders previews. ~$1–2."})
@@ -124,11 +136,10 @@ def guidance(store: Store, pid: str) -> dict:
         step(f"Autopilot: run the {len(agent_ready)} READY task(s) back to back until you are needed", "agent", action="orchestrate",
              payload={"max_runs": 5, "max_cost_usd": 5.0},
              detail="Chains interpreter → coder → designer → debugger automatically. Stops at every gate (approval, question, unrepairable failure) or when the budget is hit.")
-    cost = round(sum(float(r.get("cost_usd") or 0) for r in runs), 2)
     last = runs[-1] if runs else None
     happened = (f"Last worker: {last['role']} on {last['task_id']} → {last['state']}" + (f" (${last['cost_usd']:.2f}, {int(last['duration_s'] or 0)} s)" if last.get("cost_usd") else "")) if last else "No agent has run yet."
     return {"stage": stage, "stages": STAGES, "headline": HEADLINES[stage], "detail": happened, "steps": steps, "busy": False,
-            "questions": questions, "levels": sorted(levels), "cost_usd": cost, "runs": len(runs)}
+            "questions": questions, "levels": sorted(levels), "cost_usd": cost, "runs": len(runs), "autopilot": autopilot_policy(store, pid)}
 
 
 HEADLINES = {

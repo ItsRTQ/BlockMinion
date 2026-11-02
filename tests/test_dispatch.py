@@ -58,21 +58,23 @@ class Dispatch(unittest.TestCase):
         (base / "projects").mkdir()
         workflow.new_project(self.store, name="D", mod_id="d_mod", package="com.x.d", idea="items: gem")
         workflow.plan_project(self.store, "d_mod")
+        # Agents receive ad-hoc work (ADD_*, MODEL, REPAIR, SPEC); SCAFFOLD/CONTENT/BUILD/GAME belong to the controller/user.
+        self.store.add_task("d_mod", "d_mod:FEATURE", "coder", "ad-hoc coder work", after=["d_mod:SPEC"])
 
     def state(self, tid):
         return next(t for t in self.store.tasks("d_mod") if t["id"] == tid)
 
     def test_requires_approved_spec_except_for_the_spec_task(self):
         with self.assertRaisesRegex(StateError, "user-approved spec"):
-            dispatch(self.store, "d_mod", task_id="d_mod:SCAFFOLD", provider=FakeProvider(reply(GOOD)))
+            dispatch(self.store, "d_mod", task_id="d_mod:FEATURE", provider=FakeProvider(reply(GOOD)))
         out = dispatch(self.store, "d_mod", task_id="d_mod:SPEC", provider=FakeProvider(reply(GOOD | {"task": "d_mod:SPEC"})))
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn("no `spec` proposal", out["error"])
 
     def test_done_handoff_completes_task_and_records_run(self):
         workflow.approve_spec(self.store, "d_mod")
-        out = dispatch(self.store, "d_mod", provider=FakeProvider(reply(GOOD | {"task": "d_mod:SCAFFOLD"})))
-        self.assertEqual(out["task"], "d_mod:SCAFFOLD"); self.assertEqual(out["task_state"], "DONE")
-        self.assertEqual(self.state("d_mod:SCAFFOLD")["state"], "DONE")
+        out = dispatch(self.store, "d_mod", provider=FakeProvider(reply(GOOD | {"task": "d_mod:FEATURE"})))
+        self.assertEqual(out["task"], "d_mod:FEATURE"); self.assertEqual(out["task_state"], "DONE")
+        self.assertEqual(self.state("d_mod:FEATURE")["state"], "DONE")
         run = self.store.runs("d_mod")[0]
         self.assertEqual((run["state"], run["provider"], run["handoff"]["status"]), ("DONE", "fake", "DONE"))
         self.assertTrue(Path(out["log"]).is_file())
@@ -85,16 +87,16 @@ class Dispatch(unittest.TestCase):
                  ("BLOCKED", GOOD | {"status": "BLOCKED", "unknowns": ["API unclear"]}),
                  ("FAILED", GOOD | {"status": "FAILED", "risks": ["could not compile"]})]
         for expected, h in cases:
-            self.store.requeue("d_mod:SCAFFOLD", "test") if self.state("d_mod:SCAFFOLD")["state"] != "READY" else None
-            out = dispatch(self.store, "d_mod", task_id="d_mod:SCAFFOLD", provider=FakeProvider(reply(h)))
+            self.store.requeue("d_mod:FEATURE", "test") if self.state("d_mod:FEATURE")["state"] != "READY" else None
+            out = dispatch(self.store, "d_mod", task_id="d_mod:FEATURE", provider=FakeProvider(reply(h)))
             self.assertEqual(out["task_state"], expected, expected)
 
     def test_invalid_handoff_fails_task_with_reason(self):
         workflow.approve_spec(self.store, "d_mod")
         out = dispatch(self.store, "d_mod", provider=FakeProvider(reply(GOOD | {"evidence": {"level": "CONTENT_VERIFIED"}})))
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn("not something a worker can claim", out["error"])
-        self.assertIn("not something a worker can claim", self.state("d_mod:SCAFFOLD")["last_error"])
-        self.assertEqual(self.store.requeue("d_mod:SCAFFOLD", "retry")["state"], "READY")
+        self.assertIn("not something a worker can claim", self.state("d_mod:FEATURE")["last_error"])
+        self.assertEqual(self.store.requeue("d_mod:FEATURE", "retry")["state"], "READY")
 
     def test_provider_crash_releases_lease_and_records_failed_run(self):
         workflow.approve_spec(self.store, "d_mod")
@@ -103,7 +105,7 @@ class Dispatch(unittest.TestCase):
                 raise RuntimeError("claude exploded")
         with self.assertRaisesRegex(RuntimeError, "exploded"):
             dispatch(self.store, "d_mod", provider=Boom(""))
-        self.assertEqual(self.state("d_mod:SCAFFOLD")["state"], "READY")
+        self.assertEqual(self.state("d_mod:FEATURE")["state"], "READY")
         self.assertEqual(self.store.runs("d_mod")[0]["state"], "FAILED")
 
     def test_envelope_carries_packet_and_workspace(self):
@@ -214,6 +216,8 @@ class Orchestrate(unittest.TestCase):
         (base / "projects").mkdir()
         workflow.new_project(self.store, name="O", mod_id="o_mod", package="com.x.o", idea="items: gem; blocks: ore")
         workflow.plan_project(self.store, "o_mod"); workflow.approve_spec(self.store, "o_mod")
+        self.store.add_task("o_mod", "o_mod:WORK:1", "coder", "first ad-hoc task")
+        self.store.add_task("o_mod", "o_mod:WORK:2", "coder", "second ad-hoc task", after=["o_mod:WORK:1"])
 
     def test_runs_until_no_ready_tasks(self):
         from mod_orchestra.dispatch import orchestrate
@@ -222,15 +226,16 @@ class Orchestrate(unittest.TestCase):
                 self.reply = reply(GOOD | {"task": envelope.task_id})
                 return super().run(envelope, log_path)
         out = orchestrate(self.store, "o_mod", max_runs=10, provider=Echo(""))
-        self.assertTrue(out["stopped_because"].startswith("no READY tasks"))
-        self.assertGreaterEqual(len(out["runs"]), 3)  # SCAFFOLD, CONTENT:01, CONTENT:02, BUILD, GAME…
+        # with no gates pre-authorised, Autopilot stops at the first gate it cannot cross and says which
+        self.assertEqual(out["stopped_because"], "spec approved — generate the source"); self.assertEqual(out["gates"], [])
+        self.assertEqual([r["task"] for r in out["runs"]], ["o_mod:WORK:1", "o_mod:WORK:2"])
         self.assertTrue(all(r["task_state"] == "DONE" for r in out["runs"]))
 
     def test_stops_when_user_is_needed(self):
         from mod_orchestra.dispatch import orchestrate
         out = orchestrate(self.store, "o_mod", max_runs=10, provider=FakeProvider(reply(GOOD | {"status": "WAITING_USER", "needs_user": ["craftctl request-build o_mod"]})))
         self.assertEqual(len(out["runs"]), 1)
-        self.assertIn("WAITING_USER on o_mod:SCAFFOLD: craftctl request-build o_mod", out["stopped_because"])
+        self.assertIn("WAITING_USER on o_mod:WORK:1: craftctl request-build o_mod", out["stopped_because"])
 
     def test_budgets_stop_the_loop(self):
         from mod_orchestra.dispatch import orchestrate
@@ -242,7 +247,7 @@ class Orchestrate(unittest.TestCase):
 
     def test_stale_running_run_is_reconciled_after_restart(self):
         from mod_orchestra.dispatch import reconcile_stale_runs, STALE_RUN_AFTER
-        run = self.store.create_run("o_mod", "o_mod:SCAFFOLD", "coder", "claude-code")
+        run = self.store.create_run("o_mod", "o_mod:WORK:1", "coder", "claude-code")
         with self.store.tx() as con:
             con.execute("UPDATE runs SET created_at=? WHERE id=?", (__import__("time").time() - STALE_RUN_AFTER - 10, run["id"]))
         self.assertEqual(reconcile_stale_runs(self.store, "o_mod"), [run["id"]])
@@ -370,3 +375,24 @@ class RebuildAfterRevision(unittest.TestCase):
             record_evidence(self.store, "r_mod", "CLIENT_BOOT_PASS", actor="user")
         record_evidence(self.store, "r_mod", "BUILD_PASS", actor="user", jar=jar)
         self.assertEqual(self.store.project("r_mod")["status"], "BUILD_PASSED_GAME_UNTESTED")
+
+
+class StreamJsonParsing(unittest.TestCase):
+    def test_result_event_wins_and_live_summary_reads_tool_calls(self):
+        from mod_orchestra.provider import parse_claude_json, live_summary
+        log = "\n".join([
+            "$ claude -p --output-format stream-json",
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s1"}),
+            json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Reading the spec"}, {"type": "tool_use", "name": "Read", "input": {"file_path": "spec.json"}}]}}),
+            json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": True, "content": "No such file"}]}}),
+            json.dumps({"type": "result", "subtype": "success", "num_turns": 3, "total_cost_usd": 0.12, "session_id": "s1", "result": "```handoff\n{}\n```"}),
+        ])
+        env = parse_claude_json(log)
+        self.assertEqual(env["type"], "result"); self.assertEqual(env["session_id"], "s1")
+        live = live_summary(log)
+        self.assertEqual(live[0], "… Reading the spec"); self.assertEqual(live[1], "→ Read spec.json"); self.assertTrue(live[2].startswith("   ✗ No such file"))
+        self.assertIn("■ finished: success · 3 turns · $0.12", live[-1])
+
+    def test_plain_json_envelope_still_parses(self):
+        from mod_orchestra.provider import parse_claude_json
+        self.assertEqual(parse_claude_json('header\n{"result": "x", "session_id": "a", "total_cost_usd": 0.1}\n')["session_id"], "a")

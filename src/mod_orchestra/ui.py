@@ -1,5 +1,6 @@
 """Local-only browser GUI with per-process bearer token; no silent shell or network install."""
 from __future__ import annotations
+import sqlite3
 import threading
 import time
 import json
@@ -8,7 +9,7 @@ import secrets
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
-from urllib.parse import urlparse, parse_qs, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from .state import Store, StateError
 from .validation import InputError
 from .doctor import inspect
@@ -24,7 +25,7 @@ from .evidence import record_evidence
 from .fabric import validate_generated
 from .redact import redact
 
-MAX_BODY = 16_384
+MAX_BODY = 3_000_000  # texture uploads are base64 PNGs (≤2 MB)
 
 def serve(store: Store, port: int = 8765) -> None:
     if not 1024 <= port <= 65535:
@@ -73,10 +74,13 @@ def serve(store: Store, port: int = 8765) -> None:
                 if r["id"] == run_id:
                     log = Path(r["log_path"]) if r.get("log_path") else None
                     tail = ""
+                    live = []
                     if log and log.is_file():
-                        data = log.read_bytes()[-32768:]
-                        tail = redact("\n".join(data.decode("utf-8", "replace").splitlines()[-150:]))
-                    return r | {"log_tail": tail}
+                        text = log.read_bytes()[-262144:].decode("utf-8", "replace")
+                        tail = redact("\n".join(text.splitlines()[-150:]))
+                        from .provider import live_summary
+                        live = [redact(l) for l in live_summary(text)]
+                    return r | {"log_tail": tail, "live": live}
         raise InputError("Run not found")
 
     class Handler(BaseHTTPRequestHandler):
@@ -99,7 +103,7 @@ def serve(store: Store, port: int = 8765) -> None:
             return host == f"127.0.0.1:{port}" and self.headers.get("Authorization") == "Bearer " + token
 
         def handle_api(self, body: dict | None = None):
-            path = urlparse(self.path).path
+            path = unquote(urlparse(self.path).path)  # ids may arrive percent-encoded (task ids contain ':')
             payload = body or {}
             if self.command == "GET":
                 if path == "/api/doctor": return inspect()
@@ -121,12 +125,18 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "guidance": return guidance(store, pid)
                     if op == "gallery": return model_gallery(store, pid)
                     if op == "job": return job_status(pid) or {"job": None, "running": False}
+                    if op == "autopilot":
+                        from .dispatch import autopilot_policy
+                        return autopilot_policy(store, pid)
                     if op == "items":
                         from .catalog import item_catalog
                         return item_catalog(store, pid)
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
+                    if op == "contact-sheet":
+                        from .content import latest_contact_sheet
+                        return {"path": latest_contact_sheet(store, pid)}
                     if op == "logs": return {"text": tail_log(store, pid, 200)}
                     if op == "diagnose": return project_diagnose(store, pid)
                     if op == "validate":
@@ -146,6 +156,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "plan": return plan_project(store, pid)
                     if op == "approve":
                         approve_spec(store, pid)
+                        if payload.get("autopilot"):
+                            start_job(pid, "orchestrate", lambda: orchestrate(store, pid, max_runs=int(payload.get("max_runs", 5)), max_cost_usd=float(payload.get("max_cost_usd", 5.0))))
+                            return {"status": "SPEC_APPROVED", "autopilot": True}
                         return {"status": "SPEC_APPROVED"}
                     if op == "generate": return generate_project(store, pid)
                     if op == "request-build": return request_build(store, pid)
@@ -168,9 +181,48 @@ def serve(store: Store, port: int = 8765) -> None:
                         if store.project(pid)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
                             return add_mob_after_generation(store, pid, m)
                         return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops))
+                    if op == "autopilot":
+                        from .dispatch import AUTOPILOT_DEFAULT
+                        policy = {k: bool(payload.get(k, False)) for k in AUTOPILOT_DEFAULT}
+                        store.set_setting(pid, "autopilot", policy)
+                        return policy
+                    if op == "delete":
+                        from .workflow import delete_project
+                        if payload.get("confirm") != pid:
+                            raise InputError("Type the project id to confirm deletion")
+                        with inflight_lock:
+                            cur = inflight.get(pid)
+                            if cur and cur["thread"].is_alive():
+                                raise StateError("A job is still running for this project")
+                        return delete_project(store, pid, remove_workspace=bool(payload.get("workspace")))
                     if op == "add-feature":
                         from .content import add_feature
-                        return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None)
+                        return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None,
+                                           shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""))
+                    if op == "add-material":
+                        from .content import add_material_any
+                        return add_material_any(store, pid, **{k: v for k, v in payload.items()})
+                    if op == "add-food":
+                        from .content import add_food_any
+                        return add_food_any(store, pid, **{k: v for k, v in payload.items()})
+                    if op == "armor-design":
+                        from .models import request_armor_design
+                        return request_armor_design(store, pid, str(payload.get("material", "")), str(payload.get("notes") or ""))
+                    if op == "theme":
+                        from .specedit import set_theme
+                        return set_theme(store, pid, str(payload.get("theme") or ""))
+                    if op == "sprites":
+                        from .models import request_sprites
+                        return request_sprites(store, pid, list(payload.get("identifiers") or []), str(payload.get("notes") or ""), list(payload.get("armor") or []))
+                    if op == "restore-sprites":
+                        from .content import restore_designer_sprites
+                        return restore_designer_sprites(store, pid)
+                    if op == "retint-armor":
+                        from .content import retint_armor
+                        return retint_armor(store, pid, str(payload.get("material", "")), str(payload.get("color") or ""), str(payload.get("accent") or ""), match_icon=bool(payload.get("match_icon")))
+                    if op == "set-texture":
+                        from .content import set_texture
+                        return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
                     if op == "rename-feature":
                         from .content import rename_feature
                         return rename_feature(store, pid, str(payload.get("identifier", "")), str(payload.get("label", "")))
@@ -210,6 +262,7 @@ def serve(store: Store, port: int = 8765) -> None:
                 raw = files("mod_orchestra").joinpath("static", resource).read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8" if path == "/" else "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")  # index.html, app.js and style.css must always move together
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'")
@@ -262,7 +315,7 @@ def serve(store: Store, port: int = 8765) -> None:
                 payload = json.loads(self.rfile.read(size) or b"{}")
                 if not isinstance(payload, dict): raise InputError("JSON object required")
                 self.response(self.handle_api(payload))
-            except (InputError, StateError, ValueError, KeyError, OSError) as exc:
+            except (InputError, StateError, ValueError, KeyError, OSError, sqlite3.Error) as exc:
                 self.response({"error": str(exc)}, 400)
 
     with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:

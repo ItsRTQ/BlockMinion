@@ -27,6 +27,8 @@ class Feature:
     kind: str
     identifier: str
     label: str
+    shape: str = ""        # placeholder texture silhouette: gem | ingot | food | block (default by kind)
+    color: str = ""        # optional hex (#RRGGBB) tint for the placeholder texture
 
 @dataclass(frozen=True)
 class Recipe:
@@ -90,6 +92,48 @@ class Mob:
     egg_colors: tuple[int, int] = DEFAULT_EGG_COLORS
 
 
+TOOL_KINDS = ("sword", "pickaxe", "axe", "shovel", "hoe")
+ARMOR_KINDS = ("helmet", "chestplate", "leggings", "boots")
+MINING_LEVELS = ("wood", "stone", "iron", "diamond", "netherite")
+
+
+@dataclass(frozen=True)
+class Material:
+    """A tier (like iron or diamond) and the tool/armor set made from it."""
+    identifier: str
+    label: str
+    ingredient: str                       # local item id or minecraft:id — repair + recipes
+    tools: tuple = ()                     # subset of TOOL_KINDS
+    armor: tuple = ()                     # subset of ARMOR_KINDS
+    durability: int = 500                 # tool uses (iron 250, diamond 1561)
+    mining_speed: float = 6.0             # iron 6, diamond 8
+    attack_damage_bonus: float = 2.0      # iron 2, diamond 3
+    mining_level: str = "iron"            # which blocks drop: wood|stone|iron|diamond|netherite
+    enchantability: int = 14              # iron 14, diamond 10, gold 22
+    armor_defense: tuple = (2, 6, 5, 2)   # helmet, chestplate, leggings, boots (iron 2/6/5/2, diamond 3/8/6/3)
+    armor_durability: int = 15            # multiplier (iron 15, diamond 33)
+    toughness: float = 0.0                # diamond 2, netherite 3
+    knockback_resistance: float = 0.0     # netherite 0.1
+    recipes: bool = True                  # standard crafting patterns
+    color: str = ""                       # optional hex tint for tool/armor textures (default: stable hue from identifier)
+    accent: str = ""                      # optional hex highlight
+
+    def item_ids(self) -> list[str]:
+        return [f"{self.identifier}_{k}" for k in self.tools] + [f"{self.identifier}_{k}" for k in self.armor]
+
+
+@dataclass(frozen=True)
+class Food:
+    identifier: str
+    label: str
+    nutrition: int = 4                    # half-drumsticks ×2 (apple 4, steak 8)
+    saturation: float = 0.3               # saturation modifier (apple 0.3, steak 0.8)
+    effects: tuple = ()                   # ({"effect": "minecraft:regeneration", "duration": 100, "amplifier": 0, "chance": 1.0}, ...)
+    always_edible: bool = False
+    fast: bool = False
+    color: str = ""
+
+
 @dataclass(frozen=True)
 class Spec:
     schema_version: int
@@ -106,12 +150,19 @@ class Spec:
     tab: str | None = None        # creative tab label; id is derived (<mod_id>_tab)
     tab_icon: str | None = None   # local item id shown as the tab icon
     mobs: list[Mob] = field(default_factory=list)
+    materials: list[Material] = field(default_factory=list)
+    foods: list[Food] = field(default_factory=list)
+    theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     def local_ids(self) -> set[str]:
-        return {f.identifier for f in self.features}
+        ids = {f.identifier for f in self.features}
+        for m in self.materials:
+            ids.update(m.item_ids())
+        ids.update(f.identifier for f in self.foods)
+        return ids
 
 
 SCHEMA_VERSION = 2
@@ -216,8 +267,53 @@ def validate_mob(spec: "Spec", m: Mob) -> None:
         raise InputError("egg_colors must be two 24-bit RGB ints")
 
 
+EFFECT_RE = re.compile(r"^minecraft:[a-z_]+$")
+
+
+def validate_material(spec: "Spec", m: Material) -> None:
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,40}", m.identifier):
+        raise InputError(f"Material identifier must be snake_case (2-41 chars): {m.identifier!r}")
+    for k in m.tools:
+        if k not in TOOL_KINDS: raise InputError(f"Unknown tool kind {k!r}; allowed: {TOOL_KINDS}")
+    for k in m.armor:
+        if k not in ARMOR_KINDS: raise InputError(f"Unknown armor kind {k!r}; allowed: {ARMOR_KINDS}")
+    if not m.tools and not m.armor:
+        raise InputError("A material needs at least one tool or armor piece")
+    if m.mining_level not in MINING_LEVELS:
+        raise InputError(f"mining_level must be one of {MINING_LEVELS}")
+    if not (1 <= m.durability <= 10000) or not (0.5 <= m.mining_speed <= 50) or not (0 <= m.attack_damage_bonus <= 50) or not (0 <= m.enchantability <= 50):
+        raise InputError("Material numbers out of range (durability 1-10000, mining_speed 0.5-50, attack bonus 0-50, enchantability 0-50)")
+    if len(m.armor_defense) != 4 or any(not (0 <= int(d) <= 20) for d in m.armor_defense) or not (1 <= m.armor_durability <= 100):
+        raise InputError("armor_defense needs four values 0-20 (helmet, chestplate, leggings, boots); armor_durability 1-100")
+    resolve_ingredient(spec.local_ids(), spec.mod_id, m.ingredient)
+
+
+def validate_food(spec: "Spec", f: Food) -> None:
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", f.identifier):
+        raise InputError(f"Food identifier must be snake_case: {f.identifier!r}")
+    if not (0 <= f.nutrition <= 20) or not (0 <= f.saturation <= 2):
+        raise InputError("nutrition 0-20, saturation 0-2")
+    for e in f.effects:
+        if not isinstance(e, dict) or not EFFECT_RE.match(str(e.get("effect", ""))):
+            raise InputError(f"Food effect needs a vanilla id like minecraft:regeneration: {e!r}")
+        if not (1 <= int(e.get("duration", 100)) <= 72000) or not (0 <= int(e.get("amplifier", 0)) <= 9) or not (0 < float(e.get("chance", 1.0)) <= 1):
+            raise InputError("Food effect: duration 1-72000 ticks, amplifier 0-9, chance (0,1]")
+
+
 def validate_spec_content(spec: "Spec") -> None:
     ids = spec.local_ids()
+    seen_all: dict[str, str] = {}
+    for f in spec.features:
+        seen_all[f.identifier] = "feature"
+    for mat in spec.materials:
+        validate_material(spec, mat)
+        for i in mat.item_ids():
+            if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
+            seen_all[i] = f"material {mat.identifier}"
+    for fd in spec.foods:
+        validate_food(spec, fd)
+        if fd.identifier in seen_all: raise InputError(f"Food {fd.identifier!r} collides with {seen_all[fd.identifier]}")
+        seen_all[fd.identifier] = "food"
     seen_mobs: set[str] = set()
     for m in spec.mobs:
         if m.identifier in seen_mobs:
@@ -260,7 +356,7 @@ def java_constant_names(feature: Feature) -> list[str]:
     return [base, base + "_ITEM"] if feature.kind == "block" else [base]
 
 
-def check_java_name_collisions(features: list[Feature]) -> None:
+def check_java_name_collisions(features: list[Feature], extra_ids: list[str] = ()) -> None:
     owners: dict[str, str] = {name: "generator reserved" for name in RESERVED_JAVA_NAMES}
     for feature in features:
         for name in java_constant_names(feature):
@@ -269,6 +365,11 @@ def check_java_name_collisions(features: list[Feature]) -> None:
                     f"{feature.kind} '{feature.identifier}' would declare Java constant {name}, "
                     f"which collides with {owners[name]}. Rename one of them.")
             owners[name] = f"{feature.kind} '{feature.identifier}'"
+    for ident in extra_ids:
+        name = ident.upper()
+        if name in owners:
+            raise InputError(f"'{ident}' would declare Java constant {name}, which collides with {owners[name]}. Rename one of them.")
+        owners[name] = f"'{ident}'"
 
 
 UNSUPPORTED = re.compile(r"\b(?:mob|entity|boss|biome|dimension|structure|worldgen|geckolib|animate|animation|portal|spell|GUI|HUD|multiplayer)\b", re.I)
@@ -337,6 +438,9 @@ def read_spec(raw: dict) -> Spec:
         recipes=[Recipe(**{**r, "pattern": tuple(r.get("pattern", ())), "ingredients": tuple(r.get("ingredients", ()))}) for r in raw.get("recipes", [])],
         drops=[Drop(**d) for d in raw.get("drops", [])],
         tab=raw.get("tab"), tab_icon=raw.get("tab_icon"),
+        materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2)))}) for m in raw.get("materials", [])],
+        foods=[Food(**{**f, "effects": tuple(f.get("effects", ()))}) for f in raw.get("foods", [])],
+        theme=str(raw.get("theme") or "")[:600],
         mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],

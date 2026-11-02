@@ -46,7 +46,7 @@
     <section id="view-project" class="view hidden">
       <header class="page-head project-head">
         <div><div class="eyebrow" id="p-id"></div><h1 id="p-name"></h1></div>
-        <div class="head-meta"><span class="pill" id="p-status"></span><span class="muted" id="p-cost"></span></div>
+        <div class="head-meta"><span class="pill" id="p-status"></span><span class="muted" id="p-cost"></span><button id="p-delete" class="secondary mini danger" type="button">Delete project</button></div>
       </header>
 
       <div class="stepper" id="stepper"></div>
@@ -56,6 +56,17 @@
           <div><div class="eyebrow">Now</div><h2 id="now-headline"></h2><p id="now-detail" class="muted"></p></div>
           <div id="now-busy" class="busy hidden"><span class="spinner"></span><span id="now-busy-text">Working…</span></div>
         </div>
+        <details class="policy" id="policy">
+          <summary>Autopilot permissions for this project <span id="policy-summary" class="muted"></span></summary>
+          <p class="muted">What Autopilot may do on its own. Agents never set these. It always stops for interpreter questions, exhausted repairs, the budget, and before the game client.</p>
+          <div class="policy-grid">
+            <label class="check"><input type="checkbox" id="pol-approve_spec"><span>Approve the spec</span><small>Only when the interpreter has no questions.</small></label>
+            <label class="check"><input type="checkbox" id="pol-generate"><span>Generate the source</span><small>Deterministic generator, never overwrites.</small></label>
+            <label class="check"><input type="checkbox" id="pol-build"><span>Run trusted builds</span><small>Requests, grants and runs Gradle through the broker; failures go to the repair loop.</small></label>
+            <label class="check"><input type="checkbox" id="pol-server_smoke"><span>Run the dedicated-server smoke</span><small>Accepts the Minecraft EULA in the isolated run/ folder, boots, checks, stops.</small></label>
+          </div>
+          <div class="actions"><button type="button" class="secondary mini" id="pol-all">Allow everything up to the client</button><button type="button" class="secondary mini" id="pol-none">Ask me for every gate</button></div>
+        </details>
         <div id="now-steps" class="steps"></div>
         <div id="now-job" class="job-result hidden"></div>
       </div>
@@ -88,35 +99,19 @@
         <div id="sub-mobs" class="subpane">
           <div class="card"><div class="card-head"><h3>Mobs</h3><p class="muted">Each mob starts as a placeholder. A designer agent authors the real model with the Blockbench MCP and renders previews here. Tell it what to change; your note goes into its next run.</p></div>
             <div id="gallery"></div>
-            <details class="addmob"><summary>＋ Add a mob</summary>
-              <form id="addmob-form" class="form">
-                <div class="row">
-                  <label>Name <input id="am-label" required placeholder="Moon Fox"></label>
-                  <label>Identifier <input id="am-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="moon_fox"><small>The in-game name of the mob: it becomes <code>yourmod:moon_fox</code> in commands like <code>/summon</code>, its spawn egg id, and its file names. Lowercase and underscores; it cannot change later.</small></label>
-                </div>
-                <div class="row">
-                  <label>Behaviour <select id="am-behavior"><option value="passive">passive — wanders, never attacks</option><option value="neutral">neutral — minds its business, fights back when hurt (wolf / iron golem)</option><option value="hostile">hostile — attacks players on sight</option></select></label>
-                  <label>Drops on death <div class="drops-field"><div id="am-drops-summary" class="muted">nothing</div><button type="button" class="secondary" id="am-drops-btn">Choose items…</button></div><small>Pick from the game's items and your mod's, with counts and chance.</small></label>
-                </div>
-                <label>What should it look like? <textarea id="am-desc" rows="2" placeholder="Small fox with a crescent on its forehead, dark blue fur, bushy tail"></textarea><small>Sent to the designer as its first feedback note.</small></label>
-                <div class="actions"><button class="primary" type="submit">Add mob</button><span class="muted" id="am-note"></span></div>
-              </form>
-            </details>
+            <div class="add-bar"><button type="button" class="primary" data-modal="modal-mob">＋ Add a mob</button></div>
           </div>
         </div>
         <div id="sub-items" class="subpane hidden">
           <div class="card"><div class="card-head"><h3>Items &amp; blocks</h3><p class="muted">Simple items and cube blocks with placeholder textures. Recipes and block drops live in the spec (<code>craftctl add-recipe / add-drop</code> before generation).</p></div>
             <div id="features-list"></div>
-            <details class="addmob"><summary>＋ Add an item or block</summary>
-              <form id="addfeature-form" class="form">
-                <div class="row">
-                  <label>Kind <select id="af-kind"><option value="item">item — held in hand, in a creative tab</option><option value="block">block — placeable cube, drops itself</option></select></label>
-                  <label>Name <input id="af-label" required placeholder="Moon Shard"></label>
-                </div>
-                <label>Identifier <input id="af-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="moon_shard"><small>Becomes <code>yourmod:moon_shard</code> in <code>/give</code> and recipes; cannot change later.</small></label>
-                <div class="actions"><button class="primary" type="submit">Add</button><span class="muted">After generation a coder registers it (one short run); before generation it just joins the spec.</span></div>
-              </form>
-            </details>
+            <div class="add-bar">
+              <button type="button" class="primary" data-modal="modal-mat">＋ Tool &amp; armor set</button>
+              <button type="button" class="primary" data-modal="modal-food">＋ Food</button>
+              <button type="button" class="primary" data-modal="modal-feat">＋ Item or block</button>
+              <button type="button" class="secondary" id="sprites-btn">🎨 Paint icons with the designer</button>
+            </div>
+            <div id="sheet-box" class="hidden"><div class="muted" style="margin-top:12px">Latest contact sheet from the designer (click to enlarge):</div><div class="previews"><div class="preview" id="sheet-preview"><img id="sheet-img" alt="contact sheet"><small>sprites_contact_sheet.png</small></div></div></div>
           </div>
         </div>
         <div id="sub-worldgen" class="subpane hidden">
@@ -127,6 +122,10 @@
       </div>
 
       <div id="tab-spec" class="tabpane hidden">
+        <div class="card"><div class="card-head"><h3>Visual theme</h3><p class="muted">The brief every designer run receives: era, palette, materials, motifs, mood. The interpreter proposes one from your idea; edit it any time (it changes future art only).</p></div>
+          <textarea id="theme-text" rows="3" placeholder="e.g. Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial"></textarea>
+          <div class="actions"><button class="secondary" id="theme-save" type="button">Save theme</button></div>
+        </div>
         <div class="card"><div class="card-head"><h3>Spec</h3><p class="muted" id="spec-state"></p></div><div id="spec-body"></div><div id="spec-questions"></div></div>
       </div>
 
@@ -161,6 +160,96 @@
   </main>
 </div>
 
+
+<div id="modal-mat" class="lightbox hidden"><div class="modal"><div class="modal-head"><h3>Add a tool &amp; armor set</h3><button type="button" class="secondary mini modal-close">✕</button></div><form id="addmat-form" class="form">
+                <div class="row">
+                  <label>Material name <input id="mt-label" required placeholder="Ruby"></label>
+                  <label>Identifier <input id="mt-id" required pattern="[a-z][a-z0-9_]{1,40}" placeholder="ruby"><small>Items become <code>ruby_sword</code>, <code>ruby_helmet</code>… </small></label>
+                </div>
+                <label>Made from (repair + recipes) <input id="mt-ingredient" required placeholder="ruby   or   minecraft:diamond   or   #minecraft:planks"><small>One of this mod's items, a vanilla id, or a tag.</small></label>
+                <div class="row">
+                  <label>Tools <div class="checks" id="mt-tools"><label><input type="checkbox" value="sword" checked> sword</label><label><input type="checkbox" value="pickaxe" checked> pickaxe</label><label><input type="checkbox" value="axe" checked> axe</label><label><input type="checkbox" value="shovel" checked> shovel</label><label><input type="checkbox" value="hoe" checked> hoe</label></div></label>
+                  <label>Armor <div class="checks" id="mt-armor"><label><input type="checkbox" value="helmet" checked> helmet</label><label><input type="checkbox" value="chestplate" checked> chestplate</label><label><input type="checkbox" value="leggings" checked> leggings</label><label><input type="checkbox" value="boots" checked> boots</label></div></label>
+                </div>
+                <label>Preset <select id="mt-preset"><option value="iron">like iron (250 uses, speed 6, +2 dmg, armor 2/6/5/2)</option><option value="diamond" selected>like diamond (1561 uses, speed 8, +3 dmg, armor 3/8/6/3, toughness 2)</option><option value="netherite">like netherite (2031 uses, speed 9, +4 dmg, toughness 3, knockback resistance)</option><option value="custom">custom numbers</option></select></label>
+                <div class="row numbers" id="mt-numbers">
+                  <label>Durability <input id="mt-durability" type="number" min="1" max="10000" value="1561"><small>Uses before a tool breaks. Iron 250 · diamond 1561 · netherite 2031.</small></label>
+                  <label>Mining speed <input id="mt-speed" type="number" min="0.5" max="50" step="0.5" value="8"><small>How fast blocks break. Wood 2 · iron 6 · diamond 8 · netherite 9.</small></label>
+                  <label>Attack bonus <input id="mt-attack" type="number" min="0" max="50" step="0.5" value="3"><small>Extra damage added to every tool of this material. Iron 2 · diamond 3 · netherite 4.</small></label>
+                  <label>Mines up to <select id="mt-level"><option value="wood">wood</option><option value="stone">stone</option><option value="iron">iron</option><option value="diamond" selected>diamond</option><option value="netherite">netherite</option></select><small>Highest block tier that drops when mined: "diamond" means it can mine obsidian.</small></label>
+                  <label>Enchantability <input id="mt-ench" type="number" min="0" max="50" value="10"><small>Chance of better enchantments at the table. Diamond 10 · iron 14 · gold 22.</small></label>
+                  <label>Armor defense (H/C/L/B) <input id="mt-defense" value="3 8 6 3" pattern="\d+ \d+ \d+ \d+"><small>Armor points per piece: helmet, chestplate, leggings, boots. Iron 2 6 5 2 · diamond 3 8 6 3.</small></label>
+                  <label>Armor durability × <input id="mt-adur" type="number" min="1" max="100" value="33"><small>Multiplier for armor hits before breaking. Leather 5 · iron 15 · diamond 33 · netherite 37.</small></label>
+                  <label>Toughness <input id="mt-tough" type="number" min="0" max="20" step="0.5" value="2"><small>Reduces how much strong hits bypass armor. Most 0 · diamond 2 · netherite 3.</small></label>
+                  <label>Knockback resist. <input id="mt-kb" type="number" min="0" max="1" step="0.05" value="0"><small>0–1 per piece; netherite 0.1. Full set at 0.25 ≈ immune to knockback.</small></label>
+                </div>
+                <div class="row">
+                  <label>Colour <div class="colour-row"><input type="color" id="mt-color" value="#c8102e"><input type="text" id="mt-color-hex" value="#c8102e" pattern="#[0-9a-fA-F]{6}"></div><small>Tints the generated tool and armor textures (you can upload your own art later).</small></label>
+                  <label>Highlight <div class="colour-row"><input type="color" id="mt-accent" value="#ff6b7a"><input type="text" id="mt-accent-hex" value="#ff6b7a" pattern="#[0-9a-fA-F]{6}"></div><small>Light edge colour; leave as suggested if unsure.</small></label>
+                </div>
+                <label class="check"><input type="checkbox" id="mt-recipes" checked><span>Generate the standard crafting recipes</span><small>Vanilla patterns: sword = 2 material + stick, pickaxe = 3 material + 2 sticks, helmet = 5 material, …</small></label>
+                <div class="actions"><button class="primary" type="submit">Add set</button></div>
+              </form></div></div>
+<div id="modal-food" class="lightbox hidden"><div class="modal"><div class="modal-head"><h3>Add a food</h3><button type="button" class="secondary mini modal-close">✕</button></div><form id="addfood-form" class="form">
+                <div class="row">
+                  <label>Name <input id="fd-label" required placeholder="Ruby Apple"></label>
+                  <label>Identifier <input id="fd-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="ruby_apple"></label>
+                </div>
+                <div class="row">
+                  <label>Nutrition (0–20) <input id="fd-nutrition" type="number" min="0" max="20" value="4"><small>apple 4 · bread 5 · steak 8 · golden apple 4</small></label>
+                  <label>Saturation (0–2) <input id="fd-saturation" type="number" min="0" max="2" step="0.1" value="0.3"><small>apple 0.3 · steak 0.8 · golden apple 1.2</small></label>
+                </div>
+                <label>Effect when eaten (optional) <select id="fd-effect"><option value="">none</option><option value="minecraft:regeneration">regeneration</option><option value="minecraft:speed">speed</option><option value="minecraft:strength">strength</option><option value="minecraft:resistance">resistance</option><option value="minecraft:fire_resistance">fire resistance</option><option value="minecraft:night_vision">night vision</option><option value="minecraft:absorption">absorption</option><option value="minecraft:saturation">saturation</option><option value="minecraft:haste">haste</option><option value="minecraft:jump_boost">jump boost</option><option value="minecraft:water_breathing">water breathing</option><option value="minecraft:poison">poison</option><option value="minecraft:nausea">nausea</option></select><small>A potion effect applied on eating, like the golden apple's regeneration.</small></label>
+                <div class="row">
+                  <label>Effect duration <input id="fd-duration" type="number" min="1" max="72000" value="200"><small>In ticks: 20 ticks = 1 second, so 200 = 10 s. Golden apple regeneration lasts 100 (5 s).</small></label>
+                  <label>Effect level <input id="fd-amplifier" type="number" min="0" max="9" value="0"><small>0 = level I, 1 = level II… Higher is stronger.</small></label>
+                </div>
+                <label>Colour <div class="colour-row"><input type="color" id="fd-color" value="#d94848"><input type="text" id="fd-color-hex" value="#d94848" pattern="#[0-9a-fA-F]{6}"></div><small>Tint of the generated food icon.</small></label>
+                <div class="row">
+                  <label class="check"><input type="checkbox" id="fd-always"><span>Edible even when full</span><small>Can be eaten at full hunger, like the golden apple.</small></label>
+                  <label class="check"><input type="checkbox" id="fd-fast"><span>Eats fast</span><small>Half the eating time, like dried kelp.</small></label>
+                </div>
+                <div class="actions"><button class="primary" type="submit">Add food</button></div>
+              </form></div></div>
+<div id="modal-feat" class="lightbox hidden"><div class="modal"><div class="modal-head"><h3>Add an item or block</h3><button type="button" class="secondary mini modal-close">✕</button></div><form id="addfeature-form" class="form">
+                <div class="row">
+                  <label>Kind <select id="af-kind"><option value="item">item — held in hand, in a creative tab</option><option value="block">block — placeable cube, drops itself</option></select></label>
+                  <label>Name <input id="af-label" required placeholder="Moon Shard"></label>
+                </div>
+                <label>Identifier <input id="af-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="moon_shard"><small>Becomes <code>yourmod:moon_shard</code> in <code>/give</code> and recipes; cannot change later.</small></label>
+                <div class="row">
+                  <label>Icon shape <select id="af-shape"><option value="">auto (gem for items, cube for blocks)</option><option value="gem">gem</option><option value="ingot">ingot / bar</option><option value="food">round (fruit, orb)</option><option value="block">cube</option></select><small>Placeholder silhouette; upload your own PNG any time.</small></label>
+                  <label>Colour <div class="colour-row"><input type="color" id="af-color" value="#7c9cff"><input type="text" id="af-color-hex" value="#7c9cff" pattern="#[0-9a-fA-F]{6}"></div></label>
+                </div>
+                <div class="actions"><button class="primary" type="submit">Add</button><span class="muted">After generation a coder registers it (one short run); before generation it just joins the spec.</span></div>
+              </form></div></div>
+<div id="modal-mob" class="lightbox hidden"><div class="modal"><div class="modal-head"><h3>Add a mob</h3><button type="button" class="secondary mini modal-close">✕</button></div><form id="addmob-form" class="form">
+                <div class="row">
+                  <label>Name <input id="am-label" required placeholder="Moon Fox"></label>
+                  <label>Identifier <input id="am-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="moon_fox"><small>The in-game name of the mob: it becomes <code>yourmod:moon_fox</code> in commands like <code>/summon</code>, its spawn egg id, and its file names. Lowercase and underscores; it cannot change later.</small></label>
+                </div>
+                <div class="row">
+                  <label>Behaviour <select id="am-behavior"><option value="passive">passive — wanders, never attacks</option><option value="neutral">neutral — minds its business, fights back when hurt (wolf / iron golem)</option><option value="hostile">hostile — attacks players on sight</option></select></label>
+                  <label>Drops on death <div class="drops-field"><div id="am-drops-summary" class="muted">nothing</div><button type="button" class="secondary" id="am-drops-btn">Choose items…</button></div><small>Pick from the game's items and your mod's, with counts and chance.</small></label>
+                </div>
+                <label>What should it look like? <textarea id="am-desc" rows="2" placeholder="Small fox with a crescent on its forehead, dark blue fur, bushy tail"></textarea><small>Sent to the designer as its first feedback note.</small></label>
+                <div class="actions"><button class="primary" type="submit">Add mob</button><span class="muted" id="am-note"></span></div>
+              </form></div></div>
+<div id="modal-sprites" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Paint icons with the designer</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">A designer agent paints 16×16 pixel-art sprites by script for the items you pick and shows a contact sheet here. The controller only installs sprites that are 16×16, have a transparent background and are not a flat colour. ~$0.5–1 per run. Your own PNG upload always wins if you have art.</p>
+  <div id="sprites-list" class="checks" style="margin-bottom:10px"></div>
+  <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all placeholders</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
+  <label>Style notes (optional) <textarea id="sprites-notes" rows="2" placeholder="e.g. deep red rubies with a pink highlight; chunky outlines like vanilla"></textarea></label>
+  <div class="actions"><button type="button" class="primary" id="sprites-go">Create task and run designer</button></div>
+</div></div>
+<div id="modal-delete" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Delete project</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Removes <b id="del-name"></b> (<span id="del-id" class="mono"></span>) from the controller: spec, tasks, runs, approvals and evidence. This cannot be undone.</p>
+  <label class="check"><input type="checkbox" id="del-workspace" checked><span>Also delete the workspace folder on disk</span><small id="del-path" class="mono"></small></label>
+  <label>Type <code>DELETE</code> to confirm <input id="del-confirm" placeholder="DELETE" autocomplete="off"></label>
+  <div class="actions"><button type="button" id="del-go" class="danger">Delete</button></div>
+</div></div>
 <div id="picker" class="lightbox hidden"><div class="picker-inner">
   <div class="picker-head"><h3 id="picker-title">Drops on death</h3><input id="picker-search" placeholder="Search items and blocks…"></div>
   <div class="picker-cols">
