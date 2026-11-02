@@ -109,6 +109,10 @@ python -m pip install -e .
 - **Something looks stuck in the UI** → every long action shows in **Now** with a spinner; the **Activity** tab shows each worker's live log. If a build or smoke failed, Now offers the repair; if an approval expired, Now re-offers the request.
 - **Deleting a test project** → header → *Delete project* (type DELETE). It removes the folder too if you leave the box ticked.
 
-## 7. Security model in one paragraph
+## 7. Agent runtime
+
+v1 runs agents through **Claude Code** only (`claude -p`, headless; your Claude login or `ANTHROPIC_API_KEY`), on Windows, Linux or macOS — the controller must be able to start `claude` as a local process, so Claude Code inside WSL does not work with a Windows controller. Everything else (controller, MCP servers, generator, builds, UI) is runtime-agnostic; other agent CLIs can be added behind the `AgentProvider` interface (`src/mod_orchestra/provider.py`) — planned for v2.
+
+## 8. Security model in one paragraph
 
 Agents (Claude Code workers) only ever edit files inside the project's workspace and can call a small set of read/validate tools; they cannot approve a spec, grant a build, run the game, or record evidence — those are yours, from the UI or CLI, or pre-authorised per project in *Autopilot permissions*. Builds run through a process broker with a minimal environment and timeouts; the dedicated-server smoke runs in the project's isolated `run/` folder. Nothing phones home; the UI is localhost-only with a per-process token. Details: `docs/SECURITY.md`, `docs/ARCHITECTURE.md`.
