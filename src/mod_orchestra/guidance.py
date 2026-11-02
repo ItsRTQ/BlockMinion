@@ -113,7 +113,11 @@ def guidance(store: Store, pid: str) -> dict:
             continue
         step(f"{t['id']} is {t['state']}", "user", action="requeue", payload={"task": t["id"]}, detail=t.get("last_error") or "Requeue to try again")
     for t in ready:
-        if any(k in t["id"] for k in (":ADD_ITEM:", ":ADD_BLOCK:", ":ADD_MATERIAL:", ":ADD_FOOD:")):
+        if ":FEATURE:" in t["id"] or ":CHANGE:" in t["id"]:
+            what = "implement the feature" if ":FEATURE:" in t["id"] else "make the change"
+            steps.insert(0, {"label": f"Dispatch the coder to {what} ({t['id'].split(':', 1)[1]})", "who": "agent", "action": "dispatch",
+                             "payload": {"task": t["id"]}, "command": None, "detail": "The coder gets the card's files, relations and your request — not the whole project."})
+        elif any(k in t["id"] for k in (":ADD_ITEM:", ":ADD_BLOCK:", ":ADD_MATERIAL:", ":ADD_FOOD:")):
             steps.insert(0, {"label": f"Dispatch the coder to register the new {t['id'].split(':')[-2].split('_')[1].lower()} ({t['id'].split(':')[-1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Its model, texture and lang are already written; the coder only adds the registration lines and compiles."})
         elif ":ADD_MOB:" in t["id"]:

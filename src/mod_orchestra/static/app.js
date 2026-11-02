@@ -102,7 +102,7 @@ async function openProject(id) {
   qs("p-id").textContent = p.id + " · " + p.spec.package; qs("p-name").textContent = p.name;
   const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
   qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
-  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["mobs", renderGallery], ["items", renderFeatures], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
     try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) r.catch(e => toast(`${name}: ${e.message}`, "bad")); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
   }
   if (p.dispatching) pollUntilIdle(id);
@@ -548,3 +548,102 @@ function pollUntilIdle(id) {
   const projects = await api("/api/projects").catch(() => []);
   if (projects.length) await openProject(projects[0].id); else show("new");
 })();
+
+// ---------- mod map ----------
+const mapState = { data: null, pid: null, sel: null, view: { x: 0, y: 0, k: 1 }, pos: {}, dirty: false };
+const NODE_W = 190, NODE_H = 54, COL_GAP = 110, ROW_GAP = 26;
+function layoutMap(cards, edges) {
+  const ids = cards.map(c => c.id), inSet = new Set(ids);
+  const preds = Object.fromEntries(ids.map(i => [i, []])); const succs = Object.fromEntries(ids.map(i => [i, []]));
+  for (const e of edges) if (inSet.has(e.from) && inSet.has(e.to)) { preds[e.to].push(e.from); succs[e.from].push(e.to); }
+  const depth = {}; const visiting = new Set();
+  const d = (id) => { if (depth[id] != null) return depth[id]; if (visiting.has(id)) return 0; visiting.add(id); const v = preds[id].length ? 1 + Math.max(...preds[id].map(d)) : 0; visiting.delete(id); depth[id] = v; return v; };
+  for (const id of ids) d(id);
+  const cols = {}; for (const id of ids) { const isolated = !preds[id].length && !succs[id].length; const col = isolated ? -1 : depth[id]; (cols[col] ||= []).push(id); }
+  const pos = {}; const colKeys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  colKeys.forEach((col, ci) => { const list = cols[col].sort(); list.forEach((id, ri) => { pos[id] = { x: 40 + ci * (NODE_W + COL_GAP), y: 40 + ri * (NODE_H + ROW_GAP) }; }); });
+  return pos;
+}
+function svgEl(tag, attrs = {}) { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; }
+async function renderMap(p) {
+  const svg = qs("map-svg"); if (!svg) return;
+  let data; try { data = await api(`/api/project/${p.id}/map`); } catch (e) { toast("map: " + e.message, "bad"); return; }
+  const cards = data.cards.filter(c => c.kind !== "tab"), edges = data.edges;
+  if (mapState.pid !== p.id) { mapState.pid = p.id; mapState.view = { x: 0, y: 0, k: 1 }; mapState.sel = null; }
+  mapState.data = data;
+  const auto = layoutMap(cards, edges);
+  mapState.pos = Object.fromEntries(cards.map(c => [c.id, (data.layout && data.layout[c.id]) || mapState.pos[c.id] || auto[c.id]]));
+  drawMap(p);
+  qs("map-fit").onclick = () => { mapState.view = { x: 0, y: 0, k: 1 }; drawMap(p); };
+  qs("map-new-feature").onclick = () => { qs("modal-feature").classList.remove("hidden"); qs("ft-title").focus(); };
+  if (mapState.sel) openCard(p, mapState.sel);
+}
+function drawMap(p) {
+  const svg = qs("map-svg"); svg.replaceChildren();
+  const { cards, edges } = { cards: mapState.data.cards.filter(c => c.kind !== "tab"), edges: mapState.data.edges };
+  const g = svgEl("g", { transform: `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})` }); svg.append(g);
+  const defs = svgEl("defs"); defs.innerHTML = '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-2)"/></marker>'; svg.prepend(defs);
+  const byId = Object.fromEntries(cards.map(c => [c.id, c]));
+  for (const e of edges) {
+    const a = mapState.pos[e.from], b = mapState.pos[e.to]; if (!a || !b) continue;
+    const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2; const dx = Math.max(40, (x2 - x1) / 2);
+    const path = svgEl("path", { d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`, class: "edge " + e.kind, "marker-end": "url(#arrow)" }); g.append(path);
+    const lbl = (mapState.data.edge_labels[e.kind] || e.kind) + (e.label ? " · " + e.label : ""); const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const t = svgEl("text", { x: mx, y: my - 4, "text-anchor": "middle", class: "edge-label" }); t.textContent = lbl;
+    g.append(t); const bb = { w: lbl.length * 5.6 + 8, h: 14 }; const bg = svgEl("rect", { x: mx - bb.w / 2, y: my - 15, width: bb.w, height: bb.h, class: "edge-label-bg", rx: 3 }); g.insertBefore(bg, t);
+  }
+  for (const c of cards) {
+    const pos = mapState.pos[c.id]; const node = svgEl("g", { class: "node " + c.kind + (c.id === mapState.sel ? " sel" : ""), transform: `translate(${pos.x},${pos.y})` });
+    node.append(svgEl("rect", { width: NODE_W, height: NODE_H }));
+    const kind = svgEl("text", { x: 12, y: 16, class: "kind" }); kind.textContent = (c.kind === "material" ? "TOOL & ARMOR SET" : c.kind.toUpperCase()) + (c.open_tasks?.length ? " · " + c.open_tasks.length + " task" : ""); node.append(kind);
+    const title = svgEl("text", { x: 12, y: 34 }); title.textContent = (c.title || c.id).slice(0, 24); node.append(title);
+    const sub = svgEl("text", { x: 12, y: 47, class: "sub" }); sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? (c.status || "") : c.id; node.append(sub);
+    node.append(svgEl("circle", { cx: NODE_W - 12, cy: 12, r: 4, class: "dot " + (c.status || "vanilla") }));
+    let drag = null;
+    node.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); drag = { sx: ev.clientX, sy: ev.clientY, ox: pos.x, oy: pos.y, moved: false }; node.setPointerCapture(ev.pointerId); });
+    node.addEventListener("pointermove", (ev) => { if (!drag) return; const k = mapState.view.k; const nx = drag.ox + (ev.clientX - drag.sx) / k, ny = drag.oy + (ev.clientY - drag.sy) / k; if (Math.abs(nx - drag.ox) + Math.abs(ny - drag.oy) > 2) drag.moved = true; mapState.pos[c.id] = { x: nx, y: ny }; node.setAttribute("transform", `translate(${nx},${ny})`); });
+    node.addEventListener("pointerup", async (ev) => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) { drawMap(p); api(`/api/project/${p.id}/map-layout`, { layout: mapState.pos }).catch(() => {}); } else { mapState.sel = c.id; drawMap(p); openCard(p, c.id); } });
+    g.append(node);
+  }
+  let pan = null;
+  svg.onpointerdown = (ev) => { pan = { sx: ev.clientX, sy: ev.clientY, ox: mapState.view.x, oy: mapState.view.y }; };
+  svg.onpointermove = (ev) => { if (!pan) return; mapState.view.x = pan.ox + (ev.clientX - pan.sx); mapState.view.y = pan.oy + (ev.clientY - pan.sy); g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})`); };
+  svg.onpointerup = () => { pan = null; };
+  svg.onwheel = (ev) => { ev.preventDefault(); const k = Math.max(0.3, Math.min(2.5, mapState.view.k * (ev.deltaY < 0 ? 1.1 : 0.9))); mapState.view.k = k; g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${k})`); };
+}
+function openCard(p, cid) {
+  const side = qs("map-side"); const c = mapState.data.cards.find(x => x.id === cid); if (!c) { side.classList.add("hidden"); return; }
+  side.replaceChildren(); side.classList.remove("hidden");
+  const close = btn("✕", () => { mapState.sel = null; side.classList.add("hidden"); drawMap(p); }, "mini secondary"); close.style.float = "right"; side.append(close);
+  side.append(el("div", (c.kind === "material" ? "tool & armor set" : c.kind) + (c.status ? " · " + c.status : ""), "eyebrow"), el("h3", c.title || c.id), el("div", c.id, "fid"));
+  const descBox = el("p", c.description || ""); side.append(descBox);
+  if (c.pieces) { const ul = el("ul"); for (const pc of c.pieces) ul.append(el("li", `${pc.id} (${pc.kind})`)); side.append(el("div", "Pieces", "eyebrow"), ul); }
+  const rel = mapState.data.edges.filter(e => e.from === cid || e.to === cid);
+  if (rel.length) { const ul = el("ul"); for (const e of rel) ul.append(el("li", e.from === cid ? `→ ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""} → ${e.to}` : `← ${e.from} ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""}`)); side.append(el("div", "Relations", "eyebrow"), ul); }
+  if (c.acceptance?.length) { const ul = el("ul"); for (const a of c.acceptance) ul.append(el("li", a)); side.append(el("div", "Acceptance criteria", "eyebrow"), ul); }
+  if (c.files?.length) { const ul = el("ul", null, "files"); for (const f of c.files.slice(0, 12)) ul.append(el("li", f)); side.append(el("div", "Implemented in", "eyebrow"), ul); }
+  if (c.open_tasks?.length) { const ul = el("ul"); for (const t of c.open_tasks) ul.append(el("li", `${t.id} · ${t.state}`)); side.append(el("div", "Open tasks", "eyebrow"), ul); }
+  if (c.history?.length) { const ul = el("ul", null, "hist"); for (const h of c.history.slice(-5).reverse()) ul.append(el("li", `${ago(h.at)} · ${h.by}: ${h.what}`)); side.append(el("div", "History", "eyebrow"), ul); }
+  if (c.kind !== "vanilla") {
+    side.append(el("div", "Request a change", "eyebrow"));
+    const ta = el("textarea"); ta.rows = 3; ta.placeholder = c.kind === "custom" ? "e.g. make the inventory 25 slots instead of 20" : c.kind === "mob" ? "e.g. make it drop 2 scrap instead of 1 and walk faster" : "e.g. 1500 durability instead of 1200";
+    side.append(ta);
+    const acts = el("div", null, "actions");
+    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (confirm(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
+    if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
+    if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
+    if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = prompt("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
+    side.append(acts);
+  }
+}
+qs("feature-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  const acceptance = qs("ft-accept").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const derived_from = qs("ft-from").value.split(",").map(s => s.trim()).filter(Boolean);
+  try {
+    const out = await api(`/api/project/${selected}/feature`, { title: qs("ft-title").value, description: qs("ft-desc").value, acceptance, derived_from });
+    qs("feature-form").reset(); closeModal("modal-feature");
+    if (confirm(`Card "${out.card.title}" created and task ${out.task} queued. Start the coder now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Coder implementing the feature; the card updates when it finishes.", "ok"); }
+    await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};

@@ -16,6 +16,7 @@ from .fabric import accept_changes
 from .provider import AgentProvider, ClaudeCodeProvider, FakeProvider, TaskEnvelope, RunResult
 from .redact import redact_obj
 from .state import Store, StateError
+from .validation import InputError
 
 DISPATCHABLE_ROLES = tuple(r for r in CAPABILITIES if r not in ("controller", "user"))  # BUILD/GAME are never agent tasks
 LEASE_TTL = 3600
@@ -122,6 +123,13 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         h = h | {"needs_user": interp["needs_user"], "interpretation": interp}
         status = "WAITING_USER"  # the user answers or approves; the controller, not the worker, closes SPEC via approve-spec
     if ":ADD_MOB:" in task["id"] and status == "DONE":
+        _reopen_build(store, pid)
+    if (":FEATURE:" in task["id"] or ":CHANGE:" in task["id"]) and status == "DONE":
+        from .modmap import apply_card_handoff
+        try:
+            apply_card_handoff(store, pid, task["id"], h, run["id"])
+        except (InputError, StateError) as exc:
+            store.add_event(pid, "controller", "CARD_UPDATE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
         _reopen_build(store, pid)
     if ":ARMOR:" in task["id"] and status == "DONE":
         from .models import install_armor_design

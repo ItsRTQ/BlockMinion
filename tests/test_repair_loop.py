@@ -271,7 +271,7 @@ class PlannerTasksNeverDispatched(unittest.TestCase):
                 pick_task(store, "p_mod", "p_mod:SCAFFOLD")
             # and the migration SQL repairs the row on a fresh open
             from mod_orchestra.state import MIGRATIONS
-            sql = MIGRATIONS[-1][2]
+            sql = next(m[2] for m in MIGRATIONS if m[0] == 6)
             with store.tx() as con:
                 con.executescript(sql)
             t = next(x for x in store.tasks("p_mod") if x["id"] == "p_mod:SCAFFOLD")
