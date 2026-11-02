@@ -137,7 +137,7 @@ class VariantsAndEnchantments(unittest.TestCase):
                 set_variants(store, "v_mod", "gem", ["slab"])
             add_enchantment(store, "v_mod", identifier="gem_edge", label="Gem Edge", kind="damage")
             with self.assertRaisesRegex(InputError, "kind must be"):
-                add_enchantment(store, "v_mod", identifier="x", label="X", kind="speed")
+                add_enchantment(store, "v_mod", identifier="xx", label="X", kind="speed")
             workflow.plan_project(store, "v_mod"); workflow.approve_spec(store, "v_mod"); workflow.generate_project(store, "v_mod")
             root = Path(proj["root"]); res = root / "src/main/resources"
             main = (root / "src/main/java/com/x/v/ModMain.java").read_text()
