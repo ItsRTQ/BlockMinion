@@ -36,20 +36,22 @@ wrote in Spanish; keep labels in the user's language.
 
 Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_version {SCHEMA_VERSION}):
 ```json
-{{"features": [{{"kind": "item|block", "identifier": "snake_case", "label": "Display Name"}}],
+{{"features": [{{"kind": "item|block", "identifier": "snake_case", "label": "Display Name", "tool": "pickaxe|axe|shovel|hoe|none (blocks)", "mining_level": "wood|stone|iron|diamond|netherite (blocks)"}}],
   "tab": "Tab Label or null", "tab_icon": "identifier of one feature or null",
   "recipes": [{{"id": "snake_case", "kind": "{'|'.join(RECIPE_KINDS)}", "result": "identifier or minecraft:id",
                "count": 1, "pattern": ["RRR"," S "," S "], "key": {{"R": "identifier", "S": "minecraft:stick"}},
                "ingredients": ["identifier", "minecraft:id", "#minecraft:tag"], "experience": 0.7, "cooking_time": 200}}],
   "drops": [{{"block": "identifier", "item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "fortune": true, "silk_touch": true}}],
   "mobs": [{{"identifier": "snake_case", "label": "Display Name", "behavior": "passive|neutral|hostile", "health": 10, "speed": 0.25,
-            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831]}}],
+            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831],
+            "spawn": {{"biomes": ["overworld" or "#minecraft:is_forest" or "minecraft:plains"], "weight": 10, "min_group": 1, "max_group": 3}} or null for egg-only}}],
   "materials": [{{"identifier": "ruby", "label": "Ruby", "ingredient": "ruby or minecraft:diamond", "tools": ["sword","pickaxe","axe","shovel","hoe"],
                  "armor": ["helmet","chestplate","leggings","boots"], "durability": 1200, "mining_speed": 8.0, "attack_damage_bonus": 3.0,
                  "mining_level": "wood|stone|iron|diamond|netherite", "enchantability": 12, "armor_defense": [3, 8, 6, 3], "armor_durability": 30,
                  "toughness": 2.0, "knockback_resistance": 0.0, "recipes": true}}],
   "foods": [{{"identifier": "ruby_apple", "label": "Ruby Apple", "nutrition": 6, "saturation": 1.2,
              "effects": [{{"effect": "minecraft:regeneration", "duration": 100, "amplifier": 0, "chance": 1.0}}], "always_edible": false, "fast": false}}],
+  "sounds": [{{"identifier": "critter_chirp", "label": "Critter chirps", "category": "neutral"}}],
   "theme": "2-4 sentences: visual brief for all art in this mod — era/culture, palette (3-5 colours with hex), materials, motifs, mood (e.g. 'Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial')",
   "assumptions": ["..."]}}
 ```
@@ -61,6 +63,8 @@ recipe ingredients/results must be features of this mod, `minecraft:` ids or `#m
 1-3 rows of equal width (1-3 chars, space = empty) and every symbol in `key`; cooking recipes have exactly one
 ingredient; one drop rule per block, and the block must be one of the features; the tab icon must be a feature;
 mob identifiers must not collide with items/blocks (their spawn egg is <id>_spawn_egg); mob health 1-1024, speed 0.05-1.5.
+Ores and stone-like blocks: tool pickaxe and a mining_level (iron for valuable ores); wood/plants: axe/hoe; soil: shovel.
+Mobs the user describes as living somewhere ("in forests", "at night in caves") get a `spawn`; otherwise null (egg only).
 Also put the questions (if any) under `questions`, as a list of plain sentences addressed to the user.
 Use status WAITING_USER (the user must answer or approve); never DONE. Do not create or edit any files.
 
@@ -79,7 +83,7 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "idea": current["idea"], "profile": current["profile"],
         "features": proposal.get("features", []), "recipes": proposal.get("recipes", []), "drops": proposal.get("drops", []),
         "tab": proposal.get("tab"), "tab_icon": proposal.get("tab_icon"), "mobs": proposal.get("mobs", []),
-        "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""),
+        "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "sounds": proposal.get("sounds", []),
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
     spec = read_spec(raw)

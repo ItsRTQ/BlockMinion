@@ -96,7 +96,11 @@
       "PowerShell(craftctl add-food*)",
       "PowerShell(craftctl remove-food*)",
       "Bash(craftctl autopilot*)",
-      "PowerShell(craftctl autopilot*)"
+      "PowerShell(craftctl autopilot*)",
+      "Bash(craftctl add-feature*)",
+      "PowerShell(craftctl add-feature*)",
+      "Bash(craftctl add-sound*)",
+      "PowerShell(craftctl add-sound*)"
     ]
   },
   "hooks": {

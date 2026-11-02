@@ -230,6 +230,10 @@
                   <label>Name <input id="af-label" required placeholder="Moon Shard"></label>
                 </div>
                 <label>Identifier <input id="af-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="moon_shard"><small>Becomes <code>yourmod:moon_shard</code> in <code>/give</code> and recipes; cannot change later.</small></label>
+                <div class="row" id="af-block-row">
+                  <label>Breaks with <select id="af-tool"><option value="">pickaxe (default)</option><option value="pickaxe">pickaxe</option><option value="axe">axe</option><option value="shovel">shovel</option><option value="hoe">hoe</option><option value="none">any / by hand</option></select><small>Blocks only. The tool that mines it fast and lets it drop.</small></label>
+                  <label>Needs tier <select id="af-level"><option value="">wood (any pickaxe)</option><option value="stone">stone</option><option value="iron">iron</option><option value="diamond">diamond</option><option value="netherite">netherite</option></select><small>Minimum tool tier for the block to drop (ores: iron is typical).</small></label>
+                </div>
                 <div class="row">
                   <label>Icon shape <select id="af-shape"><option value="">auto (gem for items, cube for blocks)</option><option value="gem">gem</option><option value="ingot">ingot / bar</option><option value="food">round (fruit, orb)</option><option value="block">cube</option></select><small>Placeholder silhouette; upload your own PNG any time.</small></label>
                   <label>Colour <div class="colour-row"><input type="color" id="af-color" value="#7c9cff"><input type="text" id="af-color-hex" value="#7c9cff" pattern="#[0-9a-fA-F]{6}"></div></label>
@@ -244,6 +248,12 @@
                 <div class="row">
                   <label>Behaviour <select id="am-behavior"><option value="passive">passive — wanders, never attacks</option><option value="neutral">neutral — minds its business, fights back when hurt (wolf / iron golem)</option><option value="hostile">hostile — attacks players on sight</option></select></label>
                   <label>Drops on death <div class="drops-field"><div id="am-drops-summary" class="muted">nothing</div><button type="button" class="secondary" id="am-drops-btn">Choose items…</button></div><small>Pick from the game's items and your mod's, with counts and chance.</small></label>
+                </div>
+                <label class="check"><input type="checkbox" id="am-spawn"><span>Spawns naturally in the world</span><small>Otherwise it only comes from its spawn egg.</small></label>
+                <div class="row" id="am-spawn-row" style="display:none">
+                  <label>Where <input id="am-biomes" value="overworld" placeholder="overworld, #minecraft:is_forest, minecraft:plains"><small>Comma separated: overworld / nether / end, biome tags (#minecraft:is_forest) or biome ids.</small></label>
+                  <label>How often <input id="am-weight" type="number" min="1" max="1000" value="10"><small>Relative weight: cow 8, zombie 95.</small></label>
+                  <label>Group size <div class="row"><input id="am-gmin" type="number" min="1" max="16" value="1"><input id="am-gmax" type="number" min="1" max="16" value="3"></div><small>min – max per spawn.</small></label>
                 </div>
                 <label>What should it look like? <textarea id="am-desc" rows="2" placeholder="Small fox with a crescent on its forehead, dark blue fur, bushy tail"></textarea><small>Sent to the designer as its first feedback note.</small></label>
                 <div class="actions"><button class="primary" type="submit">Add mob</button><span class="muted" id="am-note"></span></div>

@@ -18,7 +18,7 @@ from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
-from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls
+from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
                        client_init_java, placeholder_geo, placeholder_animation, entity_loot, class_name)
 from .validation import InputError, safe_inside, ensure_new_directory
@@ -270,7 +270,7 @@ Your idea: {spec.idea}
         "import net.minecraft.world.item.Item;",
         "import net.minecraft.world.level.block.Block;",
         "import net.minecraft.world.level.block.state.BlockBehaviour;",
-    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + ([
+    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + ([
         "import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;",
         "import net.minecraft.core.registries.Registries;",
         "import net.minecraft.network.chat.Component;",
@@ -292,13 +292,18 @@ Your idea: {spec.idea}
         if feature.kind == "item":
             lines.append(f'    public static final Item {varname} = Registry.register(BuiltInRegistries.ITEM, id("{feature.identifier}"), new Item(new Item.Properties()));')
         else:
-            lines.append(f'    public static final Block {varname} = Registry.register(BuiltInRegistries.BLOCK, id("{feature.identifier}"), new Block(BlockBehaviour.Properties.of().strength(3.0F)));')
+            tool = feature.tool or "pickaxe"
+            props = "BlockBehaviour.Properties.of().strength(3.0F)" + (".requiresCorrectToolForDrops()" if tool != "none" else "")
+            lines.append(f'    public static final Block {varname} = Registry.register(BuiltInRegistries.BLOCK, id("{feature.identifier}"), new Block({props}));')
             lines.append(f'    public static final Item {varname}_ITEM = Registry.register(BuiltInRegistries.ITEM, id("{feature.identifier}"), new BlockItem({varname}, new Item.Properties()));')
     mob_imports, mob_fields, mob_init = main_registrations(spec)
     lines += mob_fields
     gear_imports, gear_fields, gear_init = gear_registrations(spec)
     if gear_fields:
         lines += ["", "    // Tools, armor and food (generated from materials/foods in the spec)"] + gear_fields
+    _, sound_fields = sound_registrations(spec)
+    if sound_fields:
+        lines += ["", "    // Sounds: assets/<mod>/sounds/<id>.ogg (upload your .ogg; play with level.playSound(null, pos, X_SOUND, SoundSource.NEUTRAL, 1f, 1f))"] + sound_fields
     def item_const(feature):
         return feature.identifier.upper() + ("_ITEM" if feature.kind == "block" else "")
     if spec.tab:
@@ -372,11 +377,17 @@ Your idea: {spec.idea}
         put(f"{res}/models/item/{f.identifier}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{f.identifier}"}}, indent=2) + "\n")
         put(f"{res}/textures/item/{f.identifier}.png", tinted_item_png("food", base, acc))
         lang[f"item.{spec.mod_id}.{f.identifier}"] = f.label
+    for tag, members in block_tags(spec).items():
+        put(f"src/main/resources/data/minecraft/tags/block/{tag}.json", json.dumps({"replace": False, "values": members}, indent=2) + "\n")
     for recipe in list(spec.recipes) + gear_recipes(spec):
         put(f"src/main/resources/data/{spec.mod_id}/recipe/{recipe.id}.json", json.dumps(recipe_json(spec, recipe), indent=2) + "\n")
         put(f"src/main/resources/data/{spec.mod_id}/advancement/recipes/{recipe.id}.json", json.dumps(recipe_advancement_json(spec, recipe), indent=2) + "\n")
     if spec.tab:
         lang[f"itemGroup.{spec.mod_id}.{tab_id(spec)}"] = spec.tab
+    if spec.sounds:
+        put(f"{res}/sounds.json", json.dumps(sounds_json(spec), indent=2) + "\n")
+        for sd in spec.sounds:
+            lang[f"subtitles.{spec.mod_id}.{sd.identifier}"] = sd.label
     if spec.mobs:
         put(f"{java_dir}/client/ModClient.java", client_init_java(spec))
         for m in spec.mobs:
@@ -401,6 +412,24 @@ def feature_texture(spec: Spec, feature) -> bytes:
     shape = feature.shape or ("block" if feature.kind == "block" else "gem")
     base, acc = material_colors(spec.mod_id + "/" + feature.identifier, feature.color or None)
     return tinted_item_png(shape, base, acc)
+
+
+def block_tags(spec: Spec) -> dict[str, list[str]]:
+    """Vanilla tool tags: mineable/<tool> decides which tool is effective, needs_<level>_tool which tier drops items."""
+    tags: dict[str, list[str]] = {}
+    for f in spec.features:
+        if f.kind != "block":
+            continue
+        tool = f.tool or "pickaxe"
+        if tool == "none":
+            continue
+        tags.setdefault(f"mineable/{tool}", []).append(f"{spec.mod_id}:{f.identifier}")
+        level = f.mining_level or "wood"
+        if level in ("stone", "iron", "diamond"):
+            tags.setdefault(f"needs_{level}_tool", []).append(f"{spec.mod_id}:{f.identifier}")
+        elif level == "netherite":
+            tags.setdefault("needs_diamond_tool", []).append(f"{spec.mod_id}:{f.identifier}")  # vanilla has no netherite tier tag
+    return tags
 
 
 def tab_id(spec: Spec) -> str:
