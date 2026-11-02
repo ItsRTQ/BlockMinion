@@ -125,3 +125,18 @@ class Guard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SetupDocMatchesCli(unittest.TestCase):
+    """Every `craftctl <command>` and `--flag` SETUP.md tells a newcomer to type must exist (criterion 8)."""
+    def test_commands_and_flags_in_setup_exist(self):
+        import re
+        from mod_orchestra.cli import parser
+        doc = (ROOT / "docs" / "SETUP.md").read_text(encoding="utf8")
+        p = parser(); sub = next(a for a in p._actions if a.dest == "command")
+        known = set(sub.choices)
+        for cmd in set(re.findall(r"craftctl ([a-z][a-z-]+)", doc)):
+            self.assertIn(cmd, known, f"SETUP.md mentions unknown command craftctl {cmd}")
+        for cmd, flag in set(re.findall(r"craftctl ([a-z][a-z-]+)[^\n`]*?(--[a-z-]+)", doc)):
+            opts = {o for a in sub.choices[cmd]._actions for o in a.option_strings}
+            self.assertIn(flag, opts, f"SETUP.md: craftctl {cmd} has no {flag}")
