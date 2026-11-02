@@ -142,7 +142,7 @@ class VariantsAndEnchantments(unittest.TestCase):
             root = Path(proj["root"]); res = root / "src/main/resources"
             main = (root / "src/main/java/com/x/v/ModMain.java").read_text()
             self.assertIn("new StairBlock(MARBLE.defaultBlockState(), BlockBehaviour.Properties.ofFullCopy(MARBLE))", main)
-            self.assertIn('new BlockItem(MARBLE_WALL, new Item.Properties())', main); self.assertIn("output.accept(MARBLE_SLAB_ITEM);", main)
+            self.assertIn('new BlockItem(MARBLE_WALL, new Item.Properties())', main); self.assertIn("entries.accept(MARBLE_SLAB_ITEM)", main)
             self.assertEqual(len(json.loads((res / "assets/v_mod/blockstates/marble_stairs.json").read_text())["variants"]), 40)
             self.assertEqual(len(json.loads((res / "assets/v_mod/blockstates/marble_wall.json").read_text())["multipart"]), 9)
             self.assertEqual(json.loads((res / "data/v_mod/recipe/marble_stairs.json").read_text())["result"]["count"], 4)
