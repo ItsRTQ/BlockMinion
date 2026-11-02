@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import replace
 from .spec import Drop, Enchantment, Food, Material, Mob, Ore, Recipe, Sound, default_egg_colors, read_spec, validate_spec_content
 from .state import Store
+from .validation import InputError
 
 
 def _load(store: Store, pid: str):
