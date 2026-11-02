@@ -74,7 +74,7 @@ def _save_spec(store: Store, pid: str, spec, reason: str) -> None:
         store.event(con, pid, "user", "SPEC_CHANGED", {"reason": reason})
 
 
-def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: str | None = None, shape: str = "", color: str = "", tool: str = "", mining_level: str = "") -> dict:
+def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: str | None = None, shape: str = "", color: str = "", tool: str = "", mining_level: str = "", variants: list[str] | None = None) -> dict:
     """Before generation: spec edit (approval reset). After generation: files + coder task."""
     if kind not in ("item", "block"):
         raise InputError("kind must be item or block")
@@ -87,12 +87,14 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         raise InputError("shape must be gem, ingot, food or block")
     if color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         raise InputError("color must be #RRGGBB")
-    feature = Feature(kind=kind, identifier=ident, label=label.strip() or ident, shape=shape, color=color, tool=tool if kind == "block" else "", mining_level=mining_level if kind == "block" else "")
+    feature = Feature(kind=kind, identifier=ident, label=label.strip() or ident, shape=shape, color=color, tool=tool if kind == "block" else "", mining_level=mining_level if kind == "block" else "", variants=tuple(variants or ()) if kind == "block" else ())
     new_spec = replace(spec, features=list(spec.features) + [feature])
     check_java_name_collisions(new_spec.features)
     if proj["status"] not in GENERATED_STATUSES:
         from .specedit import _save
         return _save(store, pid, new_spec, f"add {kind} {ident}") | {"identifier": ident, "generated": False}
+    if feature.variants:
+        raise InputError("Variants (stairs/slab/fence/wall) can be chosen for new blocks before generation; after generation ask for them as a change on the block's card")
     ws = Path(proj["root"]); res = ws / "src/main/resources"; assets = res / "assets" / pid
     written: list[str] = []
 
@@ -454,3 +456,31 @@ def add_ore_any(store: Store, pid: str, **kw) -> dict:
     _reopen_build(store, pid)
     store.add_event(pid, "controller", "FEATURE_ADDED", {"kind": "ore", "identifier": ore.block, "files": written, "task": task_id})
     return {"block": ore.block, "generated": True, "files": written, "accepted": accepted["accepted"], "task": task_id, "next": {"action": "dispatch", "payload": {"task": task_id}}}
+
+
+def add_enchantment_any(store: Store, pid: str, **kw) -> dict:
+    """Enchantments are datapack JSON: after generation the controller writes the file and lang entry directly (no coder)."""
+    from .specedit import add_enchantment
+    from .spec import Enchantment
+    from .variants import enchantment_json
+    proj = store.project(pid)
+    if proj["status"] not in GENERATED_STATUSES:
+        return add_enchantment(store, pid, **kw) | {"generated": False}
+    spec = read_spec(proj["spec"])
+    e = Enchantment(identifier=kw["identifier"], label=kw["label"], kind=kw.get("kind", "damage"), max_level=int(kw.get("max_level", 3)),
+                    items=kw.get("items") or ("#minecraft:enchantable/armor" if kw.get("kind") == "protection" else "#minecraft:enchantable/weapon"), weight=int(kw.get("weight", 5)))
+    new_spec = replace(spec, enchantments=[x for x in spec.enchantments if x.identifier != e.identifier] + [e]); validate_spec_content(new_spec)
+    ws = Path(proj["root"]); res = ws / "src/main/resources"
+    f = res / "data" / pid / "enchantment" / f"{e.identifier}.json"; f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(enchantment_json(new_spec, e), indent=2) + "\n", encoding="utf8")
+    lang_file = res / "assets" / pid / "lang/en_us.json"
+    lang = json.loads(lang_file.read_text(encoding="utf8")) if lang_file.is_file() else {}
+    lang[f"enchantment.{pid}.{e.identifier}"] = e.label
+    lang_file.write_text(json.dumps(lang, indent=2, sort_keys=True) + "\n", encoding="utf8")
+    written = [str(f.relative_to(ws)).replace("\\", "/"), f"src/main/resources/assets/{pid}/lang/en_us.json"]
+    _save_spec(store, pid, new_spec, f"enchantment {e.identifier} after generation")
+    accepted = accept_changes(ws, run_id=f"enchant:{e.identifier}", actor="user", changed=written)
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid); _reopen_build(store, pid)
+    store.add_event(pid, "user", "FEATURE_ADDED", {"kind": "enchantment", "identifier": e.identifier, "files": written})
+    return {"identifier": e.identifier, "generated": True, "files": written, "accepted": accepted["accepted"], "note": "Enchantment JSON written; rebuild to apply."}

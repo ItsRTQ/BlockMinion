@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "type=bottom": {
+      "model": "kitchen_sink:block/crystal_bricks_slab"
+    },
+    "type=top": {
+      "model": "kitchen_sink:block/crystal_bricks_slab_top"
+    },
+    "type=double": {
+      "model": "kitchen_sink:block/crystal_bricks"
+    }
+  }
+}

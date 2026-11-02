@@ -31,6 +31,7 @@ class Feature:
     color: str = ""        # optional hex (#RRGGBB) tint for the placeholder texture
     tool: str = ""         # blocks: pickaxe | axe | shovel | hoe | none (default pickaxe); "none" = breaks by hand
     mining_level: str = "" # blocks: wood | stone | iron | diamond | netherite (default wood = any pickaxe)
+    variants: tuple = ()   # blocks: subset of stairs | slab | fence | wall — generated as <id>_stairs etc. with recipes
 
 @dataclass(frozen=True)
 class Recipe:
@@ -146,6 +147,22 @@ class Food:
     color: str = ""
 
 
+BLOCK_VARIANTS = ("stairs", "slab", "fence", "wall")
+ENCHANT_KINDS = {"damage": "minecraft:damage", "protection": "minecraft:damage_protection", "efficiency": "minecraft:attributes", "fire_aspect": "minecraft:post_attack"}
+
+
+@dataclass(frozen=True)
+class Enchantment:
+    """Data-driven enchantment (1.21 JSON). kind picks the vanilla effect component and sensible numbers."""
+    identifier: str
+    label: str
+    kind: str = "damage"          # damage | protection | fire_aspect
+    max_level: int = 3
+    items: str = "#minecraft:enchantable/weapon"   # tag of items it can go on
+    weight: int = 5
+    treasure: bool = False
+
+
 @dataclass(frozen=True)
 class Ore:
     """World generation for an ore block: veins of `vein_size` blocks, `veins_per_chunk` times per chunk,
@@ -188,12 +205,15 @@ class Spec:
     theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
     sounds: list[Sound] = field(default_factory=list)
     ores: list[Ore] = field(default_factory=list)
+    enchantments: list[Enchantment] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     def local_ids(self) -> set[str]:
         ids = {f.identifier for f in self.features}
+        for f in self.features:
+            ids.update(f"{f.identifier}_{v}" for v in f.variants)
         for m in self.materials:
             ids.update(m.item_ids())
         ids.update(f.identifier for f in self.foods)
@@ -358,6 +378,12 @@ def validate_spec_content(spec: "Spec") -> None:
     for f in spec.features:
         seen_all[f.identifier] = "feature"
         if f.kind == "block":
+            for v in f.variants:
+                if v not in BLOCK_VARIANTS:
+                    raise InputError(f"Block {f.identifier}: variants must be from {BLOCK_VARIANTS}")
+                vid = f"{f.identifier}_{v}"
+                if vid in seen_all: raise InputError(f"Variant {vid!r} collides with {seen_all[vid]}")
+                seen_all[vid] = f"variant of {f.identifier}"
             if f.tool and f.tool not in TOOLS_FOR_BLOCKS:
                 raise InputError(f"Block {f.identifier}: tool must be one of {TOOLS_FOR_BLOCKS}")
             if f.mining_level and f.mining_level not in MINING_LEVELS:
@@ -367,6 +393,13 @@ def validate_spec_content(spec: "Spec") -> None:
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
             seen_all[i] = f"material {mat.identifier}"
+    for e in spec.enchantments:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", e.identifier):
+            raise InputError(f"Enchantment identifier must be snake_case: {e.identifier!r}")
+        if e.kind not in ("damage", "protection", "fire_aspect"):
+            raise InputError("Enchantment kind must be damage, protection or fire_aspect")
+        if not (1 <= e.max_level <= 10) or not (1 <= e.weight <= 100) or not e.items.startswith("#"):
+            raise InputError("Enchantment: max_level 1-10, weight 1-100, items must be a tag (#minecraft:enchantable/weapon)")
     blocks = {f.identifier for f in spec.features if f.kind == "block"}
     seen_ores: set[str] = set()
     for o in spec.ores:
@@ -507,7 +540,7 @@ def read_spec(raw: dict) -> Spec:
         schema_version=SCHEMA_VERSION, name=str(raw["name"]), mod_id=normalize_id(raw["mod_id"]),
         package=validate_package(raw["package"]), idea=str(raw["idea"]),
         profile=str(raw["profile"]),
-        features=[Feature(**f) for f in raw.get("features", [])],
+        features=[Feature(**{**f, "variants": tuple(f.get("variants", ()))}) for f in raw.get("features", [])],
         questions=list(raw.get("questions", [])), assumptions=list(raw.get("assumptions", [])),
         recipes=[Recipe(**{**r, "pattern": tuple(r.get("pattern", ())), "ingredients": tuple(r.get("ingredients", ()))}) for r in raw.get("recipes", [])],
         drops=[Drop(**d) for d in raw.get("drops", [])],
@@ -517,6 +550,7 @@ def read_spec(raw: dict) -> Spec:
         theme=str(raw.get("theme") or "")[:600],
         sounds=[Sound(**x) for x in raw.get("sounds", [])],
         ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
+        enchantments=[Enchantment(**e) for e in raw.get("enchantments", [])],
         mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],

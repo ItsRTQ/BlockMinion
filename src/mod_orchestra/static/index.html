@@ -122,6 +122,7 @@
               <button type="button" class="primary" data-modal="modal-mat">＋ Tool &amp; armor set</button>
               <button type="button" class="primary" data-modal="modal-food">＋ Food</button>
               <button type="button" class="primary" data-modal="modal-feat">＋ Item or block</button>
+              <button type="button" class="primary" data-modal="modal-ench">＋ Enchantment</button>
               <button type="button" class="secondary" id="sprites-btn">🎨 Paint icons with the designer</button>
             </div>
             <div id="sheet-box" class="hidden"><div class="muted" style="margin-top:12px">Latest contact sheet from the designer (click to enlarge):</div><div class="previews"><div class="preview" id="sheet-preview"><img id="sheet-img" alt="contact sheet"><small>sprites_contact_sheet.png</small></div></div></div>
@@ -234,6 +235,9 @@
                   <label>Breaks with <select id="af-tool"><option value="">pickaxe (default)</option><option value="pickaxe">pickaxe</option><option value="axe">axe</option><option value="shovel">shovel</option><option value="hoe">hoe</option><option value="none">any / by hand</option></select><small>Blocks only. The tool that mines it fast and lets it drop.</small></label>
                   <label>Needs tier <select id="af-level"><option value="">wood (any pickaxe)</option><option value="stone">stone</option><option value="iron">iron</option><option value="diamond">diamond</option><option value="netherite">netherite</option></select><small>Minimum tool tier for the block to drop (ores: iron is typical).</small></label>
                 </div>
+                <div class="row" id="af-variants-row">
+                  <label>Also make <div class="checks" id="af-variants"><label><input type="checkbox" value="stairs"> stairs</label><label><input type="checkbox" value="slab"> slab</label><label><input type="checkbox" value="fence"> fence</label><label><input type="checkbox" value="wall"> wall</label></div><small>Blocks only, before generation. Each gets models, recipe, loot and tags automatically.</small></label>
+                </div>
                 <div id="af-ore-row">
                   <label class="check"><input type="checkbox" id="af-ore"><span>Generates in the world as ore veins</span><small>Blocks only. Uses vanilla-like placement; tweak below.</small></label>
                   <div class="row numbers" id="af-ore-fields" style="display:none">
@@ -275,6 +279,22 @@
   <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all placeholders</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
   <label>Style notes (optional) <textarea id="sprites-notes" rows="2" placeholder="e.g. deep red rubies with a pink highlight; chunky outlines like vanilla"></textarea></label>
   <div class="actions"><button type="button" class="primary" id="sprites-go">Create task and run designer</button></div>
+</div></div>
+<div id="modal-ench" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add an enchantment</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Data-driven (1.21 JSON). Appears at the enchanting table and on books for the chosen item group.</p>
+  <form id="ench-form" class="form">
+    <div class="row"><label>Name <input id="en-label" required placeholder="Gem Edge"></label><label>Identifier <input id="en-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_edge"></label></div>
+    <div class="row">
+      <label>Effect <select id="en-kind"><option value="damage">damage — extra attack damage (weapons)</option><option value="protection">protection — damage reduction (armor)</option><option value="fire_aspect">fire aspect — sets targets on fire (weapons)</option></select></label>
+      <label>Max level <input id="en-level" type="number" min="1" max="10" value="3"></label>
+    </div>
+    <div class="row">
+      <label>Items <select id="en-items"><option value="">auto (weapons for damage/fire, armor for protection)</option><option value="#minecraft:enchantable/weapon">weapons</option><option value="#minecraft:enchantable/sword">swords only</option><option value="#minecraft:enchantable/armor">armor</option><option value="#minecraft:enchantable/mining">mining tools</option><option value="#minecraft:enchantable/bow">bows</option></select></label>
+      <label>Weight <input id="en-weight" type="number" min="1" max="100" value="5"><small>How common at the table (10 common, 2 rare).</small></label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Add enchantment</button></div>
+  </form>
 </div></div>
 <div id="modal-feature" class="lightbox hidden"><div class="modal">
   <div class="modal-head"><h3>New feature</h3><button type="button" class="secondary mini modal-close">✕</button></div>

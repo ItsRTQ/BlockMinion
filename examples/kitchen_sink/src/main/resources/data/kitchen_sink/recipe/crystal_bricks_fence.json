@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XSX",
+    "XSX"
+  ],
+  "key": {
+    "X": {
+      "item": "kitchen_sink:crystal_bricks"
+    },
+    "S": {
+      "item": "minecraft:stick"
+    }
+  },
+  "result": {
+    "id": "kitchen_sink:crystal_bricks_fence",
+    "count": 3
+  }
+}

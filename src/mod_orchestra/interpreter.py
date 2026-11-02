@@ -36,7 +36,7 @@ wrote in Spanish; keep labels in the user's language.
 
 Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_version {SCHEMA_VERSION}):
 ```json
-{{"features": [{{"kind": "item|block", "identifier": "snake_case", "label": "Display Name", "tool": "pickaxe|axe|shovel|hoe|none (blocks)", "mining_level": "wood|stone|iron|diamond|netherite (blocks)"}}],
+{{"features": [{{"kind": "item|block", "identifier": "snake_case", "label": "Display Name", "tool": "pickaxe|axe|shovel|hoe|none (blocks)", "mining_level": "wood|stone|iron|diamond|netherite (blocks)", "variants": ["stairs","slab","fence","wall"] (blocks, optional)}}],
   "tab": "Tab Label or null", "tab_icon": "identifier of one feature or null",
   "recipes": [{{"id": "snake_case", "kind": "{'|'.join(RECIPE_KINDS)}", "result": "identifier or minecraft:id",
                "count": 1, "pattern": ["RRR"," S "," S "], "key": {{"R": "identifier", "S": "minecraft:stick"}},
@@ -52,6 +52,7 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
   "foods": [{{"identifier": "ruby_apple", "label": "Ruby Apple", "nutrition": 6, "saturation": 1.2,
              "effects": [{{"effect": "minecraft:regeneration", "duration": 100, "amplifier": 0, "chance": 1.0}}], "always_edible": false, "fast": false}}],
   "sounds": [{{"identifier": "critter_chirp", "label": "Critter chirps", "category": "neutral"}}],
+  "enchantments": [{{"identifier": "gem_edge", "label": "Gem Edge", "kind": "damage|protection|fire_aspect", "max_level": 3, "items": "#minecraft:enchantable/weapon", "weight": 5}}],
   "ores": [{{"block": "crystal_ore", "vein_size": 9, "veins_per_chunk": 8, "min_y": -64, "max_y": 64, "biomes": ["overworld"], "discard_on_air": 0.0}}],
   "theme": "2-4 sentences: visual brief for all art in this mod — era/culture, palette (3-5 colours with hex), materials, motifs, mood (e.g. 'Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial')",
   "assumptions": ["..."]}}
@@ -85,7 +86,7 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "idea": current["idea"], "profile": current["profile"],
         "features": proposal.get("features", []), "recipes": proposal.get("recipes", []), "drops": proposal.get("drops", []),
         "tab": proposal.get("tab"), "tab_icon": proposal.get("tab_icon"), "mobs": proposal.get("mobs", []),
-        "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "sounds": proposal.get("sounds", []), "ores": proposal.get("ores", []),
+        "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "sounds": proposal.get("sounds", []), "ores": proposal.get("ores", []), "enchantments": proposal.get("enchantments", []),
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
     spec = read_spec(raw)

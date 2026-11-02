@@ -392,7 +392,8 @@ async function renderFeatures(p) {
   addForm.onsubmit = async (e) => {
     e.preventDefault();
     try {
-      const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value, tool: qs("af-tool").value, mining_level: qs("af-level").value });
+      const variants = [...qs("af-variants").querySelectorAll("input:checked")].map(i => i.value);
+      const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value, tool: qs("af-tool").value, mining_level: qs("af-level").value, variants });
       if (qs("af-kind").value === "block" && qs("af-ore").checked) { try { await api(`/api/project/${p.id}/add-ore`, { block: out.identifier, ...oreFromForm() }); } catch (e2) { toast("Block added but worldgen failed: " + e2.message, "bad"); } }
       addForm.reset(); delete qs("af-id").dataset.touched; closeModal("modal-feat"); qs("af-kind").onchange();
       toast(out.generated ? `Added. Files written; the coder registers it (${out.task}) — see Now.` : "Added to the spec. Re-approve before generating.", "ok");
@@ -455,7 +456,17 @@ qs("addfood-form").onsubmit = async (e) => {
     await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };
-qs("af-kind").onchange = () => { const b = qs("af-kind").value === "block"; qs("af-block-row").style.display = b ? "" : "none"; qs("af-ore-row").style.display = b ? "" : "none"; }; qs("af-kind").onchange();
+qs("af-kind").onchange = () => { const b = qs("af-kind").value === "block"; qs("af-block-row").style.display = b ? "" : "none"; qs("af-ore-row").style.display = b ? "" : "none"; qs("af-variants-row").style.display = b ? "" : "none"; }; qs("af-kind").onchange();
+qs("en-label").oninput = () => { if (!qs("en-id").dataset.touched) qs("en-id").value = qs("en-label").value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
+qs("en-id").oninput = () => { qs("en-id").dataset.touched = "1"; };
+qs("ench-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  try {
+    const out = await api(`/api/project/${selected}/add-enchantment`, { identifier: qs("en-id").value.trim(), label: qs("en-label").value.trim(), kind: qs("en-kind").value, max_level: Number(qs("en-level").value), items: qs("en-items").value || null, weight: Number(qs("en-weight").value) });
+    qs("ench-form").reset(); delete qs("en-id").dataset.touched; closeModal("modal-ench");
+    toast(out.generated ? out.note : "Enchantment added to the spec (re-approve before generating).", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
 qs("af-ore").onchange = () => { qs("af-ore-fields").style.display = qs("af-ore").checked ? "" : "none"; };
 const oreFromForm = () => ({ vein_size: Number(qs("af-ore-size").value), veins_per_chunk: Number(qs("af-ore-count").value), min_y: Number(qs("af-ore-miny").value), max_y: Number(qs("af-ore-maxy").value), biomes: qs("af-ore-biomes").value.split(",").map(s => s.trim()).filter(Boolean), discard_on_air: Number(qs("af-ore-discard").value) });
 qs("am-spawn").onchange = () => { qs("am-spawn-row").style.display = qs("am-spawn").checked ? "" : "none"; };
