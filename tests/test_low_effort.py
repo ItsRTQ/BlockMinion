@@ -148,7 +148,7 @@ class VariantsAndEnchantments(unittest.TestCase):
             self.assertEqual(json.loads((res / "data/v_mod/recipe/marble_stairs.json").read_text())["result"]["count"], 4)
             self.assertEqual(json.loads((res / "data/minecraft/tags/block/fences.json").read_text())["values"], ["v_mod:marble_fence"])
             self.assertIn("v_mod:marble_slab", json.loads((res / "data/minecraft/tags/block/mineable/pickaxe.json").read_text())["values"])
-            self.assertEqual(json.loads((res / "assets/v_mod/lang/en_us.json").read_text())["block.v_mod.marble_fence"], "Marble Fence")
+            self.assertEqual(json.loads((res / "assets/v_mod/lang/en_us.json").read_text())["block.v_mod.marble_fence"], "marble Fence")  # grammar labels are kept as typed
             ench = json.loads((res / "data/v_mod/enchantment/gem_edge.json").read_text())
             self.assertEqual(ench["slots"], ["mainhand"]); self.assertIn("minecraft:damage", ench["effects"])
             self.assertEqual(json.loads((res / "data/minecraft/tags/enchantment/in_enchanting_table.json").read_text())["values"], ["v_mod:gem_edge"])
