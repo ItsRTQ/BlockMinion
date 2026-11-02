@@ -234,6 +234,16 @@
                   <label>Breaks with <select id="af-tool"><option value="">pickaxe (default)</option><option value="pickaxe">pickaxe</option><option value="axe">axe</option><option value="shovel">shovel</option><option value="hoe">hoe</option><option value="none">any / by hand</option></select><small>Blocks only. The tool that mines it fast and lets it drop.</small></label>
                   <label>Needs tier <select id="af-level"><option value="">wood (any pickaxe)</option><option value="stone">stone</option><option value="iron">iron</option><option value="diamond">diamond</option><option value="netherite">netherite</option></select><small>Minimum tool tier for the block to drop (ores: iron is typical).</small></label>
                 </div>
+                <div id="af-ore-row">
+                  <label class="check"><input type="checkbox" id="af-ore"><span>Generates in the world as ore veins</span><small>Blocks only. Uses vanilla-like placement; tweak below.</small></label>
+                  <div class="row numbers" id="af-ore-fields" style="display:none">
+                    <label>Vein size <input id="af-ore-size" type="number" min="1" max="64" value="9"><small>Blocks per vein (iron 9, diamond 8, emerald 3).</small></label>
+                    <label>Veins per chunk <input id="af-ore-count" type="number" min="1" max="64" value="8"><small>iron 10 · diamond 7 · gold 4.</small></label>
+                    <label>Height (min – max) <div class="row"><input id="af-ore-miny" type="number" min="-64" max="320" value="-64"><input id="af-ore-maxy" type="number" min="-64" max="320" value="64"></div><small>Most common in the middle. Diamond -64..16, iron -64..72.</small></label>
+                    <label>Biomes <input id="af-ore-biomes" value="overworld"><small>overworld / nether / end, tags (#minecraft:is_mountain) or ids, comma separated.</small></label>
+                    <label>Hide when exposed <input id="af-ore-discard" type="number" min="0" max="1" step="0.1" value="0"><small>0 = normal; 0.7 = mostly buried (diamond).</small></label>
+                  </div>
+                </div>
                 <div class="row">
                   <label>Icon shape <select id="af-shape"><option value="">auto (gem for items, cube for blocks)</option><option value="gem">gem</option><option value="ingot">ingot / bar</option><option value="food">round (fruit, orb)</option><option value="block">cube</option></select><small>Placeholder silhouette; upload your own PNG any time.</small></label>
                   <label>Colour <div class="colour-row"><input type="color" id="af-color" value="#7c9cff"><input type="text" id="af-color-hex" value="#7c9cff" pattern="#[0-9a-fA-F]{6}"></div></label>

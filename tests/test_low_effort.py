@@ -91,3 +91,33 @@ class Sounds(unittest.TestCase):
                 set_sound_file(store, "snd", identifier="gem_chime", ogg_base64=base64.b64encode(b"RIFF....").decode())
             out = set_sound_file(store, "snd", identifier="gem_chime", ogg_base64=base64.b64encode(b"OggS" + b"\x00" * 40).decode())
             self.assertTrue(out["file"].endswith("sounds/gem_chime.ogg"))
+
+
+class OreWorldgen(unittest.TestCase):
+    def test_json_and_java(self):
+        from mod_orchestra.specedit import add_ore
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            proj = workflow.new_project(store, name="O", mod_id="o_mod", package="com.x.o", idea="blocks: ruby ore, nether gem ore")
+            add_ore(store, "o_mod", block="ruby_ore", vein_size=8, veins_per_chunk=7, min_y=-64, max_y=16, discard_on_air=0.7)
+            add_ore(store, "o_mod", block="nether_gem_ore", vein_size=10, veins_per_chunk=5, min_y=10, max_y=100, biomes=["nether"])
+            with self.assertRaisesRegex(InputError, "not a block"):
+                add_ore(store, "o_mod", block="ruby")
+            with self.assertRaisesRegex(InputError, "min_y < max_y"):
+                add_ore(store, "o_mod", block="ruby_ore", min_y=50, max_y=10)
+            workflow.plan_project(store, "o_mod"); workflow.approve_spec(store, "o_mod"); workflow.generate_project(store, "o_mod")
+            root = Path(proj["root"]); wg = root / "src/main/resources/data/o_mod/worldgen"
+            cf = json.loads((wg / "configured_feature/ruby_ore.json").read_text())
+            self.assertEqual(cf["type"], "minecraft:ore"); self.assertEqual(cf["config"]["size"], 8); self.assertEqual(cf["config"]["discard_chance_on_air_exposure"], 0.7)
+            self.assertEqual([t["target"]["tag"] for t in cf["config"]["targets"]], ["minecraft:stone_ore_replaceables", "minecraft:deepslate_ore_replaceables"])
+            pf = json.loads((wg / "placed_feature/ruby_ore.json").read_text())
+            self.assertEqual(pf["feature"], "o_mod:ruby_ore"); self.assertEqual(pf["placement"][0], {"type": "minecraft:count", "count": 7})
+            self.assertEqual(pf["placement"][2]["height"]["max_inclusive"], {"absolute": 16})
+            nf = json.loads((wg / "configured_feature/nether_gem_ore.json").read_text())
+            self.assertEqual(nf["config"]["targets"][0]["target"]["tag"], "minecraft:base_stone_nether")
+            main = (root / "src/main/java/com/x/o/ModMain.java").read_text()
+            self.assertIn('BiomeModifications.addFeature(BiomeSelectors.foundInOverworld(), GenerationStep.Decoration.UNDERGROUND_ORES, ResourceKey.create(Registries.PLACED_FEATURE, id("ruby_ore")))', main)
+            self.assertIn("BiomeSelectors.foundInTheNether()", main)
+            self.assertEqual(main.count("import net.minecraft.core.registries.Registries;"), 1, "imports deduped")

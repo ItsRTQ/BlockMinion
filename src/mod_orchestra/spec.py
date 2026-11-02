@@ -147,6 +147,19 @@ class Food:
 
 
 @dataclass(frozen=True)
+class Ore:
+    """World generation for an ore block: veins of `vein_size` blocks, `veins_per_chunk` times per chunk,
+    between min_y and max_y (trapezoid: most common in the middle), in the given biomes (same syntax as Spawn)."""
+    block: str
+    vein_size: int = 9
+    veins_per_chunk: int = 8
+    min_y: int = -64
+    max_y: int = 64
+    biomes: tuple = ("overworld",)
+    discard_on_air: float = 0.0   # 0-1: chance to skip ore exposed to air (diamond uses 0.7 for buried-only)
+
+
+@dataclass(frozen=True)
 class Sound:
     """A SoundEvent `<mod>:<identifier>` backed by assets/<mod>/sounds/<identifier>.ogg (the user uploads the .ogg)."""
     identifier: str
@@ -174,6 +187,7 @@ class Spec:
     foods: list[Food] = field(default_factory=list)
     theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
     sounds: list[Sound] = field(default_factory=list)
+    ores: list[Ore] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -353,6 +367,18 @@ def validate_spec_content(spec: "Spec") -> None:
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
             seen_all[i] = f"material {mat.identifier}"
+    blocks = {f.identifier for f in spec.features if f.kind == "block"}
+    seen_ores: set[str] = set()
+    for o in spec.ores:
+        if o.block not in blocks:
+            raise InputError(f"Ore {o.block!r} is not a block of this mod")
+        if o.block in seen_ores:
+            raise InputError(f"One worldgen rule per block: {o.block}")
+        seen_ores.add(o.block)
+        if not (1 <= o.vein_size <= 64) or not (1 <= o.veins_per_chunk <= 64) or not (-64 <= o.min_y < o.max_y <= 320) or not (0 <= o.discard_on_air <= 1):
+            raise InputError("Ore: vein_size 1-64, veins_per_chunk 1-64, -64 <= min_y < max_y <= 320, discard_on_air 0-1")
+        if not o.biomes or any(not BIOME_RE.match(b) for b in o.biomes):
+            raise InputError("Ore biomes: overworld|nether|end, biome tags (#minecraft:is_mountain) or biome ids")
     for sd in spec.sounds:
         if not re.fullmatch(r"[a-z][a-z0-9_.]{1,49}", sd.identifier):
             raise InputError(f"Sound identifier must be snake_case: {sd.identifier!r}")
@@ -490,6 +516,7 @@ def read_spec(raw: dict) -> Spec:
         foods=[Food(**{**f, "effects": tuple(f.get("effects", ()))}) for f in raw.get("foods", [])],
         theme=str(raw.get("theme") or "")[:600],
         sounds=[Sound(**x) for x in raw.get("sounds", [])],
+        ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
         mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],

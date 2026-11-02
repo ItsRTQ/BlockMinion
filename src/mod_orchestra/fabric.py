@@ -18,7 +18,7 @@ from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
-from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json
+from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
                        client_init_java, placeholder_geo, placeholder_animation, entity_loot, class_name)
 from .validation import InputError, safe_inside, ensure_new_directory
@@ -272,7 +272,7 @@ Your idea: {spec.idea}
         "import net.minecraft.world.level.block.state.BlockBehaviour;",
         "import org.slf4j.Logger;",
         "import org.slf4j.LoggerFactory;",
-    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + ([
+    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + [f"import {i};" for i in ore_registrations(spec)[0]] + ([
         "import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;",
         "import net.minecraft.core.registries.Registries;",
         "import net.minecraft.network.chat.Component;",
@@ -299,6 +299,14 @@ Your idea: {spec.idea}
             props = "BlockBehaviour.Properties.of().strength(3.0F)" + (".requiresCorrectToolForDrops()" if tool != "none" else "")
             lines.append(f'    public static final Block {varname} = Registry.register(BuiltInRegistries.BLOCK, id("{feature.identifier}"), new Block({props}));')
             lines.append(f'    public static final Item {varname}_ITEM = Registry.register(BuiltInRegistries.ITEM, id("{feature.identifier}"), new BlockItem({varname}, new Item.Properties()));')
+    # dedupe imports (several generators may ask for the same class), keep order
+    seen_imports: set[str] = set(); deduped = []
+    for l in lines:
+        if l.startswith("import "):
+            if l in seen_imports: continue
+            seen_imports.add(l)
+        deduped.append(l)
+    lines = deduped
     mob_imports, mob_fields, mob_init = main_registrations(spec)
     lines += mob_fields
     gear_imports, gear_fields, gear_init = gear_registrations(spec)
@@ -330,6 +338,7 @@ Your idea: {spec.idea}
         lines.append("        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB_KEY, TAB);")
     lines += mob_init
     lines += gear_init
+    lines += ore_registrations(spec)[1]
     for feature in spec.features:
         group = "BUILDING_BLOCKS" if feature.kind == "block" else "INGREDIENTS"
         lines.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.{group}).register(entries -> entries.accept({item_const(feature)}));")
@@ -380,6 +389,8 @@ Your idea: {spec.idea}
         put(f"{res}/models/item/{f.identifier}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{f.identifier}"}}, indent=2) + "\n")
         put(f"{res}/textures/item/{f.identifier}.png", tinted_item_png("food", base, acc))
         lang[f"item.{spec.mod_id}.{f.identifier}"] = f.label
+    for rel, data in ore_worldgen_files(spec).items():
+        put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
     for tag, members in block_tags(spec).items():
         put(f"src/main/resources/data/minecraft/tags/block/{tag}.json", json.dumps({"replace": False, "values": members}, indent=2) + "\n")
     for recipe in list(spec.recipes) + gear_recipes(spec):

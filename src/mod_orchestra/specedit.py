@@ -5,7 +5,7 @@ same spec fields from the user's words. Every edit returns the spec to DRAFT.
 """
 from __future__ import annotations
 from dataclasses import replace
-from .spec import Drop, Food, Material, Mob, Recipe, Sound, default_egg_colors, read_spec, validate_spec_content
+from .spec import Drop, Food, Material, Mob, Ore, Recipe, Sound, default_egg_colors, read_spec, validate_spec_content
 from .state import Store
 
 
@@ -109,3 +109,16 @@ def add_sound(store: Store, pid: str, *, identifier: str, label: str, category: 
     snd = Sound(identifier=identifier, label=label, category=category)
     sounds = [x for x in spec.sounds if x.identifier != identifier] + [snd]
     return _save(store, pid, replace(spec, sounds=sounds), f"add sound {identifier}")
+
+
+def add_ore(store: Store, pid: str, *, block: str, vein_size: int = 9, veins_per_chunk: int = 8, min_y: int = -64, max_y: int = 64,
+            biomes: list[str] | None = None, discard_on_air: float = 0.0) -> dict:
+    spec = _load(store, pid)
+    ore = Ore(block=block, vein_size=vein_size, veins_per_chunk=veins_per_chunk, min_y=min_y, max_y=max_y, biomes=tuple(biomes or ("overworld",)), discard_on_air=discard_on_air)
+    ores = [o for o in spec.ores if o.block != block] + [ore]
+    return _save(store, pid, replace(spec, ores=ores), f"ore worldgen {block}")
+
+
+def remove_ore(store: Store, pid: str, block: str) -> dict:
+    spec = _load(store, pid)
+    return _save(store, pid, replace(spec, ores=[o for o in spec.ores if o.block != block]), f"remove ore worldgen {block}")
