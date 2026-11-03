@@ -133,8 +133,7 @@ jobs:
           set -o pipefail
           chmod +x gradlew
           ./gradlew build --no-daemon --console=plain 2>&1 | tee build.log
-      - name: Run the generated GameTests headless (runGametest) — advisory until verified on a real machine
-        continue-on-error: true
+      - name: Run the generated GameTests headless (runGametest)
         working-directory: examples/kitchen_sink
         shell: bash
         run: |
@@ -146,10 +145,10 @@ jobs:
           r = ET.parse("build/gametest/junit.xml").getroot()
           suites = [r] if r.tag == "testsuite" else list(r.iter("testsuite"))
           t = sum(int(s.get("tests", 0)) for s in suites); f = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
-          print(f"gametests: {t} run, {f} failed"); raise SystemExit(1 if f or t == 0 else 0)
+          print(f"::notice title=gametests::{t} run, {f} failed"); raise SystemExit(1 if f or t == 0 else 0)
           PY
       - name: Surface gametest failures as annotations
-        if: always()
+        if: failure()
         working-directory: examples/kitchen_sink
         shell: bash
         run: |
