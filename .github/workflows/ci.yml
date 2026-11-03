@@ -139,7 +139,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p build/gametest && printf 'online-mode=false\nsync-chunk-writes=false\n' > build/gametest/server.properties && echo 'eula=true' > build/gametest/eula.txt
-          timeout 900 ./gradlew runGametest --no-daemon --console=plain 2>&1 | tee gametest.log
+          timeout 600 ./gradlew runGametest --no-daemon --console=plain --info 2>&1 | tee gametest.log
           test -f build/gametest/junit.xml && python3 - <<'PY'
           import xml.etree.ElementTree as ET
           r = ET.parse("build/gametest/junit.xml").getroot()
@@ -153,7 +153,9 @@ jobs:
         shell: bash
         run: |
           (grep -nE "FAILED|failed|Exception|error:|Caused by" gametest.log 2>/dev/null | head -20 || true) | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
-          (tail -n 40 gametest.log 2>/dev/null || true) | while IFS= read -r line; do echo "::warning title=gametest tail::${line:0:400}"; done
+          echo "::warning title=gametest lines::$(wc -l < gametest.log 2>/dev/null || echo 0) lines; last modified $(date -r gametest.log 2>/dev/null)"
+          (grep -niE "gametest|test server|batch|preparing|level|junit|structure|Finished|stopping|timed out|Running" gametest.log 2>/dev/null | tail -40 || true) | while IFS= read -r line; do echo "::warning title=gametest phase::${line:0:400}"; done
+          (tail -n 15 gametest.log 2>/dev/null || true) | while IFS= read -r line; do echo "::warning title=gametest tail::${line:0:400}"; done
           true
       - name: Surface javac errors as annotations
         if: failure()
