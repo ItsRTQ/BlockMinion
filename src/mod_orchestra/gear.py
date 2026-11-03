@@ -65,6 +65,7 @@ def gear_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
                "net.minecraft.Util", "net.minecraft.tags.TagKey", "java.util.EnumMap", "java.util.List",
                "net.minecraft.world.food.FoodProperties", "net.minecraft.world.effect.MobEffectInstance"]
     imports += [f"{spec.package}.gear.{cls(m.identifier)}Tier" for m in spec.materials]
+    imports += [f"{spec.package}.gear.{cls(m.identifier)}ArmorItem" for m in spec.materials if m.armor and m.armor_style == "3d"]
     fields, init = [], []
     for m in spec.materials:
         tier = f"{cls(m.identifier)}Tier.INSTANCE"
@@ -83,10 +84,11 @@ def gear_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
             fields.append(f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{m.identifier}_{kind}"),')
             fields.append(f"        new {klass}({tier}, new Item.Properties().attributes({klass}.createAttributes({tier}, {dmg_lit}, {float(speed)}F))));")
             init.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.{'COMBAT' if kind == 'sword' else 'TOOLS_AND_UTILITIES'}).register(entries -> entries.accept({const}));")
+        armor_cls = f"{cls(m.identifier)}ArmorItem" if m.armor_style == "3d" else "ArmorItem"
         for kind in m.armor:
             const = f"{m.identifier}_{kind}".upper()
             fields.append(f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{m.identifier}_{kind}"),')
-            fields.append(f"        new ArmorItem({m.identifier.upper()}_ARMOR_MATERIAL, ArmorItem.Type.{ARMOR_TYPE[kind]}, new Item.Properties().durability(ArmorItem.Type.{ARMOR_TYPE[kind]}.getDurability({int(m.armor_durability)}))));")
+            fields.append(f"        new {armor_cls}({m.identifier.upper()}_ARMOR_MATERIAL, ArmorItem.Type.{ARMOR_TYPE[kind]}, new Item.Properties().durability(ArmorItem.Type.{ARMOR_TYPE[kind]}.getDurability({int(m.armor_durability)}))));")
             init.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept({const}));")
     for f in spec.foods:
         const = f.identifier.upper()

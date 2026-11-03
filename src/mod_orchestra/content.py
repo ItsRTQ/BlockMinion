@@ -28,7 +28,7 @@ def _armor_previews(store: Store, pid: str, ws: Path, material: str) -> list[str
     runs = {r["id"]: r.get("created_at", 0) for r in store.runs(pid)}
     dirs = sorted((d for d in root.iterdir() if d.is_dir()), key=lambda d: runs.get(d.name, 0))
     for d in reversed(dirs):
-        files = sorted(d.glob(f"{material}_armor_layer*.png"))
+        files = sorted(d.glob(f"{material}_armor_layer*.png")) + sorted(d.glob(f"{material}_armor_render*.png"))
         if files:
             return [f".mod-orchestra/previews/{d.name}/{f.name}" for f in files]
     return []
@@ -59,7 +59,7 @@ def list_features(store: Store, pid: str) -> list[dict]:
             out.append({"kind": "tool" if kind in ("sword", "pickaxe", "axe", "shovel", "hoe") else "armor", "identifier": key, "label": f"{m['label']} {kind.capitalize()}",
                         "texture": tex if (ws / tex).is_file() else None, "material": m["identifier"], "recipes": [key] if m.get("recipes", True) else [], "drop": None,
                         "armor_layers": [f"src/main/resources/assets/{pid}/textures/models/armor/{m['identifier']}_layer_{n}.png" for n in (1, 2)] if kind in ("helmet", "chestplate", "leggings", "boots") else None,
-                        "armor_previews": _armor_previews(store, pid, ws, m["identifier"]) if kind == "helmet" else None})
+                        "armor_previews": _armor_previews(store, pid, ws, m["identifier"]) if kind == "helmet" else None, "armor_style": m.get("armor_style", "textured")})
     for f in spec.get("foods", []):
         tex = f"src/main/resources/assets/{pid}/textures/item/{f['identifier']}.png"
         out.append({"kind": "food", "identifier": f["identifier"], "label": f["label"], "texture": tex if (ws / tex).is_file() else None,

@@ -38,6 +38,23 @@ import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.item.SwordItem;
+import net.minecraft.world.item.PickaxeItem;
+import net.minecraft.world.item.AxeItem;
+import net.minecraft.world.item.ShovelItem;
+import net.minecraft.world.item.HoeItem;
+import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.ArmorMaterial;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.core.Holder;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.Util;
+import java.util.EnumMap;
+import java.util.List;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.effect.MobEffectInstance;
+import com.example.kitchensink.gear.CrystalTier;
+import com.example.kitchensink.gear.CrystalArmorItem;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
@@ -81,6 +98,23 @@ public class ModMain implements ModInitializer {
     public static final Item SKY_CRITTER_SPAWN_EGG = Registry.register(BuiltInRegistries.ITEM, id("sky_critter_spawn_egg"),
         new SpawnEggItem(SKY_CRITTER, 0x99A47D, 0xDFE3D3, new Item.Properties()));
 
+    // Tools, armor and food (generated from materials/foods in the spec)
+    public static final Holder<ArmorMaterial> CRYSTAL_ARMOR_MATERIAL = Registry.registerForHolder(BuiltInRegistries.ARMOR_MATERIAL, id("crystal"),
+        new ArmorMaterial(Util.make(new EnumMap<>(ArmorItem.Type.class), map -> {
+            map.put(ArmorItem.Type.HELMET, 2); map.put(ArmorItem.Type.CHESTPLATE, 6); map.put(ArmorItem.Type.LEGGINGS, 5); map.put(ArmorItem.Type.BOOTS, 2);
+        }), 14, SoundEvents.ARMOR_EQUIP_IRON, () -> Ingredient.of(ModMain.SKY_CRYSTAL),
+        List.of(new ArmorMaterial.Layer(id("crystal"))), 0.0F, 0.0F));
+    public static final Item CRYSTAL_SWORD = Registry.register(BuiltInRegistries.ITEM, id("crystal_sword"),
+        new SwordItem(CrystalTier.INSTANCE, new Item.Properties().attributes(SwordItem.createAttributes(CrystalTier.INSTANCE, 3, -2.4F))));
+    public static final Item CRYSTAL_HELMET = Registry.register(BuiltInRegistries.ITEM, id("crystal_helmet"),
+        new CrystalArmorItem(CRYSTAL_ARMOR_MATERIAL, ArmorItem.Type.HELMET, new Item.Properties().durability(ArmorItem.Type.HELMET.getDurability(15))));
+    public static final Item CRYSTAL_CHESTPLATE = Registry.register(BuiltInRegistries.ITEM, id("crystal_chestplate"),
+        new CrystalArmorItem(CRYSTAL_ARMOR_MATERIAL, ArmorItem.Type.CHESTPLATE, new Item.Properties().durability(ArmorItem.Type.CHESTPLATE.getDurability(15))));
+    public static final Item CRYSTAL_LEGGINGS = Registry.register(BuiltInRegistries.ITEM, id("crystal_leggings"),
+        new CrystalArmorItem(CRYSTAL_ARMOR_MATERIAL, ArmorItem.Type.LEGGINGS, new Item.Properties().durability(ArmorItem.Type.LEGGINGS.getDurability(15))));
+    public static final Item CRYSTAL_BOOTS = Registry.register(BuiltInRegistries.ITEM, id("crystal_boots"),
+        new CrystalArmorItem(CRYSTAL_ARMOR_MATERIAL, ArmorItem.Type.BOOTS, new Item.Properties().durability(ArmorItem.Type.BOOTS.getDurability(15))));
+
     // Sounds: assets/<mod>/sounds/<id>.ogg (upload your .ogg; play with level.playSound(null, pos, X_SOUND, SoundSource.NEUTRAL, 1f, 1f))
     public static final SoundEvent CRYSTAL_CHIME_SOUND = Registry.register(BuiltInRegistries.SOUND_EVENT, id("crystal_chime"), SoundEvent.createVariableRangeEvent(id("crystal_chime")));
 
@@ -96,6 +130,11 @@ public class ModMain implements ModInitializer {
             output.accept(SKY_CRITTER_SPAWN_EGG);
             output.accept(BACKPACK);
             output.accept(CRYSTAL_WAND);
+            output.accept(CRYSTAL_SWORD);
+            output.accept(CRYSTAL_HELMET);
+            output.accept(CRYSTAL_CHESTPLATE);
+            output.accept(CRYSTAL_LEGGINGS);
+            output.accept(CRYSTAL_BOOTS);
             output.accept(CRYSTAL_BRICKS_STAIRS_ITEM);
             output.accept(CRYSTAL_BRICKS_SLAB_ITEM);
             output.accept(CRYSTAL_BRICKS_FENCE_ITEM);
@@ -123,6 +162,11 @@ public class ModMain implements ModInitializer {
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> entries.accept(CRYSTAL_BRICKS_SLAB_ITEM));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> entries.accept(CRYSTAL_BRICKS_FENCE_ITEM));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> entries.accept(CRYSTAL_BRICKS_WALL_ITEM));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_SWORD));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_HELMET));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_CHESTPLATE));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_LEGGINGS));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_BOOTS));
         BiomeModifications.addFeature(BiomeSelectors.foundInOverworld(), GenerationStep.Decoration.UNDERGROUND_ORES, ResourceKey.create(Registries.PLACED_FEATURE, id("crystal_ore")));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.INGREDIENTS).register(entries -> entries.accept(SKY_CRYSTAL));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> entries.accept(CRYSTAL_ORE_ITEM));

@@ -48,7 +48,7 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
   "materials": [{{"identifier": "ruby", "label": "Ruby", "ingredient": "ruby or minecraft:diamond", "tools": ["sword","pickaxe","axe","shovel","hoe"],
                  "armor": ["helmet","chestplate","leggings","boots"], "durability": 1200, "mining_speed": 8.0, "attack_damage_bonus": 3.0,
                  "mining_level": "wood|stone|iron|diamond|netherite", "enchantability": 12, "armor_defense": [3, 8, 6, 3], "armor_durability": 30,
-                 "toughness": 2.0, "knockback_resistance": 0.0, "recipes": true}}],
+                 "toughness": 2.0, "knockback_resistance": 0.0, "recipes": true, "armor_style": "textured|3d (3d only when the user describes sculpted shapes: crests, pauldrons, horns)"}}],
   "foods": [{{"identifier": "ruby_apple", "label": "Ruby Apple", "nutrition": 6, "saturation": 1.2,
              "effects": [{{"effect": "minecraft:regeneration", "duration": 100, "amplifier": 0, "chance": 1.0}}], "always_edible": false, "fast": false}}],
   "sounds": [{{"identifier": "critter_chirp", "label": "Critter chirps", "category": "neutral"}}],

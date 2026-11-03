@@ -146,7 +146,7 @@ def mod_map(store: Store, pid: str) -> dict:
             edges.append({"from": c["id"], "to": dst, "kind": "related"})
     tasks = {t["id"]: t for t in store.tasks(pid)}
     for c in cards.values():
-        open_tasks = [t for t in tasks.values() if (":CHANGE:" + c["id"] + ":" in t["id"] + ":" or t["id"].endswith(":FEATURE:" + c["id"]) or t["id"].endswith(":MODEL:" + c["id"]) or t["id"].endswith(":ARMOR:" + c["id"])) and t["state"] not in ("DONE", "CANCELLED")]
+        open_tasks = [t for t in tasks.values() if (":CHANGE:" + c["id"] + ":" in t["id"] + ":" or t["id"].endswith(":FEATURE:" + c["id"]) or t["id"].endswith(":MODEL:" + c["id"]) or t["id"].endswith(":ARMOR:" + c["id"]) or (":ARMOR3D:" + c["id"]) in t["id"]) and t["state"] not in ("DONE", "CANCELLED")]
         c["open_tasks"] = [{"id": t["id"], "state": t["state"], "role": t["role"]} for t in open_tasks]
     layout = store.get_setting(pid, "map_layout", {}) or {}
     return {"project": pid, "cards": list(cards.values()), "edges": edges, "layout": layout, "edge_labels": EDGE_LABEL}

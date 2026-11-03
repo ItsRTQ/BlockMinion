@@ -155,3 +155,63 @@ class VariantsAndEnchantments(unittest.TestCase):
             out = add_enchantment_any(store, "v_mod", identifier="gem_skin", label="Gem Skin", kind="protection")
             self.assertTrue(out["generated"]); self.assertTrue((res / "data/v_mod/enchantment/gem_skin.json").is_file())
             self.assertEqual(json.loads((res / "data/v_mod/enchantment/gem_skin.json").read_text())["supported_items"], "#minecraft:enchantable/armor")
+
+
+class Armor3D(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name); self.store = Store(base / "state.sqlite")
+        p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop)
+        (base / "projects").mkdir()
+        from mod_orchestra.specedit import add_material
+        proj = workflow.new_project(self.store, name="A", mod_id="a3", package="com.x.a3", idea="items: ovis ingot")
+        add_material(self.store, "a3", identifier="ovis", label="Ovis", ingredient="ovis_ingot", tools=[], armor=["helmet", "chestplate"], armor_style="3d")
+        with self.assertRaisesRegex(InputError, "armor_style"):
+            add_material(self.store, "a3", identifier="bad", label="B", ingredient="ovis_ingot", tools=[], armor=["helmet"], armor_style="holographic")
+        workflow.plan_project(self.store, "a3"); workflow.approve_spec(self.store, "a3"); workflow.generate_project(self.store, "a3")
+        self.root = Path(proj["root"])
+
+    def test_generated_geckolib_armor(self):
+        j = self.root / "src/main/java/com/x/a3"
+        item = (j / "gear/OvisArmorItem.java").read_text(); rend = (j / "client/OvisArmorRenderer.java").read_text()
+        self.assertIn("extends ArmorItem implements GeoItem", item); self.assertIn("getGeoArmorRenderer", item); self.assertIn("new OvisArmorRenderer()", item)
+        self.assertIn('new DefaultedItemGeoModel<>(ResourceLocation.fromNamespaceAndPath(ModMain.MOD_ID, "armor/ovis"))', rend)
+        main = (j / "ModMain.java").read_text()
+        self.assertIn("new OvisArmorItem(OVIS_ARMOR_MATERIAL, ArmorItem.Type.HELMET", main); self.assertIn("import com.x.a3.gear.OvisArmorItem;", main)
+        a = self.root / "src/main/resources/assets/a3"
+        geo = json.loads((a / "geo/item/armor/ovis.geo.json").read_text())
+        self.assertEqual(geo["minecraft:geometry"][0]["description"]["identifier"], "geometry.ovis_armor")
+        self.assertEqual({b["name"] for b in geo["minecraft:geometry"][0]["bones"]}, set(__import__("mod_orchestra.armor3d", fromlist=["ARMOR_BONES"]).ARMOR_BONES))
+        self.assertIn("animation.ovis_armor.idle", json.loads((a / "animations/item/armor/ovis.animation.json").read_text())["animations"])
+        self.assertTrue((a / "textures/item/armor/ovis.png").is_file())
+        self.assertIn("geckolib", (self.root / "gradle.properties").read_text()); self.assertIn("geckolib", json.loads((self.root / "src/main/resources/fabric.mod.json").read_text())["depends"])
+
+    def test_designer_task_validation_and_install(self):
+        from mod_orchestra.armor3d import request_armor3d, validate_armor3d_files, install_armor3d, TEMPLATE_DIR
+        from mod_orchestra.dispatch import dispatch
+        from mod_orchestra.provider import FakeProvider
+        import shutil
+        out = request_armor3d(self.store, "a3", "ovis", notes="samurai crest")
+        self.assertEqual(out["task"], "a3:ARMOR3D:ovis"); self.assertTrue((self.root / "models/ovis_armor.bbmodel").is_file())
+        self.assertIn("armorHead, armorBody", self.store.task_instructions(out["task"]))
+        models = self.root / "models"
+        geo = json.loads((TEMPLATE_DIR / "armor_template.geo.json").read_text()); geo["minecraft:geometry"][0]["description"]["identifier"] = "geometry.ovis_armor"
+        (models / "ovis_armor.geo.json").write_text(json.dumps(geo))
+        (models / "ovis_armor.animation.json").write_text(json.dumps({"format_version": "1.8.0", "animations": {"animation.ovis_armor.idle": {"loop": True, "bones": {}}}}))
+        from mod_orchestra.textures import png_from_pixels
+        (models / "ovis_armor.png").write_bytes(png_from_pixels(64, 64, [[(1, 2, 3, 255)] * 64 for _ in range(64)]))
+        with self.assertRaisesRegex(InputError, "no render"):
+            validate_armor3d_files(self.root, "ovis", ("helmet", "chestplate"))
+        (models / "ovis_armor_render.png").write_bytes(png_from_pixels(16, 16, [[(1, 1, 1, 255)] * 16 for _ in range(16)]))
+        info = validate_armor3d_files(self.root, "ovis", ("helmet", "chestplate")); self.assertEqual(info["cubes"], 8)
+        # lose a required bone -> rejected
+        geo2 = json.loads(json.dumps(geo)); geo2["minecraft:geometry"][0]["bones"] = [b for b in geo2["minecraft:geometry"][0]["bones"] if b["name"] != "armorBody"]
+        (models / "ovis_armor.geo.json").write_text(json.dumps(geo2))
+        with self.assertRaisesRegex(InputError, "lost required armor bones"):
+            validate_armor3d_files(self.root, "ovis", ("helmet", "chestplate"))
+        (models / "ovis_armor.geo.json").write_text(json.dumps(geo))
+        h = {"task": out["task"], "status": "DONE", "scope": "s", "changed_files": [], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "m"}, "risks": [], "unknowns": [], "needs_user": [], "next_agent": "none"}
+        res = dispatch(self.store, "a3", task_id=out["task"], provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
+        self.assertEqual(res["task_state"], "DONE", res.get("error"))
+        self.assertEqual(len(res["handoff"]["armor3d"]["installed"]), 3); self.assertEqual(len(res["handoff"]["armor3d"]["previews"]), 1)
+        self.assertEqual(json.loads((self.root / "src/main/resources/assets/a3/geo/item/armor/ovis.geo.json").read_text())["minecraft:geometry"][0]["description"]["identifier"], "geometry.ovis_armor")

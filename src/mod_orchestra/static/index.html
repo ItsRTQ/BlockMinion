@@ -201,6 +201,7 @@
                   <label>Colour <div class="colour-row"><input type="color" id="mt-color" value="#c8102e"><input type="text" id="mt-color-hex" value="#c8102e" pattern="#[0-9a-fA-F]{6}"></div><small>Tints the generated tool and armor textures (you can upload your own art later).</small></label>
                   <label>Highlight <div class="colour-row"><input type="color" id="mt-accent" value="#ff6b7a"><input type="text" id="mt-accent-hex" value="#ff6b7a" pattern="#[0-9a-fA-F]{6}"></div><small>Light edge colour; leave as suggested if unsure.</small></label>
                 </div>
+                <label>Worn armor style <select id="mt-style"><option value="textured">Textured — painted on the player model (vanilla-like; designer paints the layers)</option><option value="3d">3D model — crests, pauldrons, tassets as a Blockbench model (GeckoLib; designer models it)</option></select><small>3D adds GeckoLib as a dependency and a designer step; textured is lighter and matches vanilla armor.</small></label>
                 <label class="check"><input type="checkbox" id="mt-recipes" checked><span>Generate the standard crafting recipes</span><small>Vanilla patterns: sword = 2 material + stick, pickaxe = 3 material + 2 sticks, helmet = 5 material, …</small></label>
                 <div class="actions"><button class="primary" type="submit">Add set</button></div>
               </form></div></div>
