@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "com.example.kitchensink.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "LivingEntityMixin"
+  ],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
