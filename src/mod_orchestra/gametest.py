@@ -67,6 +67,10 @@ def run_gametest(store: Store, pid: str, approval_id: str) -> dict:
     if not store.consume_approval(approval_id, pid, "run_gametests", args):
         raise StateError("An unexpired, one-use, specifically approved GameTest run is required")
     log = gametest_log_path(root)
+    run_dir = root / "build" / "gametest"; run_dir.mkdir(parents=True, exist_ok=True)
+    if not (run_dir / "server.properties").is_file():
+        (run_dir / "server.properties").write_text("online-mode=false\nsync-chunk-writes=false\n", encoding="utf8")  # the test server refuses to start without one
+    (run_dir / "eula.txt").write_text("eula=true\n", encoding="utf8")
     report = root / "build" / "gametest" / "junit.xml"
     if report.is_file():
         report.unlink()

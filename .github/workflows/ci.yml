@@ -138,6 +138,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          mkdir -p build/gametest && printf 'online-mode=false\nsync-chunk-writes=false\n' > build/gametest/server.properties && echo 'eula=true' > build/gametest/eula.txt
           timeout 900 ./gradlew runGametest --no-daemon --console=plain 2>&1 | tee gametest.log
           test -f build/gametest/junit.xml && python3 - <<'PY'
           import xml.etree.ElementTree as ET
