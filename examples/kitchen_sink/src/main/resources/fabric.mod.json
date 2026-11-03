@@ -23,5 +23,8 @@
     "fabric-api": "*",
     "geckolib": ">=4.7"
   },
-  "license": "ARR"
+  "license": "ARR",
+  "mixins": [
+    "kitchen_sink.mixins.json"
+  ]
 }

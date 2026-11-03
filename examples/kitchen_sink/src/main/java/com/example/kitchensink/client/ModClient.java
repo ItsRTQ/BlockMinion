@@ -9,6 +9,7 @@ public class ModClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClientUiExample.register();
+        MinimapExample.register();
         EntityRendererRegistry.register(ModMain.CRYSTAL_BOLT, ThrownItemRenderer::new);
         EntityRendererRegistry.register(ModMain.SKY_CRITTER, SkyCritterRenderer::new);
     }

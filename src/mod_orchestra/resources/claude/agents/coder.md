@@ -16,6 +16,8 @@ skills:
   - items
   - gametest
   - worldgen
+  - mixins
+  - minimap
 model: inherit
 ---
 
