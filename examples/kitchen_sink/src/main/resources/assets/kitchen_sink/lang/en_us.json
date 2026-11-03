@@ -1,4 +1,5 @@
 {
+  "biome.kitchen_sink.crystal_fields": "Crystal Fields",
   "block.kitchen_sink.crystal_bricks": "Crystal Bricks",
   "block.kitchen_sink.crystal_bricks_fence": "Crystal Bricks Fence",
   "block.kitchen_sink.crystal_bricks_slab": "Crystal Bricks Slab",
@@ -16,6 +17,7 @@
   "item.kitchen_sink.crystal_chestplate": "Crystal Chestplate",
   "item.kitchen_sink.crystal_helmet": "Crystal Helmet",
   "item.kitchen_sink.crystal_leggings": "Crystal Leggings",
+  "item.kitchen_sink.crystal_realm_key": "Crystal Realm Key",
   "item.kitchen_sink.crystal_sword": "Crystal Sword",
   "item.kitchen_sink.crystal_wand": "Crystal Wand",
   "item.kitchen_sink.crystal_wand.tooltip": "Right-click: fire a crystal bolt (5 mana)",
@@ -27,5 +29,7 @@
   "item.minecraft.tipped_arrow.effect.crystal_sight": "Arrow of Crystal Sight",
   "itemGroup.kitchen_sink.kitchen_sink_tab": "Kitchen Sink",
   "key.kitchen_sink.open": "Open Crystal Station",
+  "structure.kitchen_sink.crystal_realm": "Crystal Realm",
+  "structure.kitchen_sink.crystal_shrine": "Crystal Shrine",
   "subtitles.kitchen_sink.crystal_chime": "Crystal chimes"
 }

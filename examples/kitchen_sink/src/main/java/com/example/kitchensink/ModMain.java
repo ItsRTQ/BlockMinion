@@ -115,6 +115,9 @@ public class ModMain implements ModInitializer {
     public static final Item CRYSTAL_BOOTS = Registry.register(BuiltInRegistries.ITEM, id("crystal_boots"),
         new CrystalArmorItem(CRYSTAL_ARMOR_MATERIAL, ArmorItem.Type.BOOTS, new Item.Properties().durability(ArmorItem.Type.BOOTS.getDurability(15))));
 
+    // Dimension keys (right-click to travel)
+    public static final Item CRYSTAL_REALM_KEY = Registry.register(BuiltInRegistries.ITEM, id("crystal_realm_key"), new CrystalRealmKeyItem(new Item.Properties()));
+
     // Sounds: assets/<mod>/sounds/<id>.ogg (upload your .ogg; play with level.playSound(null, pos, X_SOUND, SoundSource.NEUTRAL, 1f, 1f))
     public static final SoundEvent CRYSTAL_CHIME_SOUND = Registry.register(BuiltInRegistries.SOUND_EVENT, id("crystal_chime"), SoundEvent.createVariableRangeEvent(id("crystal_chime")));
 
@@ -139,6 +142,7 @@ public class ModMain implements ModInitializer {
             output.accept(CRYSTAL_BRICKS_SLAB_ITEM);
             output.accept(CRYSTAL_BRICKS_FENCE_ITEM);
             output.accept(CRYSTAL_BRICKS_WALL_ITEM);
+            output.accept(CRYSTAL_REALM_KEY);
         })
         .build();
 
@@ -168,6 +172,7 @@ public class ModMain implements ModInitializer {
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_LEGGINGS));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept(CRYSTAL_BOOTS));
         BiomeModifications.addFeature(BiomeSelectors.foundInOverworld(), GenerationStep.Decoration.UNDERGROUND_ORES, ResourceKey.create(Registries.PLACED_FEATURE, id("crystal_ore")));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(entries -> entries.accept(CRYSTAL_REALM_KEY));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.INGREDIENTS).register(entries -> entries.accept(SKY_CRYSTAL));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> entries.accept(CRYSTAL_ORE_ITEM));
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> entries.accept(CRYSTAL_STATION_ITEM));

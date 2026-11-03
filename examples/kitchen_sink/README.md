@@ -14,7 +14,7 @@ stops compiling against the pinned Fabric/Minecraft versions, the build fails an
 | data | `DataExample` (player attachment, item component), `ModSaveData` (world data) |
 | effects | `EffectsExample` (custom MobEffect, potion + brewing, fuel) |
 | items | `CrystalWandItem` (use, cooldown, durability, tooltip), `CrystalBoltEntity` (thrown projectile + `ThrownItemRenderer`) |
-| generator | `crystal_bricks` stairs/slab/fence/wall, `crystal_edge` enchantment, `crystal_ore` worldgen, `crystal` set with **3D GeckoLib armor** (`gear/CrystalArmorItem`, `client/CrystalArmorRenderer`, `geo/item/armor/crystal.geo.json`) |
+| generator | `crystal_shrine` structure (NBT from text layers), `crystal_fields` biome, `crystal_realm` dimension + key item, `crystal_bricks` stairs/slab/fence/wall, `crystal_edge` enchantment, `crystal_ore` worldgen, `crystal` set with **3D GeckoLib armor** (`gear/CrystalArmorItem`, `client/CrystalArmorRenderer`, `geo/item/armor/crystal.geo.json`) |
 | gui | `BackpackItem` (vanilla chest menu), `StationMenu` + `client/StationScreen` |
 
 Press **B** in-game to open the example menu; `/sky give 3`; the HUD shows an example bar; the Backpack is in the Kitchen Sink tab.
