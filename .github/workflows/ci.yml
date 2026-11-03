@@ -144,8 +144,9 @@ jobs:
           import xml.etree.ElementTree as ET
           r = ET.parse("build/gametest/junit.xml").getroot()
           suites = [r] if r.tag == "testsuite" else list(r.iter("testsuite"))
-          t = sum(int(s.get("tests", 0)) for s in suites); f = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
-          print(f"::notice title=gametests::{t} run, {f} failed"); raise SystemExit(1 if f or t == 0 else 0)
+          cases = list(r.iter("testcase")); t = max(len(cases), sum(int(s.get("tests", 0) or 0) for s in suites))
+          f = sum(1 for c in cases if c.find("failure") is not None or c.find("error") is not None)
+          print(f"::notice title=gametests::{t} run, {f} failed: " + ", ".join(c.get("name", "?") for c in cases)); raise SystemExit(1 if f or t == 0 else 0)
           PY
       - name: Surface gametest failures as annotations
         if: failure()
@@ -154,7 +155,7 @@ jobs:
         run: |
           (grep -nE "FAILED|failed|Exception|error:|Caused by" gametest.log 2>/dev/null | head -20 || true) | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
           echo "::warning title=gametest lines::$(wc -l < gametest.log 2>/dev/null || echo 0) lines; last modified $(date -r gametest.log 2>/dev/null)"
-          (grep -niE "gametest|test server|batch|preparing|level|junit|structure|Finished|stopping|timed out|Running" gametest.log 2>/dev/null | tail -40 || true) | while IFS= read -r line; do echo "::warning title=gametest phase::${line:0:400}"; done
+          (grep -niE "gametest|test server|batch|preparing|junit|passed|failed|Finished|stopping|timed out|Running" gametest.log 2>/dev/null | tail -40 || true) | while IFS= read -r line; do echo "::warning title=gametest phase::${line:0:400}"; done
           (tail -n 15 gametest.log 2>/dev/null || true) | while IFS= read -r line; do echo "::warning title=gametest tail::${line:0:400}"; done
           true
       - name: Surface javac errors as annotations

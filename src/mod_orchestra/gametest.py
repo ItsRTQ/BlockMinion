@@ -41,14 +41,14 @@ def parse_junit(path: Path) -> dict:
     except ET.ParseError:
         return {"found": True, "tests": 0, "failures": 0, "errors": 0, "failed": [], "parse_error": True}
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-    tests = failures = errors = 0; failed = []
-    for s in suites:
-        tests += int(s.get("tests", 0) or 0); failures += int(s.get("failures", 0) or 0); errors += int(s.get("errors", 0) or 0)
-        for tc in s.iter("testcase"):
-            f = tc.find("failure") if tc.find("failure") is not None else tc.find("error")
-            if f is not None:
-                failed.append({"name": tc.get("name", "?"), "message": (f.get("message") or (f.text or "").strip())[:300]})
-    return {"found": True, "tests": tests, "failures": failures, "errors": errors, "failed": failed[:20]}
+    cases = list(root.iter("testcase"))
+    tests = max(len(cases), sum(int(s.get("tests", 0) or 0) for s in suites))   # Fabric's report may omit the counts
+    failed = []
+    for tc in cases:
+        f = tc.find("failure") if tc.find("failure") is not None else tc.find("error")
+        if f is not None:
+            failed.append({"name": tc.get("name", "?"), "message": (f.get("message") or (f.text or "").strip())[:300]})
+    return {"found": True, "tests": tests, "failures": len(failed), "errors": 0, "failed": failed[:20], "names": [c.get("name", "?") for c in cases][:50]}
 
 
 def run_gametest(store: Store, pid: str, approval_id: str) -> dict:
