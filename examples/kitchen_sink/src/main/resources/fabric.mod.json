@@ -11,6 +11,9 @@
     ],
     "client": [
       "com.example.kitchensink.client.ModClient"
+    ],
+    "fabric-gametest": [
+      "com.example.kitchensink.gametest.ModGameTests"
     ]
   },
   "depends": {

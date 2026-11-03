@@ -133,13 +133,38 @@ jobs:
           set -o pipefail
           chmod +x gradlew
           ./gradlew build --no-daemon --console=plain 2>&1 | tee build.log
+      - name: Run the generated GameTests headless (runGametest)
+        working-directory: examples/kitchen_sink
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/gametest && printf 'online-mode=false\nsync-chunk-writes=false\n' > build/gametest/server.properties && echo 'eula=true' > build/gametest/eula.txt
+          timeout 480 ./gradlew runGametest --no-daemon --console=plain 2>&1 < /dev/null | tee gametest.log
+          test -f build/gametest/junit.xml && python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          r = ET.parse("build/gametest/junit.xml").getroot()
+          suites = [r] if r.tag == "testsuite" else list(r.iter("testsuite"))
+          cases = list(r.iter("testcase")); t = max(len(cases), sum(int(s.get("tests", 0) or 0) for s in suites))
+          f = sum(1 for c in cases if c.find("failure") is not None or c.find("error") is not None)
+          print(f"::notice title=gametests::{t} run, {f} failed: " + ", ".join(c.get("name", "?") for c in cases)); raise SystemExit(1 if f or t == 0 else 0)
+          PY
+      - name: Surface gametest failures as annotations
+        if: failure()
+        working-directory: examples/kitchen_sink
+        shell: bash
+        run: |
+          (grep -nE "FAILED|failed|Exception|error:|Caused by" gametest.log 2>/dev/null | head -20 || true) | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
+          echo "::warning title=gametest lines::$(wc -l < gametest.log 2>/dev/null || echo 0) lines; last modified $(date -r gametest.log 2>/dev/null)"
+          (grep -niE "gametest|test server|batch|preparing|junit|passed|failed|Finished|stopping|timed out|Running" gametest.log 2>/dev/null | tail -40 || true) | while IFS= read -r line; do echo "::warning title=gametest phase::${line:0:400}"; done
+          (tail -n 15 gametest.log 2>/dev/null || true) | while IFS= read -r line; do echo "::warning title=gametest tail::${line:0:400}"; done
+          true
       - name: Surface javac errors as annotations
         if: failure()
         working-directory: examples/kitchen_sink
         shell: bash
         run: |
-          grep -nE "error:|FAILURE|Caused by|What went wrong" build.log | head -40 | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
-          grep -A3 -E "error:" build.log | head -80
+          (grep -nE "error:|FAILURE|Caused by|What went wrong" build.log 2>/dev/null | head -40 || true) | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
+          true
 
   blockbench-oracle:
     name: blockbench-mcp-safe vs upstream oracle (Linux only)

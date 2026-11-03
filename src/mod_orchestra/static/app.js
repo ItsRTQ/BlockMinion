@@ -114,7 +114,7 @@ function renderStepper(g) {
   g.stages.forEach((s, i) => { const d = el("div", null, "step " + (i < idx ? "done" : i === idx ? "current" : "")); d.append(el("div", (i < idx ? "✓ " : "") + (i + 1), "sn"), el("div", s, "st")); box.append(d); });
 }
 
-const POLICY_KEYS = ["approve_spec", "generate", "build", "server_smoke"];
+const POLICY_KEYS = ["approve_spec", "generate", "build", "gametest", "server_smoke"];
 async function savePolicy(pid) {
   const policy = Object.fromEntries(POLICY_KEYS.map(k => [k, qs("pol-" + k).checked]));
   try { await api(`/api/project/${pid}/autopilot`, policy); renderPolicySummary(policy); toast("Autopilot permissions saved.", "ok"); } catch (e) { toast(e.message, "bad"); }
@@ -151,6 +151,7 @@ function summarizeJob(job, r) {
   if (job === "dispatch") return `${r.role} on ${r.task} → ${r.task_state}${r.cost_usd ? " · " + fmtMoney(r.cost_usd) : ""}${r.duration_s ? " · " + fmtDur(r.duration_s) : ""}${r.error ? "\n" + r.error : ""}`;
   if (job === "orchestrate") return `Autopilot: ${r.runs.length} agent run(s)${r.gates?.length ? ", gates: " + r.gates.map(g => g.gate + (g.status ? " → " + g.status : "")).join(", ") : ""} · ${fmtMoney(r.total_cost_usd)}\nstopped because: ${r.stopped_because}`;
   if (job === "build") return `build → ${r.status} (exit ${r.exit_code}, ${fmtDur(r.duration_s)})${r.repair ? "\nrepair task opened: " + (r.repair.task || r.repair.error) : ""}`;
+  if (job === "gametest") return `GameTests: ${r.status} · ${r.junit?.tests ?? 0} test(s), ${r.junit?.failures ?? 0} failure(s)` + (r.junit?.failed?.length ? " — " + r.junit.failed.map(f => f.name).join(", ") : "") + (r.repair?.task ? ` · repair ${r.repair.task} opened` : "");
   if (job === "server-smoke") return `server smoke → ${r.status} (${fmtDur(r.duration_s)})${r.mod_errors?.length ? "\n" + r.mod_errors.join("\n") : ""}${r.repair ? "\nrepair task opened: " + (r.repair.task || r.repair.error) : ""}`;
   if (job === "run-client") return `client closed after ${fmtDur(r.duration_s)} · mod loaded: ${r.mod_loaded ? "yes" : "NO"} (${r.mods_loaded ?? "?"} mods)\nNow record what you saw in Verification.`;
   return JSON.stringify(r, null, 1).slice(0, 600);
@@ -178,6 +179,8 @@ function actionButton(p, s) {
     case "generate": return btn("Generate source", () => run(() => api(`/api/project/${id}/generate`, {}), "Source generated (unverified)."), "primary");
     case "request-build": return btn("Request build approval", () => run(() => api(`/api/project/${id}/request-build`, {}), "Approval requested. Grant it in Now."), "primary");
     case "request-smoke": return btn("Request server smoke", () => run(() => api(`/api/project/${id}/request-smoke`, {}), "Approval requested. Grant it in Now."), "primary");
+    case "request-gametest": return btn("Request GameTests", () => run(() => api(`/api/project/${id}/request-gametest`, {}), "Approval requested. Grant it in Now."), "secondary");
+    case "gametest": return btn("Run GameTests", async () => { await api(`/api/project/${id}/gametest`, s.payload); toast("GameTests running (2–5 min)…", "ok"); await openProject(id); }, "primary");
     case "decide": return btn(s.payload.grant ? "Grant" : "Deny", () => run(() => api(`/api/project/${id}/decide`, s.payload), s.payload.grant ? "Granted. Run it from Now." : "Denied."), "primary");
     case "build": return btn("Run trusted build", async () => { await api(`/api/project/${id}/build-bg`, s.payload); toast("Build started.", "ok"); await openProject(id); }, "primary");
     case "server-smoke": return btn("Run server smoke", async () => { await api(`/api/project/${id}/server-smoke`, s.payload); toast("Server starting…", "ok"); await openProject(id); }, "primary");

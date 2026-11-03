@@ -301,7 +301,7 @@ MAX_AUTO_RETRIES = 1
 HUMAN_NEEDED = ("WAITING_USER", "BLOCKED", "FAILED")
 
 
-AUTOPILOT_DEFAULT = {"approve_spec": False, "generate": False, "build": False, "server_smoke": False}
+AUTOPILOT_DEFAULT = {"approve_spec": False, "generate": False, "build": False, "gametest": False, "server_smoke": False}
 
 
 def autopilot_policy(store: Store, pid: str) -> dict:
@@ -338,6 +338,14 @@ def _autopilot_gate(store: Store, pid: str, policy: dict, gates: list[dict]) -> 
         store.add_event(pid, "controller", "AUTOPILOT_GATE", {"gate": "build", "status": res["status"]})
         if res["status"] != "BUILD_PASS" and (res.get("repair") or {}).get("exhausted"):
             return False, "build failed and the repair loop is exhausted: " + str(res["repair"].get("error"))
+        return True, ""
+    if stage == "server" and policy.get("gametest") and "GAMETEST_PASS" not in g.get("levels", []):
+        from .gametest import request_gametest, run_gametest
+        a = request_gametest(store, pid); store.decide_approval(a["id"], True)
+        res = run_gametest(store, pid, a["id"]); gates.append({"gate": "gametest", "status": res["status"]})
+        store.add_event(pid, "controller", "AUTOPILOT_GATE", {"gate": "gametest", "status": res["status"]})
+        if res["status"] != "GAMETEST_PASS" and (res.get("repair") or {}).get("exhausted"):
+            return False, "GameTests failed and the repair loop is exhausted"
         return True, ""
     if stage == "server":
         if not policy["server_smoke"]:

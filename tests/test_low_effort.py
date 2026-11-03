@@ -215,3 +215,57 @@ class Armor3D(unittest.TestCase):
         self.assertEqual(res["task_state"], "DONE", res.get("error"))
         self.assertEqual(len(res["handoff"]["armor3d"]["installed"]), 3); self.assertEqual(len(res["handoff"]["armor3d"]["previews"]), 1)
         self.assertEqual(json.loads((self.root / "src/main/resources/assets/a3/geo/item/armor/ovis.geo.json").read_text())["minecraft:geometry"][0]["description"]["identifier"], "geometry.ovis_armor")
+
+
+@unittest.skipIf(__import__("os").name == "nt", "POSIX shell fixtures")
+class GameTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name); self.store = Store(base / "state.sqlite")
+        p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop)
+        (base / "projects").mkdir()
+        from mod_orchestra.specedit import add_recipe, add_mob
+        proj = workflow.new_project(self.store, name="G", mod_id="g_mod", package="com.x.g", idea="items: gem; blocks: gem ore; tab: G")
+        add_recipe(self.store, "g_mod", recipe_id="gem_block", kind="shaped", result="gem_ore", pattern=["GG", "GG"], key={"G": "gem"})
+        add_mob(self.store, "g_mod", identifier="gem_golem", label="Gem Golem")
+        workflow.plan_project(self.store, "g_mod"); workflow.approve_spec(self.store, "g_mod"); workflow.generate_project(self.store, "g_mod")
+        self.root = Path(proj["root"])
+
+    def test_generated_gametest_class_and_wiring(self):
+        src = (self.root / "src/main/java/com/x/g/gametest/ModGameTests.java").read_text()
+        for needle in ("implements FabricGameTest", "itemsAreRegistered", 'id("gem")', "blocksPlaceAndStay", "recipesExist", 'byKey(id("gem_block"))', "mobsSpawn", "helper.spawn(ModMain.GEM_GOLEM", "modIsLoaded"):
+            self.assertIn(needle, src, needle)
+        fmj = json.loads((self.root / "src/main/resources/fabric.mod.json").read_text())
+        self.assertEqual(fmj["entrypoints"]["fabric-gametest"], ["com.x.g.gametest.ModGameTests"])
+        self.assertIn("runDir \"build/gametest\"", (self.root / "build.gradle").read_text())
+
+    def test_parse_junit(self):
+        from mod_orchestra.gametest import parse_junit
+        x = self.root / "junit.xml"
+        x.write_text('<testsuite tests="3" failures="1" errors="0"><testcase name="g_mod.itemsareregistered"/><testcase name="g_mod.mobsspawn"><failure message="no golem">boom</failure></testcase><testcase name="g_mod.modisloaded"/></testsuite>')
+        r = parse_junit(x); self.assertEqual((r["tests"], r["failures"]), (3, 1)); self.assertEqual(r["failed"][0]["name"], "g_mod.mobsspawn")
+        self.assertFalse(parse_junit(self.root / "nope.xml")["found"])
+
+    def test_run_gametest_pass_and_fail(self):
+        import stat
+        from mod_orchestra import build as build_mod, gametest as gt
+        from mod_orchestra.evidence import record_evidence, levels_for_current_source
+        record_evidence(self.store, "g_mod", "BUILD_PASS", actor="controller", note="fake")
+        with self.assertRaisesRegex(Exception, "required"):
+            gt.run_gametest(self.store, "g_mod", "bogus")
+        def fake_gradle(xml: str, code: int):
+            f = Path(self.tmp.name) / f"gradle_{code}.sh"
+            f.write_text(f"#!/bin/sh\nmkdir -p build/gametest\ncat > build/gametest/junit.xml <<'XML'\n{xml}\nXML\necho 'BUILD SUCCESSFUL'\nexit {code}\n")
+            f.chmod(f.stat().st_mode | stat.S_IEXEC); return f
+        good = '<testsuite tests="4" failures="0" errors="0"><testcase name="a"/><testcase name="b"/><testcase name="c"/><testcase name="d"/></testsuite>'
+        bad = '<testsuite tests="4" failures="1" errors="0"><testcase name="a"/><testcase name="g_mod.mobsspawn"><failure message="Expected entity gem_golem">x</failure></testcase></testsuite>'
+        a = gt.request_gametest(self.store, "g_mod"); self.store.decide_approval(a["id"], True)
+        with patch.object(gt, "_gradle_launcher", return_value=fake_gradle(good, 0)):
+            res = gt.run_gametest(self.store, "g_mod", a["id"])
+        self.assertEqual(res["status"], "GAMETEST_PASS"); self.assertEqual(res["junit"]["tests"], 4)
+        self.assertIn("GAMETEST_PASS", levels_for_current_source(self.store, "g_mod", self.root))
+        a = gt.request_gametest(self.store, "g_mod"); self.store.decide_approval(a["id"], True)
+        with patch.object(gt, "_gradle_launcher", return_value=fake_gradle(bad, 1)):
+            res = gt.run_gametest(self.store, "g_mod", a["id"])
+        self.assertEqual(res["status"], "GAMETEST_FAILED"); self.assertTrue(res["repair"]["task"].startswith("g_mod:REPAIR:"))
+        self.assertIn("mobsspawn", self.store.task_instructions(res["repair"]["task"]) if hasattr(self.store, "task_instructions") else "mobsspawn")

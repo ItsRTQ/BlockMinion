@@ -127,6 +127,8 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("remove-ore", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--block", required=True)
     a = sub.add_parser("set-tab", help="USER-ONLY (before generate): give the mod its own creative tab")
     a.add_argument("project"); a.add_argument("--label", default=None, help="omit to remove the tab"); a.add_argument("--icon", default=None, help="local item/block id")
+    a = sub.add_parser("request-gametest", help="USER-ONLY: ask approval to run the mod's GameTests (headless test server)"); a.add_argument("project")
+    a = sub.add_parser("gametest", help="USER-ONLY: run GameTests with an approval id"); a.add_argument("project"); a.add_argument("--approval-id", required=True)
     a = sub.add_parser("request-smoke", help="USER-ONLY: request a one-use approval to run the dedicated server with the built mod")
     a.add_argument("project")
     a = sub.add_parser("server-smoke", help="USER-ONLY: run the dedicated server smoke (needs a granted approval); records SERVER_BOOT_PASS or opens a repair task")
@@ -329,6 +331,12 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "set-tab":
         from .specedit import set_tab
         return set_tab(store, args.project, label=args.label, icon=args.icon)
+    if args.command == "request-gametest":
+        from .gametest import request_gametest
+        return request_gametest(store, args.project)
+    if args.command == "gametest":
+        from .gametest import run_gametest
+        return run_gametest(store, args.project, args.approval_id)
     if args.command == "request-smoke":
         from .smoke import request_smoke
         return request_smoke(store, args.project)

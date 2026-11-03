@@ -10,6 +10,15 @@ loom {
             sourceSet sourceSets.main
         }
     }
+    runs {
+        gametest {
+            server()
+            name "Game Test"
+            vmArg "-Dfabric-api.gametest"
+            vmArg "-Dfabric-api.gametest.report-file=${layout.buildDirectory.get()}/gametest/junit.xml"
+            runDir "build/gametest"
+        }
+    }
 }
 
 repositories {

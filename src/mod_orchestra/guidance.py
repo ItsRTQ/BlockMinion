@@ -93,6 +93,15 @@ def guidance(store: Store, pid: str) -> dict:
             step("Request a build approval", "user", action="request-build", detail="One-use approval; Gradle is executable project code.")
         step("Or look at it in the game now", "user", action="run-client", detail="runClient compiles the current source and opens Minecraft with only this mod. The trusted build is still needed for evidence.")
     elif stage == "server":
+        gt_granted = [a for a in granted if a["kind"] == "run_gametests"]
+        gt_pending = [a for a in pending if a["kind"] == "run_gametests"]
+        if "GAMETEST_PASS" not in levels:
+            if gt_granted:
+                step("Run the mod's GameTests", "controller", action="gametest", payload={"approval_id": gt_granted[0]["id"]}, detail="Headless test server; generated checks plus any tests written for custom features. Records GAMETEST_PASS or opens a repair.")
+            elif gt_pending:
+                step("Grant the pending GameTest approval", "user", action="decide", payload={"approval_id": gt_pending[0]["id"], "grant": True}, detail=gt_pending[0]["description"])
+            else:
+                step("Request a GameTest run (optional, cheap)", "user", action="request-gametest", detail="Runs the generated checks (items registered, blocks place, mobs spawn, recipes load) and the coder's tests for custom features in a headless server.")
         smoke_granted = [a for a in granted if a["kind"] == "run_dedicated_server_smoke"]
         smoke_pending = [a for a in pending if a["kind"] == "run_dedicated_server_smoke"]
         if smoke_granted:

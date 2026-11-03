@@ -172,6 +172,12 @@ def serve(store: Store, port: int = 8765) -> None:
                                                                                     max_cost_usd=float(payload.get("max_cost_usd", 5.0))))
                     if op == "build-bg": return start_job(pid, "build", lambda: build_project(store, pid, payload["approval_id"]))
                     if op == "request-smoke": return request_smoke(store, pid)
+                    if op == "request-gametest":
+                        from .gametest import request_gametest
+                        return request_gametest(store, pid)
+                    if op == "gametest":
+                        from .gametest import run_gametest
+                        return start_job(pid, "gametest", lambda: run_gametest(store, pid, payload["approval_id"]))
                     if op == "server-smoke": return start_job(pid, "server-smoke", lambda: server_smoke(store, pid, payload["approval_id"]))
                     if op == "run-client": return start_job(pid, "run-client", lambda: run_client(store, pid))
                     if op == "answer": return answer(store, pid, str(payload.get("text", "")))

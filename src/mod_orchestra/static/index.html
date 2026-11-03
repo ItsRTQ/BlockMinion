@@ -63,6 +63,7 @@
             <label class="check"><input type="checkbox" id="pol-approve_spec"><span>Approve the spec</span><small>Only when the interpreter has no questions.</small></label>
             <label class="check"><input type="checkbox" id="pol-generate"><span>Generate the source</span><small>Deterministic generator, never overwrites.</small></label>
             <label class="check"><input type="checkbox" id="pol-build"><span>Run trusted builds</span><small>Requests, grants and runs Gradle through the broker; failures go to the repair loop.</small></label>
+            <label class="check"><input type="checkbox" id="pol-gametest"><span>Run the GameTests</span><small>Headless test server after a passing build; failures go to the repair loop.</small></label>
             <label class="check"><input type="checkbox" id="pol-server_smoke"><span>Run the dedicated-server smoke</span><small>Accepts the Minecraft EULA in the isolated run/ folder, boots, checks, stops.</small></label>
           </div>
           <div class="actions"><button type="button" class="secondary mini" id="pol-all">Allow everything up to the client</button><button type="button" class="secondary mini" id="pol-none">Ask me for every gate</button></div>

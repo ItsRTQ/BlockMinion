@@ -108,7 +108,11 @@
       "Bash(craftctl set-variants*)",
       "Bash(craftctl add-enchantment*)",
       "PowerShell(craftctl set-variants*)",
-      "PowerShell(craftctl add-enchantment*)"
+      "PowerShell(craftctl add-enchantment*)",
+      "Bash(craftctl request-gametest*)",
+      "Bash(craftctl gametest*)",
+      "PowerShell(craftctl request-gametest*)",
+      "PowerShell(craftctl gametest*)"
     ]
   },
   "hooks": {
