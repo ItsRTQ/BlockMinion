@@ -14,6 +14,7 @@ skills:
   - data
   - effects
   - items
+  - gametest
 model: inherit
 ---
 

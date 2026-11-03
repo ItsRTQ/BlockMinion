@@ -133,6 +133,25 @@ jobs:
           set -o pipefail
           chmod +x gradlew
           ./gradlew build --no-daemon --console=plain 2>&1 | tee build.log
+      - name: Run the generated GameTests headless (runGametest)
+        working-directory: examples/kitchen_sink
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 900 ./gradlew runGametest --no-daemon --console=plain 2>&1 | tee gametest.log
+          test -f build/gametest/junit.xml && python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          r = ET.parse("build/gametest/junit.xml").getroot()
+          suites = [r] if r.tag == "testsuite" else list(r.iter("testsuite"))
+          t = sum(int(s.get("tests", 0)) for s in suites); f = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
+          print(f"gametests: {t} run, {f} failed"); raise SystemExit(1 if f or t == 0 else 0)
+          PY
+      - name: Surface gametest failures as annotations
+        if: failure()
+        working-directory: examples/kitchen_sink
+        shell: bash
+        run: |
+          grep -nE "FAILED|failed|Exception|error:" gametest.log build.log 2>/dev/null | head -40 | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
       - name: Surface javac errors as annotations
         if: failure()
         working-directory: examples/kitchen_sink

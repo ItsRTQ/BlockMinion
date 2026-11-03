@@ -232,7 +232,8 @@ def request_feature(store: Store, pid: str, *, title: str, description: str, acc
         instructions += ["Acceptance criteria (the user will check each one in-game):"] + [f"- {a}" for a in card["acceptance"]]
     if card["derived_from"]:
         instructions += ["Builds on: " + ", ".join(card["derived_from"]) + " (see the mod map in your packet for what they are and where they live)."]
-    instructions += ["Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item.",
+    instructions += ["Write one @GameTest per acceptance criterion that can be exercised server-side in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
+                     "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item.",
                      "Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
                      "In your handoff include a `card` object: {\"files\": [every file you created or edited], \"description\": \"one paragraph of what you built and how it works\", \"produces\": [ids of new content you added]}.",
                      "If the feature needs something the user must decide (keybind, GUI size, which block), report WAITING_USER with the question."]
@@ -262,7 +263,7 @@ def request_change(store: Store, pid: str, cid: str, request: str) -> dict:
                     "Files that implement it (start here, do not go through the whole project): " + (", ".join(card.get("files", [])) or "see the mod map"),
                     "Relations: " + ("; ".join(f"{e['from']} --{EDGE_LABEL.get(e['kind'], e['kind'])}--> {e['to']}" for e in related) or "none"),
                     "", "REQUESTED CHANGE:", request[:1500], "",
-                    "Make exactly this change and nothing else. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
+                    "Make exactly this change and nothing else. If the card has acceptance criteria or a GameTest covering it, update that test. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
                     "In your handoff include a `card` object with `files` (every file you edited) and a one-sentence `description` of the new behaviour."]
     if card["kind"] in ("item", "block", "mob", "material", "food"):
         instructions.append("Note: this content is generated from the spec. Edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")

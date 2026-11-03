@@ -14,7 +14,7 @@ from pathlib import Path
 from .state import Store, StateError
 from .fabric import validate_generated
 
-LEVELS = ("BUILD_PASS", "CLIENT_BOOT_PASS", "SERVER_BOOT_PASS", "CONTENT_VERIFIED")
+LEVELS = ("BUILD_PASS", "GAMETEST_PASS", "CLIENT_BOOT_PASS", "SERVER_BOOT_PASS", "CONTENT_VERIFIED")
 USER_ONLY_LEVELS = ("CLIENT_BOOT_PASS", "CONTENT_VERIFIED")  # SERVER_BOOT_PASS may come from craftctl server-smoke (controller observed the log)
 GAME_LEVELS = frozenset(USER_ONLY_LEVELS)
 # Project statuses in which evidence may be attached (source must exist and be unchanged).

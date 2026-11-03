@@ -18,6 +18,7 @@ from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
+from .gametest_gen import gametests_java
 from .armor3d import armor3d_materials, armor_item_java, armor_renderer_java, armor3d_assets, cls as a3cls
 from .variants import variant_java, variant_resources, variant_recipes, variant_lang, variant_tag_members, enchantment_json
 from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
@@ -194,6 +195,15 @@ loom {{
             sourceSet sourceSets.main
         }}
     }}
+    runs {{
+        gametest {{
+            server()
+            name "Game Test"
+            vmArg "-Dfabric-api.gametest"
+            vmArg "-Dfabric-api.gametest.report-file=${{layout.buildDirectory.get()}}/gametest/junit.xml"
+            runDir "build/gametest"
+        }}
+    }}
 }}
 
 {gecko_repo}dependencies {{
@@ -355,7 +365,8 @@ Your idea: {spec.idea}
     put("src/main/resources/fabric.mod.json", json.dumps({
         "schemaVersion": 1, "id": spec.mod_id, "version": "${version}", "name": spec.name,
         "description": "Generated Fabric starter from a user idea", "environment": "*",
-        "entrypoints": {"main": [spec.package + ".ModMain"], **({"client": [spec.package + ".client.ModClient"]} if spec.mobs else {})},
+        "entrypoints": {"main": [spec.package + ".ModMain"], **({"client": [spec.package + ".client.ModClient"]} if spec.mobs else {}),
+                        "fabric-gametest": [spec.package + ".gametest.ModGameTests"]},
         "depends": {"fabricloader": ">=" + p["fabric_loader"], "minecraft": "~1.21.1", "java": ">=21", "fabric-api": "*",
                     **({"geckolib": ">=4.7"} if needs_geckolib(spec) else {})},
         "license": "ARR",
@@ -437,6 +448,7 @@ Your idea: {spec.idea}
             put(f"{res}/models/item/{m.identifier}_spawn_egg.json", json.dumps({"parent": "minecraft:item/template_spawn_egg"}, indent=2) + "\n")
             lang[f"entity.{spec.mod_id}.{m.identifier}"] = m.label
             lang[f"item.{spec.mod_id}.{m.identifier}_spawn_egg"] = f"{m.label} Spawn Egg"
+    put(f"{java_dir}/gametest/ModGameTests.java", gametests_java(spec))
     for m in armor3d_materials(spec):
         put(f"{java_dir}/gear/{a3cls(m.identifier)}ArmorItem.java", armor_item_java(spec, m))
         put(f"{java_dir}/client/{a3cls(m.identifier)}ArmorRenderer.java", armor_renderer_java(spec, m))
