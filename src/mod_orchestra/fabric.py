@@ -18,6 +18,7 @@ from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
+from .armor3d import armor3d_materials, armor_item_java, armor_renderer_java, armor3d_assets, cls as a3cls
 from .variants import variant_java, variant_resources, variant_recipes, variant_lang, variant_tag_members, enchantment_json
 from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
@@ -174,10 +175,10 @@ archives_base_name={spec.mod_id}
 
 # Dependencies
 fabric_api_version={p['fabric_api']}
-{"geckolib_version=" + GECKOLIB_VERSION if spec.mobs else ""}
+{"geckolib_version=" + GECKOLIB_VERSION if needs_geckolib(spec) else ""}
 """)
     gecko_repo, gecko_dep = "", ""
-    if spec.mobs:
+    if needs_geckolib(spec):
         repo_block, dep_line = gradle_dependency_lines()
         gecko_repo = "repositories {\n" + repo_block + "\n}\n\n"
         gecko_dep = dep_line + "\n"
@@ -356,7 +357,7 @@ Your idea: {spec.idea}
         "description": "Generated Fabric starter from a user idea", "environment": "*",
         "entrypoints": {"main": [spec.package + ".ModMain"], **({"client": [spec.package + ".client.ModClient"]} if spec.mobs else {})},
         "depends": {"fabricloader": ">=" + p["fabric_loader"], "minecraft": "~1.21.1", "java": ">=21", "fabric-api": "*",
-                    **({"geckolib": ">=4.7"} if spec.mobs else {})},
+                    **({"geckolib": ">=4.7"} if needs_geckolib(spec) else {})},
         "license": "ARR",
     }, indent=2) + "\n")
     res = f"src/main/resources/assets/{spec.mod_id}"
@@ -436,6 +437,11 @@ Your idea: {spec.idea}
             put(f"{res}/models/item/{m.identifier}_spawn_egg.json", json.dumps({"parent": "minecraft:item/template_spawn_egg"}, indent=2) + "\n")
             lang[f"entity.{spec.mod_id}.{m.identifier}"] = m.label
             lang[f"item.{spec.mod_id}.{m.identifier}_spawn_egg"] = f"{m.label} Spawn Egg"
+    for m in armor3d_materials(spec):
+        put(f"{java_dir}/gear/{a3cls(m.identifier)}ArmorItem.java", armor_item_java(spec, m))
+        put(f"{java_dir}/client/{a3cls(m.identifier)}ArmorRenderer.java", armor_renderer_java(spec, m))
+    for rel, data in armor3d_assets(spec).items():
+        put("src/main/resources/" + rel, data)
     put(f"{res}/lang/en_us.json", json.dumps(lang, indent=2, sort_keys=True) + "\n")
     manifest = {"generator": "mod-orchestra 0.1.0", "generator_version": GENERATOR_VERSION, "status": "GENERATED_UNVERIFIED", "profile": p["id"], "files": written.copy(), "build_verified": False, "runtime_verified": False}
     put(".mod-orchestra/generation-manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -447,6 +453,10 @@ def feature_texture(spec: Spec, feature) -> bytes:
     shape = feature.shape or ("block" if feature.kind == "block" else "gem")
     base, acc = material_colors(spec.mod_id + "/" + feature.identifier, feature.color or None)
     return tinted_item_png(shape, base, acc)
+
+
+def needs_geckolib(spec: Spec) -> bool:
+    return bool(spec.mobs) or bool(armor3d_materials(spec))
 
 
 def block_tags(spec: Spec) -> dict[str, list[str]]:

@@ -234,6 +234,9 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import update_card
                         return update_card(store, pid, str(payload.get("card", "")), by="user", description=payload.get("description"),
                                            acceptance=payload.get("acceptance"), note=payload.get("note") or "edited by the user")
+                    if op == "armor3d-design":
+                        from .armor3d import request_armor3d
+                        return request_armor3d(store, pid, str(payload.get("material", "")), str(payload.get("notes") or ""))
                     if op == "armor-design":
                         from .models import request_armor_design
                         return request_armor_design(store, pid, str(payload.get("material", "")), str(payload.get("notes") or ""))

@@ -130,6 +130,7 @@ class Material:
     recipes: bool = True                  # standard crafting patterns
     color: str = ""                       # optional hex tint for tool/armor textures (default: stable hue from identifier)
     accent: str = ""                      # optional hex highlight
+    armor_style: str = "textured"         # textured (vanilla layers) | 3d (GeckoLib armor model designed in Blockbench)
 
     def item_ids(self) -> list[str]:
         return [f"{self.identifier}_{k}" for k in self.tools] + [f"{self.identifier}_{k}" for k in self.armor]
@@ -353,6 +354,8 @@ def validate_material(spec: "Spec", m: Material) -> None:
         raise InputError("A material needs at least one tool or armor piece")
     if m.mining_level not in MINING_LEVELS:
         raise InputError(f"mining_level must be one of {MINING_LEVELS}")
+    if m.armor_style not in ("textured", "3d"):
+        raise InputError("armor_style must be textured or 3d")
     if not (1 <= m.durability <= 10000) or not (0.5 <= m.mining_speed <= 50) or not (0 <= m.attack_damage_bonus <= 50) or not (0 <= m.enchantability <= 50):
         raise InputError("Material numbers out of range (durability 1-10000, mining_speed 0.5-50, attack bonus 0-50, enchantability 0-50)")
     if len(m.armor_defense) != 4 or any(not (0 <= int(d) <= 20) for d in m.armor_defense) or not (1 <= m.armor_durability <= 100):

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XXX",
+    "X X"
+  ],
+  "key": {
+    "X": {
+      "item": "kitchen_sink:sky_crystal"
+    }
+  },
+  "result": {
+    "id": "kitchen_sink:crystal_helmet",
+    "count": 1
+  }
+}

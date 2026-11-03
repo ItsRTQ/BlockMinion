@@ -74,9 +74,13 @@ def build_envelope(store: Store, pid: str, task: dict) -> TaskEnvelope:
     elif ":SPRITES:" in task["id"]:
         from .models import SPRITES_INSTRUCTIONS, theme_block
         extra = SPRITES_INSTRUCTIONS + theme_block(store, pid)
+    elif ":ARMOR3D:" in task["id"]:
+        from .armor3d import ARMOR3D_INSTRUCTIONS
+        from .models import theme_block
+        extra = ARMOR3D_INSTRUCTIONS.replace("<material>", task["id"].split(":ARMOR3D:")[1].split(":")[0]) + theme_block(store, pid)
     elif ":ARMOR:" in task["id"]:
         from .models import ARMOR_INSTRUCTIONS, theme_block
-        extra = ARMOR_INSTRUCTIONS.replace("<material>", task["id"].split(":ARMOR:")[1]) + theme_block(store, pid)
+        extra = ARMOR_INSTRUCTIONS.replace("<material>", task["id"].split(":ARMOR:")[1].split(":")[0]) + theme_block(store, pid)
     elif ":MODEL:" in task["id"]:
         from .models import MODEL_INSTRUCTIONS, theme_block
         from .feedback import feedback_context
@@ -131,6 +135,20 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         except (InputError, StateError) as exc:
             store.add_event(pid, "controller", "CARD_UPDATE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
         _reopen_build(store, pid)
+    if ":ARMOR3D:" in task["id"] and status == "DONE":
+        from .armor3d import install_armor3d
+        from .validation import InputError
+        material = task["id"].split(":ARMOR3D:")[1].split(":")[0]
+        try:
+            a3 = install_armor3d(store, pid, task["id"], material, run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D armor deliverables rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"armor3d": a3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(a3["installed"]))
     if ":ARMOR:" in task["id"] and status == "DONE":
         from .models import install_armor_design
         from .validation import InputError

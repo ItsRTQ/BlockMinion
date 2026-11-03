@@ -7,6 +7,7 @@ cmds = [
  'craftctl set-variants kitchen_sink --block crystal_bricks --variants stairs slab fence wall',
  'craftctl add-enchantment kitchen_sink --id crystal_edge --label "Crystal Edge" --kind damage',
  'craftctl add-ore kitchen_sink --block crystal_ore --vein-size 8 --veins-per-chunk 6 --min-y -64 --max-y 32',
+ 'craftctl add-material kitchen_sink --id crystal --label Crystal --ingredient sky_crystal --tools sword --armor helmet chestplate leggings boots --armor-style 3d --color "#4fd1ff"',
  'craftctl add-sound kitchen_sink --id crystal_chime --label "Crystal chimes" --category block',
  'craftctl add-mob kitchen_sink --id sky_critter --label "Sky Critter" --spawn overworld --spawn-weight 8 --spawn-group 2 4',
  'craftctl plan kitchen_sink', 'craftctl approve-spec kitchen_sink', 'craftctl generate kitchen_sink']

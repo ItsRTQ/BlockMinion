@@ -105,6 +105,8 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--mining-level", choices=["wood", "stone", "iron", "diamond", "netherite"], default=None); a.add_argument("--enchantability", type=int, default=None)
     a.add_argument("--defense", nargs=4, type=int, default=None, metavar=("HELMET", "CHEST", "LEGS", "BOOTS")); a.add_argument("--armor-durability", type=int, default=None)
     a.add_argument("--toughness", type=float, default=None); a.add_argument("--knockback-resistance", type=float, default=None); a.add_argument("--no-recipes", action="store_true")
+    a.add_argument("--armor-style", choices=["textured", "3d"], default=None, help="3d = GeckoLib armor model designed in Blockbench")
+    a.add_argument("--color", default=None, help="#RRGGBB tint for generated textures"); a.add_argument("--accent", default=None)
     a = sub.add_parser("remove-material", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("add-food", help="USER-ONLY (before generate): an edible item")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
@@ -294,7 +296,7 @@ def dispatch(args: argparse.Namespace) -> object:
         return add_material(store, args.project, identifier=args.id, label=args.label, ingredient=args.ingredient, tools=args.tools, armor=args.armor,
                             durability=args.durability, mining_speed=args.mining_speed, attack_damage_bonus=args.attack_bonus, mining_level=args.mining_level,
                             enchantability=args.enchantability, armor_defense=tuple(args.defense) if args.defense else None, armor_durability=args.armor_durability,
-                            toughness=args.toughness, knockback_resistance=args.knockback_resistance, recipes=(not args.no_recipes))
+                            toughness=args.toughness, knockback_resistance=args.knockback_resistance, recipes=(not args.no_recipes), armor_style=args.armor_style, color=args.color, accent=args.accent)
     if args.command == "remove-material":
         from .specedit import remove_material
         return remove_material(store, args.project, args.id)
