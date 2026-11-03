@@ -152,14 +152,16 @@ jobs:
         working-directory: examples/kitchen_sink
         shell: bash
         run: |
-          grep -nE "FAILED|failed|Exception|error:" gametest.log build.log 2>/dev/null | head -40 | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
+          (grep -nE "FAILED|failed|Exception|error:|Caused by" gametest.log 2>/dev/null | head -20 || true) | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
+          (tail -n 40 gametest.log 2>/dev/null || true) | while IFS= read -r line; do echo "::warning title=gametest tail::${line:0:400}"; done
+          true
       - name: Surface javac errors as annotations
         if: failure()
         working-directory: examples/kitchen_sink
         shell: bash
         run: |
-          grep -nE "error:|FAILURE|Caused by|What went wrong" build.log | head -40 | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
-          grep -A3 -E "error:" build.log | head -80
+          (grep -nE "error:|FAILURE|Caused by|What went wrong" build.log 2>/dev/null | head -40 || true) | while IFS= read -r line; do echo "::error title=kitchen_sink::${line:0:400}"; done
+          true
 
   blockbench-oracle:
     name: blockbench-mcp-safe vs upstream oracle (Linux only)
