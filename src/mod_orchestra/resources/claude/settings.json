@@ -112,7 +112,13 @@
       "Bash(craftctl request-gametest*)",
       "Bash(craftctl gametest*)",
       "PowerShell(craftctl request-gametest*)",
-      "PowerShell(craftctl gametest*)"
+      "PowerShell(craftctl gametest*)",
+      "Bash(craftctl add-structure*)",
+      "Bash(craftctl add-biome*)",
+      "Bash(craftctl add-dimension*)",
+      "PowerShell(craftctl add-structure*)",
+      "PowerShell(craftctl add-biome*)",
+      "PowerShell(craftctl add-dimension*)"
     ]
   },
   "hooks": {

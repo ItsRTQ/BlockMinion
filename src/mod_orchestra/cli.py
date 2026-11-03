@@ -125,6 +125,19 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--vein-size", type=int, default=9); a.add_argument("--veins-per-chunk", type=int, default=8)
     a.add_argument("--min-y", type=int, default=-64); a.add_argument("--max-y", type=int, default=64); a.add_argument("--biomes", nargs="*", default=None); a.add_argument("--discard-on-air", type=float, default=0.0)
     a = sub.add_parser("remove-ore", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--block", required=True)
+    a = sub.add_parser("add-structure", help="USER-ONLY (before generate): a structure from text layers; --layer 'SSS' 'S S' 'SSS' --layer ... (bottom first), --legend S=minecraft:stone_bricks G=gem_block")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
+    a.add_argument("--layer", action="append", nargs="+", required=True, metavar="ROW"); a.add_argument("--legend", nargs="+", required=True, metavar="C=block")
+    a.add_argument("--spacing", type=int, default=32); a.add_argument("--separation", type=int, default=8); a.add_argument("--biomes", nargs="*", default=None)
+    a.add_argument("--step", choices=["surface_structures", "underground_structures"], default="surface_structures")
+    a = sub.add_parser("add-biome", help="USER-ONLY (before generate): a biome (for your dimensions)")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True); a.add_argument("--base", choices=["plains", "forest", "desert", "taiga", "snowy_plains", "swamp"], default="plains")
+    a.add_argument("--temperature", type=float, default=None); a.add_argument("--downfall", type=float, default=None); a.add_argument("--sky", default=None, help="#RRGGBB"); a.add_argument("--fog", default=None); a.add_argument("--water", default=None); a.add_argument("--grass", default=None); a.add_argument("--foliage", default=None)
+    a.add_argument("--mobs", nargs="*", default=None, help="local mob ids that spawn here")
+    a = sub.add_parser("add-dimension", help="USER-ONLY (before generate): a dimension built from your biomes, with a key item to travel")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True); a.add_argument("--biomes", nargs="*", default=None)
+    a.add_argument("--sky", choices=["overworld", "nether", "end"], default=None); a.add_argument("--fixed-time", type=int, default=None)
+    a.add_argument("--noise", choices=["minecraft:overworld", "minecraft:floating_islands", "minecraft:caves", "minecraft:amplified"], default=None); a.add_argument("--key-item", default=None)
     a = sub.add_parser("set-tab", help="USER-ONLY (before generate): give the mod its own creative tab")
     a.add_argument("project"); a.add_argument("--label", default=None, help="omit to remove the tab"); a.add_argument("--icon", default=None, help="local item/block id")
     a = sub.add_parser("request-gametest", help="USER-ONLY: ask approval to run the mod's GameTests (headless test server)"); a.add_argument("project")
@@ -328,6 +341,16 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "remove-ore":
         from .specedit import remove_ore
         return remove_ore(store, args.project, args.block)
+    if args.command == "add-structure":
+        from .specedit import add_structure
+        legend = dict(kv.split("=", 1) for kv in args.legend)
+        return add_structure(store, args.project, identifier=args.id, label=args.label, layers=args.layer, legend=legend, spacing=args.spacing, separation=args.separation, biomes=args.biomes, step=args.step)
+    if args.command == "add-biome":
+        from .specedit import add_biome
+        return add_biome(store, args.project, identifier=args.id, label=args.label, base=args.base, temperature=args.temperature, downfall=args.downfall, sky_color=args.sky, fog_color=args.fog, water_color=args.water, grass_color=args.grass, foliage_color=args.foliage, mobs=args.mobs)
+    if args.command == "add-dimension":
+        from .specedit import add_dimension
+        return add_dimension(store, args.project, identifier=args.id, label=args.label, biomes=args.biomes, sky=args.sky, fixed_time=args.fixed_time, noise=args.noise, key_item=args.key_item)
     if args.command == "set-tab":
         from .specedit import set_tab
         return set_tab(store, args.project, label=args.label, icon=args.icon)

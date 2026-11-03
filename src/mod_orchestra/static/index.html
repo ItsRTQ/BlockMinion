@@ -130,8 +130,14 @@
           </div>
         </div>
         <div id="sub-worldgen" class="subpane hidden">
-          <div class="card"><div class="card-head"><h3>World-Gen</h3></div>
-            <div class="coming"><div class="coming-badge">Feature coming soon</div><p class="muted">Biomes, ore veins, structures and dimensions are planned after v1 (see docs/V2_BACKLOG.md). For now, ore blocks are placeable and craftable but do not spawn in the world.</p></div>
+          <div class="card">
+            <div class="card-head"><h3>World generation</h3><p class="muted">Ores are set on each block (Items tab). Structures, biomes and dimensions are added here <b>before generation</b>; afterwards ask for them as a change on the Map.</p></div>
+            <div id="wg-list"></div>
+            <div class="add-bar">
+              <button type="button" class="primary" data-modal="modal-struct">＋ Structure</button>
+              <button type="button" class="primary" data-modal="modal-biome">＋ Biome</button>
+              <button type="button" class="primary" data-modal="modal-dim">＋ Dimension</button>
+            </div>
           </div>
         </div>
       </div>
@@ -296,6 +302,59 @@
       <label>Weight <input id="en-weight" type="number" min="1" max="100" value="5"><small>How common at the table (10 common, 2 rare).</small></label>
     </div>
     <div class="actions"><button class="primary" type="submit">Add enchantment</button></div>
+  </form>
+</div></div>
+<div id="modal-struct" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add a structure</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Draw it in text: each layer is a grid seen from above (rows north→south, characters west→east); layers go bottom to top, separated by a blank line. <code>.</code> is air. The legend maps letters to blocks.</p>
+  <form id="struct-form" class="form">
+    <div class="row"><label>Name <input id="st-label" required placeholder="Gem Shrine"></label><label>Identifier <input id="st-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_shrine"></label></div>
+    <label>Layers <textarea id="st-layers" rows="9" class="mono" placeholder="SSS&#10;SSS&#10;SSS&#10;&#10;S.S&#10;...&#10;S.S&#10;&#10;GGG&#10;G.G&#10;GGG"></textarea><small>Max 48×48×48. Keep it small; every layer must have the same width and depth.</small></label>
+    <label>Legend <input id="st-legend" required placeholder="S=minecraft:stone_bricks, G=gem_block, L=minecraft:lantern[hanging=true]"><small>letter=block, comma separated. Your blocks by id, vanilla as minecraft:…; block states in brackets.</small></label>
+    <div class="row">
+      <label>Spacing (chunks) <input id="st-spacing" type="number" min="2" max="256" value="32"><small>Attempts every N chunks (village 34).</small></label>
+      <label>Separation (chunks) <input id="st-sep" type="number" min="1" max="255" value="8"><small>Minimum distance between two (must be < spacing).</small></label>
+      <label>Where <input id="st-biomes" value="overworld"><small>overworld / nether / end, biome tags or ids, comma separated.</small></label>
+      <label>Placement <select id="st-step"><option value="surface_structures">on the surface</option><option value="underground_structures">underground (y -40..20)</option></select></label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Add structure</button></div>
+  </form>
+</div></div>
+<div id="modal-biome" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add a biome</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Custom biomes live in your dimensions (Fabric cannot inject them into the vanilla overworld without TerraBlender). Features and carvers are copied from a vanilla base.</p>
+  <form id="biome-form" class="form">
+    <div class="row"><label>Name <input id="bi-label" required placeholder="Gem Fields"></label><label>Identifier <input id="bi-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_fields"></label></div>
+    <div class="row">
+      <label>Based on <select id="bi-base"><option value="plains">plains</option><option value="forest">forest</option><option value="desert">desert</option><option value="taiga">taiga</option><option value="snowy_plains">snowy plains</option><option value="swamp">swamp</option></select></label>
+      <label>Temperature <input id="bi-temp" type="number" min="-2" max="2" step="0.1" value="0.8"><small>plains 0.8 · desert 2 · snowy 0 · swamp 0.8</small></label>
+      <label>Downfall <input id="bi-down" type="number" min="0" max="1" step="0.1" value="0.4"></label>
+    </div>
+    <div class="row">
+      <label>Sky <div class="colour-row"><input type="color" id="bi-sky" value="#78a7ff"><input type="text" id="bi-sky-hex" value="#78a7ff"></div></label>
+      <label>Fog <div class="colour-row"><input type="color" id="bi-fog" value="#c0d8ff"><input type="text" id="bi-fog-hex" value="#c0d8ff"></div></label>
+      <label>Water <div class="colour-row"><input type="color" id="bi-water" value="#3f76e4"><input type="text" id="bi-water-hex" value="#3f76e4"></div></label>
+    </div>
+    <div class="row">
+      <label>Grass tint <input id="bi-grass" placeholder="#RRGGBB or empty"><small>Empty = vanilla for the temperature.</small></label>
+      <label>Foliage tint <input id="bi-foliage" placeholder="#RRGGBB or empty"></label>
+    </div>
+    <label>Your mobs that spawn here <div class="checks" id="bi-mobs"></div></label>
+    <div class="actions"><button class="primary" type="submit">Add biome</button></div>
+  </form>
+</div></div>
+<div id="modal-dim" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add a dimension</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">A new world made of your biomes. A key item (<code>&lt;id&gt;_key</code>) is generated: right-click to travel there and back.</p>
+  <form id="dim-form" class="form">
+    <div class="row"><label>Name <input id="dm-label" required placeholder="Gem Realm"></label><label>Identifier <input id="dm-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_realm"></label></div>
+    <label>Biomes <div class="checks" id="dm-biomes"></div><small>None selected = plains.</small></label>
+    <div class="row">
+      <label>Sky <select id="dm-sky"><option value="overworld">overworld (day/night, beds work)</option><option value="nether">nether (no sky, ceiling)</option><option value="end">end</option></select></label>
+      <label>Terrain <select id="dm-noise"><option value="minecraft:overworld">overworld-like</option><option value="minecraft:floating_islands">floating islands</option><option value="minecraft:caves">caves</option><option value="minecraft:amplified">amplified</option></select></label>
+      <label>Fixed time <input id="dm-time" type="number" min="-1" max="24000" value="-1"><small>-1 = normal cycle; 18000 = always midnight; 6000 = always noon.</small></label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Add dimension</button></div>
   </form>
 </div></div>
 <div id="modal-feature" class="lightbox hidden"><div class="modal">

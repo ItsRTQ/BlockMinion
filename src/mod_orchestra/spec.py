@@ -165,6 +165,48 @@ class Enchantment:
 
 
 @dataclass(frozen=True)
+class Structure:
+    """A small structure from text layers (bottom layer first; rows run north→south, characters west→east).
+    legend maps a character to a block: local id, minecraft:id, optionally with [props]. '.' or ' ' = air."""
+    identifier: str
+    label: str
+    layers: tuple = ()            # tuple of tuples of strings, e.g. (("SSS","S S","SSS"), ("S.S","...","S.S"))
+    legend: dict = field(default_factory=dict)
+    spacing: int = 32             # chunks between attempts (vanilla village 34)
+    separation: int = 8           # minimum chunks apart (village 8)
+    biomes: tuple = ("overworld",)
+    step: str = "surface_structures"   # generation step; underground_structures for buried ones
+    salt: int = 0                 # 0 = derived from identifier
+
+
+@dataclass(frozen=True)
+class Biome:
+    identifier: str
+    label: str
+    temperature: float = 0.8
+    downfall: float = 0.4
+    sky_color: str = "#78A7FF"
+    fog_color: str = "#C0D8FF"
+    water_color: str = "#3F76E4"
+    grass_color: str = ""         # optional override
+    foliage_color: str = ""
+    base: str = "plains"          # vanilla biome whose features/carvers to copy: plains | forest | desert | taiga | snowy_plains | swamp
+    mobs: tuple = ()              # local mob ids that spawn here (weight 10, group 1-3)
+    precipitation: bool = True
+
+
+@dataclass(frozen=True)
+class Dimension:
+    identifier: str
+    label: str
+    biomes: tuple = ()            # local biome ids (first is the default); empty = minecraft:plains
+    key_item: str = ""            # local item id that teleports on right-click (created if missing: <id>_key)
+    sky: str = "overworld"        # overworld (day/night) | nether (no sky) | end
+    fixed_time: int = -1          # -1 = normal cycle, else 0-24000
+    noise: str = "minecraft:overworld"   # noise settings: minecraft:overworld | minecraft:floating_islands | minecraft:caves | minecraft:amplified
+
+
+@dataclass(frozen=True)
 class Ore:
     """World generation for an ore block: veins of `vein_size` blocks, `veins_per_chunk` times per chunk,
     between min_y and max_y (trapezoid: most common in the middle), in the given biomes (same syntax as Spawn)."""
@@ -207,6 +249,9 @@ class Spec:
     sounds: list[Sound] = field(default_factory=list)
     ores: list[Ore] = field(default_factory=list)
     enchantments: list[Enchantment] = field(default_factory=list)
+    structures: list[Structure] = field(default_factory=list)
+    biomes: list[Biome] = field(default_factory=list)
+    dimensions: list[Dimension] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -215,6 +260,7 @@ class Spec:
         ids = {f.identifier for f in self.features}
         for f in self.features:
             ids.update(f"{f.identifier}_{v}" for v in f.variants)
+        ids.update((d.key_item or f"{d.identifier}_key") for d in self.dimensions)
         for m in self.materials:
             ids.update(m.item_ids())
         ids.update(f.identifier for f in self.foods)
@@ -396,6 +442,56 @@ def validate_spec_content(spec: "Spec") -> None:
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
             seen_all[i] = f"material {mat.identifier}"
+    local_blocks = {f.identifier for f in spec.features if f.kind == "block"} | {f"{f.identifier}_{v}" for f in spec.features for v in f.variants}
+    for st in spec.structures:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", st.identifier):
+            raise InputError(f"Structure identifier must be snake_case: {st.identifier!r}")
+        if not st.layers or not all(st.layers) or any(not isinstance(row, str) for layer in st.layers for row in layer):
+            raise InputError(f"Structure {st.identifier}: layers must be non-empty tuples of strings")
+        w = len(st.layers[0][0]); d = len(st.layers[0])
+        for layer in st.layers:
+            if len(layer) != d or any(len(row) != w for row in layer):
+                raise InputError(f"Structure {st.identifier}: every layer must be {w}x{d} (same width and depth)")
+        if w > 48 or d > 48 or len(st.layers) > 48:
+            raise InputError("Structure: at most 48x48x48")
+        chars = {c for layer in st.layers for row in layer for c in row} - {".", " "}
+        for c in chars:
+            if c not in st.legend:
+                raise InputError(f"Structure {st.identifier}: character {c!r} has no legend entry")
+            block = st.legend[c].split("[")[0]
+            if ":" not in block and block not in local_blocks:
+                raise InputError(f"Structure {st.identifier}: {block!r} is not a block of this mod (use minecraft:... for vanilla)")
+        if not (1 <= st.separation < st.spacing <= 256):
+            raise InputError("Structure: 1 <= separation < spacing <= 256")
+        if st.step not in ("surface_structures", "underground_structures"):
+            raise InputError("Structure step must be surface_structures or underground_structures")
+        if any(not BIOME_RE.match(b) for b in st.biomes):
+            raise InputError("Structure biomes: overworld|nether|end, tags or biome ids")
+    local_mobs = {m.identifier for m in spec.mobs}
+    for b in spec.biomes:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", b.identifier):
+            raise InputError(f"Biome identifier must be snake_case: {b.identifier!r}")
+        if b.base not in ("plains", "forest", "desert", "taiga", "snowy_plains", "swamp"):
+            raise InputError("Biome base must be plains, forest, desert, taiga, snowy_plains or swamp")
+        for c in (b.sky_color, b.fog_color, b.water_color, b.grass_color, b.foliage_color):
+            if c and not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
+                raise InputError("Biome colours must be #RRGGBB")
+        if not (-2 <= b.temperature <= 2) or not (0 <= b.downfall <= 1):
+            raise InputError("Biome temperature -2..2, downfall 0..1")
+        bad = [m for m in b.mobs if m not in local_mobs]
+        if bad:
+            raise InputError(f"Biome {b.identifier}: unknown mobs {bad}")
+    local_biomes = {b.identifier for b in spec.biomes}
+    for dm in spec.dimensions:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", dm.identifier):
+            raise InputError(f"Dimension identifier must be snake_case: {dm.identifier!r}")
+        bad = [b for b in dm.biomes if b not in local_biomes]
+        if bad:
+            raise InputError(f"Dimension {dm.identifier}: unknown biomes {bad}")
+        if dm.sky not in ("overworld", "nether", "end") or not (-1 <= dm.fixed_time <= 24000):
+            raise InputError("Dimension sky must be overworld|nether|end; fixed_time -1 or 0..24000")
+        if dm.noise not in ("minecraft:overworld", "minecraft:floating_islands", "minecraft:caves", "minecraft:amplified"):
+            raise InputError("Dimension noise must be a vanilla noise settings id")
     for e in spec.enchantments:
         if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", e.identifier):
             raise InputError(f"Enchantment identifier must be snake_case: {e.identifier!r}")
@@ -554,6 +650,9 @@ def read_spec(raw: dict) -> Spec:
         sounds=[Sound(**x) for x in raw.get("sounds", [])],
         ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
         enchantments=[Enchantment(**e) for e in raw.get("enchantments", [])],
+        structures=[Structure(**{**x, "layers": tuple(tuple(l) for l in x.get("layers", ())), "biomes": tuple(x.get("biomes", ("overworld",)))}) for x in raw.get("structures", [])],
+        biomes=[Biome(**{**b, "mobs": tuple(b.get("mobs", ()))}) for b in raw.get("biomes", [])],
+        dimensions=[Dimension(**{**d, "biomes": tuple(d.get("biomes", ()))}) for d in raw.get("dimensions", [])],
         mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],

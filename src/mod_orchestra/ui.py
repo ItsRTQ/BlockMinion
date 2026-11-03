@@ -210,6 +210,25 @@ def serve(store: Store, port: int = 8765) -> None:
                         return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None,
                                            shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""),
                                            tool=str(payload.get("tool") or ""), mining_level=str(payload.get("mining_level") or ""), variants=[str(v) for v in (payload.get("variants") or [])])
+                    if op == "worldgen":
+                        sp = store.project(pid)["spec"]
+                        return {"structures": sp.get("structures", []), "biomes": sp.get("biomes", []), "dimensions": sp.get("dimensions", []), "ores": sp.get("ores", []),
+                                "mobs": [m["identifier"] for m in sp.get("mobs", [])], "blocks": [f["identifier"] for f in sp.get("features", []) if f["kind"] == "block"],
+                                "generated": store.project(pid)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED")}
+                    if op == "add-structure":
+                        from .specedit import add_structure
+                        return add_structure(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), layers=[[str(r) for r in l] for l in (payload.get("layers") or [])],
+                                             legend={str(k): str(v) for k, v in (payload.get("legend") or {}).items()}, spacing=int(payload.get("spacing", 32)), separation=int(payload.get("separation", 8)),
+                                             biomes=[str(b) for b in (payload.get("biomes") or [])] or None, step=str(payload.get("step") or "surface_structures"))
+                    if op == "add-biome":
+                        from .specedit import add_biome
+                        return add_biome(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), base=payload.get("base") or "plains",
+                                         temperature=payload.get("temperature"), downfall=payload.get("downfall"), sky_color=payload.get("sky_color"), fog_color=payload.get("fog_color"),
+                                         water_color=payload.get("water_color"), grass_color=payload.get("grass_color") or "", foliage_color=payload.get("foliage_color") or "", mobs=payload.get("mobs") or [])
+                    if op == "add-dimension":
+                        from .specedit import add_dimension
+                        return add_dimension(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), biomes=payload.get("biomes") or [],
+                                             sky=payload.get("sky") or "overworld", fixed_time=int(payload.get("fixed_time", -1)), noise=payload.get("noise") or "minecraft:overworld")
                     if op == "set-variants":
                         from .specedit import set_variants
                         return set_variants(store, pid, str(payload.get("block", "")), [str(v) for v in (payload.get("variants") or [])])

@@ -48,6 +48,17 @@ def gametests_java(spec: Spec) -> str:
         for f in spec.foods:
             L.append(f'        helper.assertTrue(new ItemStack(ModMain.{f.identifier.upper()}).has(net.minecraft.core.component.DataComponents.FOOD), "{f.identifier} has food properties");')
         L += ["        helper.succeed();", "    }", ""]
+    if spec.structures or spec.biomes or spec.dimensions:
+        L += ["    @GameTest(template = EMPTY_STRUCTURE)", "    public void worldgenIsRegistered(GameTestHelper helper) {",
+              "        var registries = helper.getLevel().registryAccess();"]
+        for st in spec.structures:
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE).containsKey(id("{st.identifier}")), "structure {st.identifier} loaded");')
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE_SET).containsKey(id("{st.identifier}")), "structure set {st.identifier} loaded");')
+        for b in spec.biomes:
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.BIOME).containsKey(id("{b.identifier}")), "biome {b.identifier} loaded");')
+        for d in spec.dimensions:
+            L.append(f'        helper.assertTrue(helper.getLevel().getServer().getLevel(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION, id("{d.identifier}"))) != null, "dimension {d.identifier} exists");')
+        L += ["        helper.succeed();", "    }", ""]
     L += ["    @GameTest(template = EMPTY_STRUCTURE)", "    public void modIsLoaded(GameTestHelper helper) {",
           '        helper.assertTrue(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(ModMain.MOD_ID), "mod is loaded");', "        helper.succeed();", "    }", "}", ""]
     return "\n".join(L)
