@@ -203,7 +203,14 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .content import add_feature
                         return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None,
                                            shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""),
-                                           tool=str(payload.get("tool") or ""), mining_level=str(payload.get("mining_level") or ""))
+                                           tool=str(payload.get("tool") or ""), mining_level=str(payload.get("mining_level") or ""), variants=[str(v) for v in (payload.get("variants") or [])])
+                    if op == "set-variants":
+                        from .specedit import set_variants
+                        return set_variants(store, pid, str(payload.get("block", "")), [str(v) for v in (payload.get("variants") or [])])
+                    if op == "add-enchantment":
+                        from .content import add_enchantment_any
+                        return add_enchantment_any(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), kind=str(payload.get("kind", "damage")),
+                                                   max_level=int(payload.get("max_level", 3)), items=payload.get("items") or None, weight=int(payload.get("weight", 5)))
                     if op == "add-ore":
                         from .content import add_ore_any
                         return add_ore_any(store, pid, **{k: v for k, v in payload.items()})

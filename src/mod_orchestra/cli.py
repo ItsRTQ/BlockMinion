@@ -114,6 +114,11 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("remove-food", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("add-sound", help="USER-ONLY (before generate): register a sound event; you upload the .ogg to assets/<mod>/sounds/<id>.ogg")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True, help="subtitle"); a.add_argument("--category", default="neutral")
+    a = sub.add_parser("set-variants", help="USER-ONLY (before generate): stairs/slab/fence/wall variants of a block")
+    a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--variants", nargs="*", default=[], choices=["stairs", "slab", "fence", "wall"])
+    a = sub.add_parser("add-enchantment", help="USER-ONLY (before generate): a data-driven enchantment (damage | protection | fire_aspect)")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True); a.add_argument("--kind", choices=["damage", "protection", "fire_aspect"], default="damage")
+    a.add_argument("--max-level", type=int, default=3); a.add_argument("--items", default=None, help="item tag, e.g. #minecraft:enchantable/weapon or #minecraft:enchantable/armor"); a.add_argument("--weight", type=int, default=5)
     a = sub.add_parser("add-ore", help="USER-ONLY (before generate): make a block generate as ore veins in the world")
     a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--vein-size", type=int, default=9); a.add_argument("--veins-per-chunk", type=int, default=8)
     a.add_argument("--min-y", type=int, default=-64); a.add_argument("--max-y", type=int, default=64); a.add_argument("--biomes", nargs="*", default=None); a.add_argument("--discard-on-air", type=float, default=0.0)
@@ -306,6 +311,13 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "add-sound":
         from .specedit import add_sound
         return add_sound(store, args.project, identifier=args.id, label=args.label, category=args.category)
+    if args.command == "set-variants":
+        from .specedit import set_variants
+        return set_variants(store, args.project, args.block, args.variants)
+    if args.command == "add-enchantment":
+        from .specedit import add_enchantment
+        items = args.items or ("#minecraft:enchantable/armor" if args.kind == "protection" else "#minecraft:enchantable/weapon")
+        return add_enchantment(store, args.project, identifier=args.id, label=args.label, kind=args.kind, max_level=args.max_level, items=items, weight=args.weight)
     if args.command == "add-ore":
         from .specedit import add_ore
         return add_ore(store, args.project, block=args.block, vein_size=args.vein_size, veins_per_chunk=args.veins_per_chunk, min_y=args.min_y, max_y=args.max_y, biomes=args.biomes, discard_on_air=args.discard_on_air)

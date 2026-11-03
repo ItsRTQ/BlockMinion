@@ -18,6 +18,7 @@ from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
+from .variants import variant_java, variant_resources, variant_recipes, variant_lang, variant_tag_members, enchantment_json
 from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
                        client_init_java, placeholder_geo, placeholder_animation, entity_loot, class_name)
@@ -272,7 +273,7 @@ Your idea: {spec.idea}
         "import net.minecraft.world.level.block.state.BlockBehaviour;",
         "import org.slf4j.Logger;",
         "import org.slf4j.LoggerFactory;",
-    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + [f"import {i};" for i in ore_registrations(spec)[0]] + ([
+    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in variant_java(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + [f"import {i};" for i in ore_registrations(spec)[0]] + ([
         "import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;",
         "import net.minecraft.core.registries.Registries;",
         "import net.minecraft.network.chat.Component;",
@@ -308,6 +309,9 @@ Your idea: {spec.idea}
         deduped.append(l)
     lines = deduped
     mob_imports, mob_fields, mob_init = main_registrations(spec)
+    _, variant_fields, variant_init = variant_java(spec)
+    if variant_fields:
+        lines += ["", "    // Block variants (stairs/slab/fence/wall) of the blocks above"] + variant_fields
     lines += mob_fields
     gear_imports, gear_fields, gear_init = gear_registrations(spec)
     if gear_fields:
@@ -332,11 +336,14 @@ Your idea: {spec.idea}
             lines.append(f"            output.accept({m.identifier.upper()}_SPAWN_EGG);")
         for gid in gear_item_ids(spec):
             lines.append(f"            output.accept({gid.upper()});")
+        for _, _, vid in __import__("mod_orchestra.variants", fromlist=["variant_ids"]).variant_ids(spec):
+            lines.append(f"            output.accept({vid.upper()}_ITEM);")
         lines += ["        })", "        .build();"]
     lines += ["", "    @Override", "    public void onInitialize() {"]
     if spec.tab:
         lines.append("        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB_KEY, TAB);")
     lines += mob_init
+    lines += variant_init
     lines += gear_init
     lines += ore_registrations(spec)[1]
     for feature in spec.features:
@@ -391,9 +398,23 @@ Your idea: {spec.idea}
         lang[f"item.{spec.mod_id}.{f.identifier}"] = f.label
     for rel, data in ore_worldgen_files(spec).items():
         put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
-    for tag, members in block_tags(spec).items():
+    for rel, data in variant_resources(spec).items():
+        put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
+    lang.update(variant_lang(spec))
+    for e in spec.enchantments:
+        put(f"src/main/resources/data/{spec.mod_id}/enchantment/{e.identifier}.json", json.dumps(enchantment_json(spec, e), indent=2) + "\n")
+        lang[f"enchantment.{spec.mod_id}.{e.identifier}"] = e.label
+    if spec.enchantments:
+        table = [f"{spec.mod_id}:{e.identifier}" for e in spec.enchantments if not e.treasure]
+        treasure = [f"{spec.mod_id}:{e.identifier}" for e in spec.enchantments if e.treasure]
+        if table: put("src/main/resources/data/minecraft/tags/enchantment/in_enchanting_table.json", json.dumps({"replace": False, "values": table}, indent=2) + "\n")
+        if treasure: put("src/main/resources/data/minecraft/tags/enchantment/treasure.json", json.dumps({"replace": False, "values": treasure}, indent=2) + "\n")
+    merged_tags = block_tags(spec)
+    for tag, members in variant_tag_members(spec).items():
+        merged_tags.setdefault(tag, []).extend(members)
+    for tag, members in merged_tags.items():
         put(f"src/main/resources/data/minecraft/tags/block/{tag}.json", json.dumps({"replace": False, "values": members}, indent=2) + "\n")
-    for recipe in list(spec.recipes) + gear_recipes(spec):
+    for recipe in list(spec.recipes) + gear_recipes(spec) + variant_recipes(spec):
         put(f"src/main/resources/data/{spec.mod_id}/recipe/{recipe.id}.json", json.dumps(recipe_json(spec, recipe), indent=2) + "\n")
         put(f"src/main/resources/data/{spec.mod_id}/advancement/recipes/{recipe.id}.json", json.dumps(recipe_advancement_json(spec, recipe), indent=2) + "\n")
     if spec.tab:

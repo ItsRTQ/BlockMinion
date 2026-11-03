@@ -5,8 +5,9 @@ same spec fields from the user's words. Every edit returns the spec to DRAFT.
 """
 from __future__ import annotations
 from dataclasses import replace
-from .spec import Drop, Food, Material, Mob, Ore, Recipe, Sound, default_egg_colors, read_spec, validate_spec_content
+from .spec import Drop, Enchantment, Food, Material, Mob, Ore, Recipe, Sound, default_egg_colors, read_spec, validate_spec_content
 from .state import Store
+from .validation import InputError
 
 
 def _load(store: Store, pid: str):
@@ -122,3 +123,19 @@ def add_ore(store: Store, pid: str, *, block: str, vein_size: int = 9, veins_per
 def remove_ore(store: Store, pid: str, block: str) -> dict:
     spec = _load(store, pid)
     return _save(store, pid, replace(spec, ores=[o for o in spec.ores if o.block != block]), f"remove ore worldgen {block}")
+
+
+def set_variants(store: Store, pid: str, block: str, variants: list[str]) -> dict:
+    spec = _load(store, pid)
+    if block not in {f.identifier for f in spec.features if f.kind == "block"}:
+        raise InputError(f"{block!r} is not a block of this mod")
+    feats = [replace(f, variants=tuple(variants)) if f.identifier == block else f for f in spec.features]
+    return _save(store, pid, replace(spec, features=feats), f"variants of {block}: {','.join(variants) or 'none'}")
+
+
+def add_enchantment(store: Store, pid: str, *, identifier: str, label: str, kind: str = "damage", max_level: int = 3,
+                    items: str = "#minecraft:enchantable/weapon", weight: int = 5, treasure: bool = False) -> dict:
+    spec = _load(store, pid)
+    e = Enchantment(identifier=identifier, label=label, kind=kind, max_level=max_level, items=items, weight=weight, treasure=treasure)
+    ench = [x for x in spec.enchantments if x.identifier != identifier] + [e]
+    return _save(store, pid, replace(spec, enchantments=ench), f"add enchantment {identifier}")

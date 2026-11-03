@@ -2,6 +2,11 @@
   "replace": false,
   "values": [
     "kitchen_sink:crystal_ore",
-    "kitchen_sink:crystal_station"
+    "kitchen_sink:crystal_station",
+    "kitchen_sink:crystal_bricks",
+    "kitchen_sink:crystal_bricks_stairs",
+    "kitchen_sink:crystal_bricks_slab",
+    "kitchen_sink:crystal_bricks_fence",
+    "kitchen_sink:crystal_bricks_wall"
   ]
 }

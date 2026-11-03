@@ -11,7 +11,7 @@ import json
 import re
 import sys
 
-USER_ONLY = r"(?:craftctl|mod_orchestra\.cli)\s+(approve-spec|request-build|decide|build|evidence|delete|release|new|requeue|add-task|dispatch|orchestrate|autopilot|accept-changes|break|server-smoke|request-smoke|add-recipe|remove-recipe|add-drop|add-feature|add-sound|add-ore|remove-ore|add-mob|remove-mob|add-material|remove-material|add-food|remove-food|set-tab|run-client|answer|interpret-suite)\b"
+USER_ONLY = r"(?:craftctl|mod_orchestra\.cli)\s+(approve-spec|request-build|decide|build|evidence|delete|release|new|requeue|add-task|dispatch|orchestrate|autopilot|accept-changes|break|server-smoke|request-smoke|add-recipe|remove-recipe|add-drop|add-feature|add-sound|add-ore|remove-ore|set-variants|add-enchantment|add-mob|remove-mob|add-material|remove-material|add-food|remove-food|set-tab|run-client|answer|interpret-suite)\b"
 GIT_BLOCK = r"\bgit\s+(push|reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s+\.)"
 
 def main() -> int:

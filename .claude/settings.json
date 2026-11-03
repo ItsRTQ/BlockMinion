@@ -104,7 +104,11 @@
       "Bash(craftctl add-ore*)",
       "Bash(craftctl remove-ore*)",
       "PowerShell(craftctl add-ore*)",
-      "PowerShell(craftctl remove-ore*)"
+      "PowerShell(craftctl remove-ore*)",
+      "Bash(craftctl set-variants*)",
+      "Bash(craftctl add-enchantment*)",
+      "PowerShell(craftctl set-variants*)",
+      "PowerShell(craftctl add-enchantment*)"
     ]
   },
   "hooks": {

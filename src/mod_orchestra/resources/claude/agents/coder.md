@@ -12,6 +12,8 @@ skills:
   - loot-and-trades
   - polish
   - data
+  - effects
+  - items
 model: inherit
 ---
 
