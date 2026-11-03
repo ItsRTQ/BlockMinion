@@ -63,6 +63,16 @@ public class ModGameTests implements FabricGameTest {
     }
 
     @GameTest(template = EMPTY_STRUCTURE)
+    public void worldgenIsRegistered(GameTestHelper helper) {
+        var registries = helper.getLevel().registryAccess();
+        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE).containsKey(id("crystal_shrine")), "structure crystal_shrine loaded");
+        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE_SET).containsKey(id("crystal_shrine")), "structure set crystal_shrine loaded");
+        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.BIOME).containsKey(id("crystal_fields")), "biome crystal_fields loaded");
+        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.DIMENSION_TYPE).containsKey(id("crystal_realm")), "dimension type crystal_realm loaded");
+        helper.succeed();
+    }
+
+    @GameTest(template = EMPTY_STRUCTURE)
     public void modIsLoaded(GameTestHelper helper) {
         helper.assertTrue(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(ModMain.MOD_ID), "mod is loaded");
         helper.succeed();

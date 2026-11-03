@@ -53,6 +53,9 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
              "effects": [{{"effect": "minecraft:regeneration", "duration": 100, "amplifier": 0, "chance": 1.0}}], "always_edible": false, "fast": false}}],
   "sounds": [{{"identifier": "critter_chirp", "label": "Critter chirps", "category": "neutral"}}],
   "enchantments": [{{"identifier": "gem_edge", "label": "Gem Edge", "kind": "damage|protection|fire_aspect", "max_level": 3, "items": "#minecraft:enchantable/weapon", "weight": 5}}],
+  "structures": [{{"identifier": "gem_shrine", "label": "Gem Shrine", "layers": [["SSS","SSS","SSS"],["S.S","...","S.S"],["GGG","G.G","GGG"]], "legend": {{"S": "minecraft:stone_bricks", "G": "gem_block"}}, "spacing": 32, "separation": 8, "biomes": ["overworld"], "step": "surface_structures"}}],
+  "biomes": [{{"identifier": "gem_fields", "label": "Gem Fields", "base": "plains|forest|desert|taiga|snowy_plains|swamp", "temperature": 0.8, "downfall": 0.4, "sky_color": "#78A7FF", "fog_color": "#C0D8FF", "water_color": "#3F76E4", "grass_color": "", "foliage_color": "", "mobs": ["local mob ids"]}}],
+  "dimensions": [{{"identifier": "gem_realm", "label": "Gem Realm", "biomes": ["gem_fields"], "sky": "overworld|nether|end", "fixed_time": -1, "noise": "minecraft:overworld|minecraft:floating_islands|minecraft:caves|minecraft:amplified"}}],
   "ores": [{{"block": "crystal_ore", "vein_size": 9, "veins_per_chunk": 8, "min_y": -64, "max_y": 64, "biomes": ["overworld"], "discard_on_air": 0.0}}],
   "theme": "2-4 sentences: visual brief for all art in this mod — era/culture, palette (3-5 colours with hex), materials, motifs, mood (e.g. 'Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial')",
   "assumptions": ["..."]}}
@@ -66,6 +69,7 @@ recipe ingredients/results must be features of this mod, `minecraft:` ids or `#m
 ingredient; one drop rule per block, and the block must be one of the features; the tab icon must be a feature;
 mob identifiers must not collide with items/blocks (their spawn egg is <id>_spawn_egg); mob health 1-1024, speed 0.05-1.5.
 Ores and stone-like blocks: tool pickaxe and a mining_level (iron for valuable ores); wood/plants: axe/hoe; soil: shovel.
+Structures: small (≤ 9x9x9) text-layer builds, bottom layer first, '.' = air; custom biomes only live in custom dimensions (vanilla overworld biome injection is not supported); a dimension gets a key item automatically.
 Every block named "ore" gets an `ores` worldgen entry (reference: iron 9/10 per chunk y -64..72; diamond 8/7 y -64..16 discard 0.7; emerald rare 3/1 mountains).
 Mobs the user describes as living somewhere ("in forests", "at night in caves") get a `spawn`; otherwise null (egg only).
 Also put the questions (if any) under `questions`, as a list of plain sentences addressed to the user.
@@ -87,6 +91,7 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "features": proposal.get("features", []), "recipes": proposal.get("recipes", []), "drops": proposal.get("drops", []),
         "tab": proposal.get("tab"), "tab_icon": proposal.get("tab_icon"), "mobs": proposal.get("mobs", []),
         "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "sounds": proposal.get("sounds", []), "ores": proposal.get("ores", []), "enchantments": proposal.get("enchantments", []),
+        "structures": proposal.get("structures", []), "biomes": proposal.get("biomes", []), "dimensions": proposal.get("dimensions", []),
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
     spec = read_spec(raw)

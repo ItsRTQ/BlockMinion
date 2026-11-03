@@ -48,6 +48,18 @@ def gametests_java(spec: Spec) -> str:
         for f in spec.foods:
             L.append(f'        helper.assertTrue(new ItemStack(ModMain.{f.identifier.upper()}).has(net.minecraft.core.component.DataComponents.FOOD), "{f.identifier} has food properties");')
         L += ["        helper.succeed();", "    }", ""]
+    if spec.structures or spec.biomes or spec.dimensions:
+        L += ["    @GameTest(template = EMPTY_STRUCTURE)", "    public void worldgenIsRegistered(GameTestHelper helper) {",
+              "        var registries = helper.getLevel().registryAccess();"]
+        for st in spec.structures:
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE).containsKey(id("{st.identifier}")), "structure {st.identifier} loaded");')
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE_SET).containsKey(id("{st.identifier}")), "structure set {st.identifier} loaded");')
+        for b in spec.biomes:
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.BIOME).containsKey(id("{b.identifier}")), "biome {b.identifier} loaded");')
+        for d in spec.dimensions:
+            # the GameTest server only instantiates the overworld; the dimension_type registry proves the datapack loaded (the real server smoke boots the level)
+            L.append(f'        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.DIMENSION_TYPE).containsKey(id("{d.identifier}")), "dimension type {d.identifier} loaded");')
+        L += ["        helper.succeed();", "    }", ""]
     L += ["    @GameTest(template = EMPTY_STRUCTURE)", "    public void modIsLoaded(GameTestHelper helper) {",
           '        helper.assertTrue(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(ModMain.MOD_ID), "mod is loaded");', "        helper.succeed();", "    }", "}", ""]
     return "\n".join(L)

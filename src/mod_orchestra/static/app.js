@@ -102,7 +102,7 @@ async function openProject(id) {
   qs("p-id").textContent = p.id + " · " + p.spec.package; qs("p-name").textContent = p.name;
   const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
   qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
-  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
     try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) r.catch(e => toast(`${name}: ${e.message}`, "bad")); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
   }
   if (p.dispatching) pollUntilIdle(id);
@@ -476,6 +476,46 @@ qs("ench-form").onsubmit = async (e) => {
 qs("af-ore").onchange = () => { qs("af-ore-fields").style.display = qs("af-ore").checked ? "" : "none"; };
 const oreFromForm = () => ({ vein_size: Number(qs("af-ore-size").value), veins_per_chunk: Number(qs("af-ore-count").value), min_y: Number(qs("af-ore-miny").value), max_y: Number(qs("af-ore-maxy").value), biomes: qs("af-ore-biomes").value.split(",").map(s => s.trim()).filter(Boolean), discard_on_air: Number(qs("af-ore-discard").value) });
 qs("am-spawn").onchange = () => { qs("am-spawn-row").style.display = qs("am-spawn").checked ? "" : "none"; };
+// ---- World-Gen tab ----
+async function renderWorldgen(p) {
+  const list = qs("wg-list"); if (!list) return; list.replaceChildren();
+  let wg; try { wg = await api(`/api/project/${p.id}/worldgen`); } catch (e) { list.append(el("p", e.message, "muted")); return; }
+  const section = (title, items, fmt) => { if (!items.length) return; list.append(el("div", title, "eyebrow")); for (const it of items) { const row = el("div", null, "feature"); const mid = el("div"); const nm = el("div", null, "fname"); nm.append(document.createTextNode(it.label || it.identifier || it.block), el("span", title.replace(/s$/, ""), "fk")); mid.append(nm, el("small", fmt(it))); row.append(el("div"), mid); list.append(row); } };
+  section("ores", wg.ores, o => `${o.block}: ${o.vein_size}-block veins ×${o.veins_per_chunk}/chunk, y ${o.min_y}..${o.max_y}, ${(o.biomes || []).join(", ")}`);
+  section("structures", wg.structures, s => `${s.layers[0][0].length}×${s.layers.length}×${s.layers[0].length} · every ${s.spacing} chunks (min ${s.separation}) · ${(s.biomes || []).join(", ")} · ${s.step.replace("_structures", "")}`);
+  section("biomes", wg.biomes, b => `${b.base}-based · temp ${b.temperature} · sky ${b.sky_color}${b.mobs?.length ? " · mobs: " + b.mobs.join(", ") : ""}`);
+  section("dimensions", wg.dimensions, d => `${(d.biomes || []).join(", ") || "plains"} · ${d.sky} sky · ${d.noise.replace("minecraft:", "")} · key: ${d.key_item || d.identifier + "_key"}`);
+  if (!wg.ores.length && !wg.structures.length && !wg.biomes.length && !wg.dimensions.length) list.append(el("p", "Nothing yet. Ores live on blocks (Items tab); add structures, biomes and dimensions below.", "muted"));
+  const checks = (box, ids) => { const b = qs(box); b.replaceChildren(); for (const id of ids) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = id; l.append(c, document.createTextNode(" " + id)); b.append(l); } if (!ids.length) b.append(el("span", "none yet", "muted")); };
+  checks("bi-mobs", wg.mobs); checks("dm-biomes", wg.biomes.map(b => b.identifier));
+  for (const b of document.querySelectorAll('#sub-worldgen [data-modal]')) { b.disabled = !!wg.generated; b.title = wg.generated ? "After generation, request worldgen as a change on the Map" : ""; }
+}
+for (const [c, h] of [["bi-sky", "bi-sky-hex"], ["bi-fog", "bi-fog-hex"], ["bi-water", "bi-water-hex"]]) { qs(c).oninput = () => { qs(h).value = qs(c).value; }; qs(h).oninput = () => { if (/^#[0-9a-fA-F]{6}$/.test(qs(h).value)) qs(c).value = qs(h).value; }; }
+const slugify = (label, id) => { if (!qs(id).dataset.touched) qs(id).value = qs(label).value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
+for (const [l, i] of [["st-label", "st-id"], ["bi-label", "bi-id"], ["dm-label", "dm-id"]]) { qs(l).oninput = () => slugify(l, i); qs(i).oninput = () => { qs(i).dataset.touched = "1"; }; }
+qs("struct-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  const layers = qs("st-layers").value.replace(/\r/g, "").split(/\n\s*\n/).map(b => b.split("\n").map(r => r.replace(/\s+$/, "")).filter(Boolean)).filter(b => b.length);
+  const legend = Object.fromEntries(qs("st-legend").value.split(",").map(s => s.trim()).filter(Boolean).map(kv => { const [k, ...v] = kv.split("="); return [k.trim(), v.join("=").trim()]; }));
+  try {
+    await api(`/api/project/${selected}/add-structure`, { identifier: qs("st-id").value.trim(), label: qs("st-label").value.trim(), layers, legend, spacing: Number(qs("st-spacing").value), separation: Number(qs("st-sep").value), biomes: qs("st-biomes").value.split(",").map(s => s.trim()).filter(Boolean), step: qs("st-step").value });
+    qs("struct-form").reset(); delete qs("st-id").dataset.touched; closeModal("modal-struct"); toast("Structure added to the spec (re-approve before generating).", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
+qs("biome-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  try {
+    await api(`/api/project/${selected}/add-biome`, { identifier: qs("bi-id").value.trim(), label: qs("bi-label").value.trim(), base: qs("bi-base").value, temperature: Number(qs("bi-temp").value), downfall: Number(qs("bi-down").value), sky_color: qs("bi-sky-hex").value, fog_color: qs("bi-fog-hex").value, water_color: qs("bi-water-hex").value, grass_color: qs("bi-grass").value.trim(), foliage_color: qs("bi-foliage").value.trim(), mobs: [...qs("bi-mobs").querySelectorAll("input:checked")].map(c => c.value) });
+    qs("biome-form").reset(); delete qs("bi-id").dataset.touched; closeModal("modal-biome"); toast("Biome added to the spec.", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
+qs("dim-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  try {
+    await api(`/api/project/${selected}/add-dimension`, { identifier: qs("dm-id").value.trim(), label: qs("dm-label").value.trim(), biomes: [...qs("dm-biomes").querySelectorAll("input:checked")].map(c => c.value), sky: qs("dm-sky").value, noise: qs("dm-noise").value, fixed_time: Number(qs("dm-time").value) });
+    qs("dim-form").reset(); delete qs("dm-id").dataset.touched; closeModal("modal-dim"); toast("Dimension added to the spec (a key item comes with it).", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
 qs("af-label").oninput = () => { if (!qs("af-id").dataset.touched) qs("af-id").value = qs("af-label").value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
 qs("af-id").oninput = () => { qs("af-id").dataset.touched = "1"; };
 

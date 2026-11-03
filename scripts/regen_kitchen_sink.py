@@ -8,8 +8,11 @@ cmds = [
  'craftctl add-enchantment kitchen_sink --id crystal_edge --label "Crystal Edge" --kind damage',
  'craftctl add-ore kitchen_sink --block crystal_ore --vein-size 8 --veins-per-chunk 6 --min-y -64 --max-y 32',
  'craftctl add-material kitchen_sink --id crystal --label Crystal --ingredient sky_crystal --tools sword --armor helmet chestplate leggings boots --armor-style 3d --color "#4fd1ff"',
- 'craftctl add-sound kitchen_sink --id crystal_chime --label "Crystal chimes" --category block',
+ 'craftctl add-structure kitchen_sink --id crystal_shrine --label "Crystal Shrine" --layer SSS SSS SSS --layer S.S ... S.S --layer CCC C.C CCC --legend S=minecraft:stone_bricks C=crystal_bricks --spacing 20 --separation 5',
  'craftctl add-mob kitchen_sink --id sky_critter --label "Sky Critter" --spawn overworld --spawn-weight 8 --spawn-group 2 4',
+ 'craftctl add-biome kitchen_sink --id crystal_fields --label "Crystal Fields" --base plains --sky "#B388FF" --grass "#9C6BFF" --mobs sky_critter',
+ 'craftctl add-dimension kitchen_sink --id crystal_realm --label "Crystal Realm" --biomes crystal_fields --noise minecraft:floating_islands',
+ 'craftctl add-sound kitchen_sink --id crystal_chime --label "Crystal chimes" --category block',
  'craftctl plan kitchen_sink', 'craftctl approve-spec kitchen_sink', 'craftctl generate kitchen_sink']
 for c in cmds: subprocess.run(c, shell=True, check=True, capture_output=True)
 print("generated; now copy src/ over examples/kitchen_sink and re-apply the hand-written classes (see git history)")

@@ -15,6 +15,7 @@ skills:
   - effects
   - items
   - gametest
+  - worldgen
 model: inherit
 ---
 

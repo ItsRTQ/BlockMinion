@@ -269,3 +269,57 @@ class GameTests(unittest.TestCase):
             res = gt.run_gametest(self.store, "g_mod", a["id"])
         self.assertEqual(res["status"], "GAMETEST_FAILED"); self.assertTrue(res["repair"]["task"].startswith("g_mod:REPAIR:"))
         self.assertIn("mobsspawn", self.store.task_instructions(res["repair"]["task"]) if hasattr(self.store, "task_instructions") else "mobsspawn")
+
+
+class Worldgen(unittest.TestCase):
+    def test_nbt_template_roundtrip_shape(self):
+        import gzip, struct
+        from mod_orchestra.nbt import structure_template
+        raw = gzip.decompress(structure_template([(0, 0, 0, "minecraft:stone"), (1, 0, 0, "m:gem_block"), (0, 1, 0, "minecraft:oak_stairs[facing=north]")], (2, 2, 1)))
+        self.assertEqual(raw[:3], b"\x0a\x00\x00"); self.assertIn(b"DataVersion", raw); self.assertIn(b"facing", raw); self.assertIn(b"minecraft:stone", raw)
+        self.assertIn(struct.pack(">i", 3955), raw)
+
+    def test_structure_biome_dimension_generation_and_validation(self):
+        from mod_orchestra.specedit import add_structure, add_biome, add_dimension
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); store = Store(base / "state.sqlite")
+        with patch.object(workflow, "PROJECTS", base / "projects"):
+            (base / "projects").mkdir()
+            from mod_orchestra.specedit import add_mob
+            proj = workflow.new_project(store, name="W", mod_id="w_mod", package="com.x.w", idea="items: gem; blocks: gem block; tab: W")
+            add_mob(store, "w_mod", identifier="gem_golem", label="Gem Golem", behavior="hostile")
+            add_structure(store, "w_mod", identifier="gem_shrine", label="Gem Shrine", layers=[["SSS", "SSS", "SSS"], ["S.S", "...", "S.S"], ["GGG", "G.G", "GGG"]], legend={"S": "minecraft:stone_bricks", "G": "gem_block"}, spacing=24, separation=6)
+            with self.assertRaisesRegex(InputError, "no legend entry"):
+                add_structure(store, "w_mod", identifier="bad", label="B", layers=[["XX"]], legend={})
+            with self.assertRaisesRegex(InputError, "same width"):
+                add_structure(store, "w_mod", identifier="bad", label="B", layers=[["SS", "SS"], ["S"]], legend={"S": "minecraft:stone"})
+            with self.assertRaisesRegex(InputError, "not a block of this mod"):
+                add_structure(store, "w_mod", identifier="bad", label="B", layers=[["G"]], legend={"G": "gem"})
+            add_biome(store, "w_mod", identifier="gem_fields", label="Gem Fields", base="plains", sky_color="#B388FF", grass_color="#9C6BFF", mobs=["gem_golem"])
+            with self.assertRaisesRegex(InputError, "unknown mobs"):
+                add_biome(store, "w_mod", identifier="bad", label="B", mobs=["dragon"])
+            add_dimension(store, "w_mod", identifier="gem_realm", label="Gem Realm", biomes=["gem_fields"], noise="minecraft:floating_islands", fixed_time=18000)
+            with self.assertRaisesRegex(InputError, "unknown biomes"):
+                add_dimension(store, "w_mod", identifier="bad", label="B", biomes=["nope"])
+            workflow.plan_project(store, "w_mod"); workflow.approve_spec(store, "w_mod"); workflow.generate_project(store, "w_mod")
+            root = Path(proj["root"]); data = root / "src/main/resources/data"
+            self.assertTrue((data / "w_mod/structure/gem_shrine.nbt").is_file())
+            st = json.loads((data / "w_mod/worldgen/structure/gem_shrine.json").read_text())
+            self.assertEqual(st["type"], "minecraft:jigsaw"); self.assertEqual(st["start_pool"], "w_mod:gem_shrine"); self.assertEqual(st["biomes"], "#w_mod:has_structure/gem_shrine")
+            self.assertEqual(json.loads((data / "w_mod/worldgen/structure_set/gem_shrine.json").read_text())["placement"]["spacing"], 24)
+            self.assertEqual(json.loads((data / "w_mod/tags/worldgen/biome/has_structure/gem_shrine.json").read_text())["values"], ["#minecraft:is_overworld"])
+            pool = json.loads((data / "w_mod/worldgen/template_pool/gem_shrine.json").read_text())
+            self.assertEqual(pool["elements"][0]["element"]["location"], "w_mod:gem_shrine")
+            bio = json.loads((data / "w_mod/worldgen/biome/gem_fields.json").read_text())
+            self.assertEqual(bio["effects"]["sky_color"], 0xB388FF); self.assertEqual(bio["effects"]["grass_color"], 0x9C6BFF)
+            self.assertEqual(bio["spawners"]["monster"][0]["type"], "w_mod:gem_golem"); self.assertEqual(len(bio["features"]), 11)
+            dim = json.loads((data / "w_mod/dimension/gem_realm.json").read_text())
+            self.assertEqual(dim["generator"]["settings"], "minecraft:floating_islands"); self.assertEqual(dim["generator"]["biome_source"], {"type": "minecraft:fixed", "biome": "w_mod:gem_fields"})
+            dt = json.loads((data / "w_mod/dimension_type/gem_realm.json").read_text()); self.assertEqual(dt["fixed_time"], 18000); self.assertTrue(dt["has_skylight"])
+            main = (root / "src/main/java/com/x/w/ModMain.java").read_text()
+            self.assertIn('new GemRealmKeyItem(new Item.Properties())', main)
+            key = (root / "src/main/java/com/x/w/GemRealmKeyItem.java").read_text(); self.assertIn("sp.teleportTo(target", key); self.assertIn("Level.OVERWORLD", key)
+            gt = (root / "src/main/java/com/x/w/gametest/ModGameTests.java").read_text()
+            self.assertIn("worldgenIsRegistered", gt); self.assertIn('Registries.STRUCTURE).containsKey(id("gem_shrine"))', gt); self.assertIn('Registries.DIMENSION_TYPE).containsKey(id("gem_realm"))', gt)
+            lang = json.loads((root / "src/main/resources/assets/w_mod/lang/en_us.json").read_text())
+            self.assertEqual(lang["item.w_mod.gem_realm_key"], "Gem Realm Key"); self.assertEqual(lang["biome.w_mod.gem_fields"], "Gem Fields")

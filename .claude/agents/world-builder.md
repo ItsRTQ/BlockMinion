@@ -4,6 +4,7 @@ description: "Implements seed-testable world generation: biomes, features, struc
 tools: Read, Grep, Glob, Edit, Write, Bash, mcp__minecraft-orchestra__orchestra_project_status, mcp__minecraft-orchestra__orchestra_knowledge_search, mcp__minecraft-orchestra__orchestra_validate_source
 skills:
   - world-builder
+  - worldgen
 model: inherit
 ---
 

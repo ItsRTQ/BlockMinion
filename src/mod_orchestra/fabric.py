@@ -19,6 +19,7 @@ from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
 from .gametest_gen import gametests_java
+from .worldgen import structure_files, biome_json, dimension_files, dimension_key_java, dimension_registrations
 from .armor3d import armor3d_materials, armor_item_java, armor_renderer_java, armor3d_assets, cls as a3cls
 from .variants import variant_java, variant_resources, variant_recipes, variant_lang, variant_tag_members, enchantment_json
 from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
@@ -327,6 +328,9 @@ Your idea: {spec.idea}
     gear_imports, gear_fields, gear_init = gear_registrations(spec)
     if gear_fields:
         lines += ["", "    // Tools, armor and food (generated from materials/foods in the spec)"] + gear_fields
+    dim_fields, dim_init = dimension_registrations(spec)
+    if dim_fields:
+        lines += ["", "    // Dimension keys (right-click to travel)"] + dim_fields
     _, sound_fields = sound_registrations(spec)
     if sound_fields:
         lines += ["", "    // Sounds: assets/<mod>/sounds/<id>.ogg (upload your .ogg; play with level.playSound(null, pos, X_SOUND, SoundSource.NEUTRAL, 1f, 1f))"] + sound_fields
@@ -349,6 +353,8 @@ Your idea: {spec.idea}
             lines.append(f"            output.accept({gid.upper()});")
         for _, _, vid in __import__("mod_orchestra.variants", fromlist=["variant_ids"]).variant_ids(spec):
             lines.append(f"            output.accept({vid.upper()}_ITEM);")
+        for d in spec.dimensions:
+            lines.append(f"            output.accept({(d.key_item or d.identifier + '_key').upper()});")
         lines += ["        })", "        .build();"]
     lines += ["", "    @Override", "    public void onInitialize() {"]
     if spec.tab:
@@ -357,6 +363,7 @@ Your idea: {spec.idea}
     lines += variant_init
     lines += gear_init
     lines += ore_registrations(spec)[1]
+    lines += dimension_registrations(spec)[1]
     for feature in spec.features:
         group = "BUILDING_BLOCKS" if feature.kind == "block" else "INGREDIENTS"
         lines.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.{group}).register(entries -> entries.accept({item_const(feature)}));")
@@ -412,6 +419,22 @@ Your idea: {spec.idea}
         put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
     for rel, data in variant_resources(spec).items():
         put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
+    for rel, data in structure_files(spec).items():
+        put("src/main/resources/" + rel, data if isinstance(data, bytes) else json.dumps(data, indent=2) + "\n")
+    for b in spec.biomes:
+        put(f"src/main/resources/data/{spec.mod_id}/worldgen/biome/{b.identifier}.json", json.dumps(biome_json(spec, b), indent=2) + "\n")
+        lang[f"biome.{spec.mod_id}.{b.identifier}"] = b.label
+    for rel, data in dimension_files(spec).items():
+        put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
+    for d in spec.dimensions:
+        key = d.key_item or f"{d.identifier}_key"
+        put(f"{java_dir}/{''.join(x.capitalize() for x in d.identifier.split('_'))}KeyItem.java", dimension_key_java(spec, d))
+        put(f"{res}/models/item/{key}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{key}"}}, indent=2) + "\n")
+        put(f"{res}/textures/item/{key}.png", tinted_item_png("gem", *material_colors(spec.mod_id + "/" + key)))
+        lang[f"item.{spec.mod_id}.{key}"] = f"{d.label} Key"
+        lang[f"structure.{spec.mod_id}.{d.identifier}"] = d.label
+    for st in spec.structures:
+        lang[f"structure.{spec.mod_id}.{st.identifier}"] = st.label
     lang.update(variant_lang(spec))
     for e in spec.enchantments:
         put(f"src/main/resources/data/{spec.mod_id}/enchantment/{e.identifier}.json", json.dumps(enchantment_json(spec, e), indent=2) + "\n")
