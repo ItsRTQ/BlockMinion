@@ -68,7 +68,7 @@ public class ModGameTests implements FabricGameTest {
         helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE).containsKey(id("crystal_shrine")), "structure crystal_shrine loaded");
         helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE_SET).containsKey(id("crystal_shrine")), "structure set crystal_shrine loaded");
         helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.BIOME).containsKey(id("crystal_fields")), "biome crystal_fields loaded");
-        helper.assertTrue(helper.getLevel().getServer().getLevel(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION, id("crystal_realm"))) != null, "dimension crystal_realm exists");
+        helper.assertTrue(registries.registryOrThrow(net.minecraft.core.registries.Registries.DIMENSION_TYPE).containsKey(id("crystal_realm")), "dimension type crystal_realm loaded");
         helper.succeed();
     }
 

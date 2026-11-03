@@ -320,6 +320,6 @@ class Worldgen(unittest.TestCase):
             self.assertIn('new GemRealmKeyItem(new Item.Properties())', main)
             key = (root / "src/main/java/com/x/w/GemRealmKeyItem.java").read_text(); self.assertIn("sp.teleportTo(target", key); self.assertIn("Level.OVERWORLD", key)
             gt = (root / "src/main/java/com/x/w/gametest/ModGameTests.java").read_text()
-            self.assertIn("worldgenIsRegistered", gt); self.assertIn('Registries.STRUCTURE).containsKey(id("gem_shrine"))', gt); self.assertIn('Registries.DIMENSION, id("gem_realm")', gt)
+            self.assertIn("worldgenIsRegistered", gt); self.assertIn('Registries.STRUCTURE).containsKey(id("gem_shrine"))', gt); self.assertIn('Registries.DIMENSION_TYPE).containsKey(id("gem_realm"))', gt)
             lang = json.loads((root / "src/main/resources/assets/w_mod/lang/en_us.json").read_text())
             self.assertEqual(lang["item.w_mod.gem_realm_key"], "Gem Realm Key"); self.assertEqual(lang["biome.w_mod.gem_fields"], "Gem Fields")

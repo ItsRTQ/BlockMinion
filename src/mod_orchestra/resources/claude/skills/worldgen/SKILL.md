@@ -28,4 +28,4 @@ non-worldgen data; worldgen needs a new world.
 - **Portals**: the key item is the simplest reliable travel; a nether-style portal frame needs a custom `Block` + `PortalProcessor`/teleport logic — treat as a separate feature with its own acceptance criteria.
 
 ## Checking
-`craftctl gametest` runs `worldgenIsRegistered` (structure, structure set, biome and dimension registries). To see a structure quickly: `/locate structure <mod>:<id>` then `/tp`. Dimension: right-click the key; `/execute in <mod>:<id> run tp @s 0 100 0`.
+`craftctl gametest` runs `worldgenIsRegistered` (structure, structure set, biome and dimension-type registries; the test server does not instantiate extra dimensions, the server smoke does). To see a structure quickly: `/locate structure <mod>:<id>` then `/tp`. Dimension: right-click the key; `/execute in <mod>:<id> run tp @s 0 100 0`.
