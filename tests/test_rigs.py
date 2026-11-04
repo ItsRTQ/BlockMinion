@@ -127,5 +127,65 @@ class TestExports(unittest.TestCase):
                                      rigs.rig_path(plan, kind).read_text(encoding="utf8"), (plan, kind))
 
 
+class TestIntegration(unittest.TestCase):
+    """body_plan flows from add-mob into the generated placeholders and the staged designer source."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        from mod_orchestra import workflow
+        from mod_orchestra.specedit import add_mob
+        from mod_orchestra.state import Store
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name); self.store = Store(base / "state.sqlite")
+        p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop)
+        (base / "projects").mkdir()
+        proj = workflow.new_project(self.store, name="R", mod_id="r_mod", package="com.x.r", idea="mobs: cave golem; items: pebble")
+        add_mob(self.store, "r_mod", identifier="cave_golem", label="Cave Golem", body_plan="biped")
+        workflow.plan_project(self.store, "r_mod"); workflow.approve_spec(self.store, "r_mod"); workflow.generate_project(self.store, "r_mod")
+        self.root = Path(proj["root"]); self.res = self.root / "src/main/resources/assets/r_mod"
+
+    def test_placeholders_use_the_body_plan_rig(self):
+        geo = json.loads((self.res / "geo/entity/cave_golem.geo.json").read_text())
+        self.assertEqual(geo["minecraft:geometry"][0]["description"]["identifier"], "geometry.cave_golem")
+        self.assertEqual([b["name"] for b in geo["minecraft:geometry"][0]["bones"]], [b["name"] for b in rigs.recipe("biped")["bones"]])
+        anim = json.loads((self.res / "animations/entity/cave_golem.animation.json").read_text())
+        self.assertEqual(set(anim["animations"]), {"animation.cave_golem.idle", "animation.cave_golem.walk"})
+        png = (self.res / "textures/entity/cave_golem.png").read_bytes()
+        self.assertEqual((int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")), (64, 64))  # biped resolution
+
+    def test_invalid_body_plan_rejected(self):
+        from mod_orchestra.specedit import add_mob
+        from mod_orchestra.validation import InputError
+        with self.assertRaises(InputError):
+            add_mob(self.store, "r_mod", identifier="thing", label="Thing", body_plan="centaur")
+
+    def test_rig_block_stages_source_once(self):
+        from mod_orchestra.models import rig_block, MODEL_DIR
+        text = rig_block(self.store, "r_mod", "cave_golem", self.root)
+        self.assertIn("Base rig: biped", text); self.assertIn("placed now", text); self.assertIn("left_arm (child of body)", text)
+        src = self.root / MODEL_DIR / "cave_golem.bbmodel"
+        m = json.loads(src.read_text())
+        self.assertEqual((m["model_identifier"], m["mod_id"], m["meta"]["model_format"]), ("cave_golem", "r_mod", "geckolib_model"))
+        self.assertEqual({a["name"] for a in m["animations"]}, {"animation.cave_golem.idle", "animation.cave_golem.walk"})
+        src.write_text(src.read_text().replace('"name": "torso"', '"name": "chest"'))  # the designer edited it
+        self.assertIn("already present", rig_block(self.store, "r_mod", "cave_golem", self.root))
+        self.assertIn('"chest"', src.read_text())  # not overwritten
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_staged_source_validates_and_exports_with_the_server(self):
+        """The renamed .bbmodel is something the designer's tools accept as-is."""
+        from mod_orchestra.models import rig_block, MODEL_DIR
+        rig_block(self.store, "r_mod", "cave_golem", self.root)
+        script = ("import {readFileSync} from 'node:fs';"
+                  f"import {{validateGecko, exportGeometry, exportAnimations}} from '{ROOT}/tools/blockbench-mcp-safe/src/geckolib.mjs';"
+                  f"const m=JSON.parse(readFileSync('{self.root / MODEL_DIR / 'cave_golem.bbmodel'}','utf8'));"
+                  "const v=validateGecko(m); if(!v.valid) throw Error(JSON.stringify(v));"
+                  "console.log(JSON.stringify({id:exportGeometry(m)['minecraft:geometry'][0].description.identifier, clips:Object.keys(exportAnimations(m).animations)}));")
+        proc = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout)
+        self.assertEqual(out, {"id": "geometry.cave_golem", "clips": ["animation.cave_golem.idle", "animation.cave_golem.walk"]})
+
+
 if __name__ == "__main__":
     unittest.main()

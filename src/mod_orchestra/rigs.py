@@ -295,3 +295,29 @@ def rig_animation_for(plan: str, identifier: str) -> dict:
     anim["animations"] = {name.replace(f"animation.{plan}.", f"animation.{identifier}."): clip
                           for name, clip in anim["animations"].items()}
     return anim
+
+
+def rig_texture_size(plan: str) -> tuple[int, int]:
+    rec = load_rig(plan, "recipe")
+    return rec["texture_width"], rec["texture_height"]
+
+
+def rig_bbmodel_for(plan: str, identifier: str, mod_id: str) -> dict:
+    """The committed .bbmodel renamed to the mob (model identifier, mod id, clip names) so the designer edits it in place."""
+    m = load_rig(plan, "bbmodel")
+    m["name"] = identifier
+    m["model_identifier"] = identifier
+    m["mod_id"] = mod_id
+    for a in m.get("animations", []):
+        a["name"] = a["name"].replace(f"animation.{plan}.", f"animation.{identifier}.")
+    return m
+
+
+def stage_rig(workspace: Path, plan: str, identifier: str, mod_id: str, models_dir: str = "models") -> dict:
+    """Place the base rig as models/<identifier>.bbmodel unless the designer already has a source there."""
+    target = workspace / models_dir / f"{identifier}.bbmodel"
+    if target.is_file():
+        return {"staged": False, "path": str(target.relative_to(workspace)), "plan": plan}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(rig_bbmodel_for(plan, identifier, mod_id), indent=2) + "\n", encoding="utf8")
+    return {"staged": True, "path": str(target.relative_to(workspace)), "plan": plan}

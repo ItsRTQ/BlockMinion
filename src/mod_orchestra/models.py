@@ -46,12 +46,33 @@ def model_task_id(pid: str, mob_id: str) -> str:
     return f"{pid}:MODEL:{mob_id}"
 
 
+def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
+    """Stage the mob's base rig in models/ (if no source exists yet) and describe it to the designer."""
+    from .rigs import stage_rig, load_rig, DEFAULT_BODY_PLAN
+    from .specedit import _load
+    spec = _load(store, pid)
+    mob = next((m for m in spec.mobs if m.identifier == mob_id), None)
+    plan = getattr(mob, "body_plan", DEFAULT_BODY_PLAN) if mob else DEFAULT_BODY_PLAN
+    staged = stage_rig(workspace, plan, mob_id, spec.mod_id, MODEL_DIR)
+    rec = load_rig(plan, "recipe")
+    bones = ", ".join(f"{b['name']}" + (f" (child of {b['parent']})" if b.get("parent") else " (root)") for b in rec["bones"])
+    state = "placed now" if staged["staged"] else "already present (edited before; keep working on it)"
+    return (f"\n## Base rig: {plan} — `{staged['path']}` {state}\n"
+            f"Bones: {bones}. Texture {rec['texture_width']}x{rec['texture_height']}, box UV already packed without overlaps "
+            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}\n")
+
+
 MODEL_INSTRUCTIONS = """
 ## Your job on this task (designer)
 Author the Blockbench/GeckoLib model for the mob named in the task using the `blockbench` MCP server (tools
 prefixed `mcp__blockbench__bbmodel_*`). Its root is `models/` inside this workspace; only top-level files there.
 Deliver, in `models/`: `<mob>.bbmodel` (format geckolib_model, identifier = the mob id, mod id = this mod),
 `<mob>.geo.json`, `<mob>.animation.json` and `<mob>.png` (the texture, matching the model resolution).
+Start from `models/<mob>.bbmodel`: the controller places the base rig of the mob's body plan there (see the
+"Base rig" section below) with bones, pivots, box-UV layout and idle/walk clips already valid. Edit it with
+`bbmodel_edit` (move/resize cubes, add detail cubes to existing bones, add child bones for horns/ears/tails) and
+`bbmodel_geckolib_upsert_animation` with `replace: true` to tune the clips; keep the bone names. Only start a fresh
+`bbmodel_geckolib_create` when the creature's body plan is genuinely different from every base rig.
 Required: a readable rig (body/head/limbs as bones with sensible pivots), animations named exactly
 `animation.<mob>.idle` and `animation.<mob>.walk` (loop), `bbmodel_geckolib_validate` with
 `require_idle_walk: true` passing, `bbmodel_render` used at least once to look at the result (rest + a walk frame),
@@ -141,7 +162,7 @@ def install_model(store: Store, pid: str, mob_id: str, *, run_id: str, actor: st
 import json as _json
 from dataclasses import replace as _replace
 from .spec import Mob, read_spec, validate_spec_content
-from .geckolib import (entity_java, renderer_java, client_init_java, main_registrations, placeholder_geo, placeholder_animation,
+from .geckolib import (entity_java, renderer_java, client_init_java, main_registrations, placeholder_geo, placeholder_animation, placeholder_texture_size,
                        entity_loot, class_name, gradle_dependency_lines, GECKOLIB_VERSION)
 from .fabric import placeholder_png
 
@@ -171,7 +192,7 @@ def add_mob_after_generation(store: Store, pid: str, mob: Mob) -> dict:
     put(java_dir / "client" / f"{class_name(mob)}Renderer.java", renderer_java(new_spec, mob).encode())
     put(assets / "geo/entity" / f"{mob.identifier}.geo.json", (_json.dumps(placeholder_geo(mob), indent=2) + "\n").encode())
     put(assets / "animations/entity" / f"{mob.identifier}.animation.json", (_json.dumps(placeholder_animation(mob), indent=2) + "\n").encode())
-    put(assets / "textures/entity" / f"{mob.identifier}.png", placeholder_png(pid + "/entity/" + mob.identifier, 64, 32))
+    put(assets / "textures/entity" / f"{mob.identifier}.png", placeholder_png(pid + "/entity/" + mob.identifier, *placeholder_texture_size(mob)))
     put(res / "data" / pid / "loot_table/entities" / f"{mob.identifier}.json", (_json.dumps(entity_loot(new_spec, mob), indent=2) + "\n").encode())
     put(assets / "models/item" / f"{mob.identifier}_spawn_egg.json", (_json.dumps({"parent": "minecraft:item/template_spawn_egg"}, indent=2) + "\n").encode())
     lang_file = assets / "lang/en_us.json"

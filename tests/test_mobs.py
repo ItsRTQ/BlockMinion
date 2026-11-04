@@ -91,7 +91,8 @@ class Generated(unittest.TestCase):
         a = self.res / "assets/c_mod"
         geo = json.loads((a / "geo/entity/sky_critter.geo.json").read_text())
         self.assertEqual(geo["minecraft:geometry"][0]["description"]["identifier"], "geometry.sky_critter")
-        self.assertEqual([b["name"] for b in geo["minecraft:geometry"][0]["bones"]], ["body", "head", "leg0", "leg1", "leg2", "leg3"])
+        from mod_orchestra.rigs import recipe
+        self.assertEqual([b["name"] for b in geo["minecraft:geometry"][0]["bones"]], [b["name"] for b in recipe("quadruped")["bones"]])  # default body plan
         anim = json.loads((a / "animations/entity/sky_critter.animation.json").read_text())
         self.assertEqual(set(anim["animations"]), {"animation.sky_critter.idle", "animation.sky_critter.walk"})
         png = (a / "textures/entity/sky_critter.png").read_bytes()

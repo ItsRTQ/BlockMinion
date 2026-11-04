@@ -158,28 +158,19 @@ def biome_selector_java(b: str) -> str:
 
 
 def placeholder_geo(m: Mob) -> dict:
-    """Six-bone quadruped (body, head, leg0-3) — the shape validated with the headless Blockbench MCP; 64x32 UV."""
-    def cube(origin, size, uv):
-        return {"origin": origin, "size": size, "uv": uv}
-    bones = [
-        {"name": "body", "pivot": [0, 6, 0], "cubes": [cube([-4, 6, -6], [8, 6, 12], [0, 0])]},
-        {"name": "head", "parent": "body", "pivot": [0, 12, -6], "cubes": [cube([-3, 12, -10], [6, 4, 4], [0, 18])]},
-    ]
-    for i, (x, z) in enumerate([(-3, -4), (3, -4), (-3, 4), (3, 4)]):
-        # 2x6x2 cube = 8x8 UV; row y=18 next to the head (x 0-19) so legs do not share texels with the body (x 0-39, y 0-17)
-        bones.append({"name": f"leg{i}", "parent": "body", "pivot": [x, 6, z], "cubes": [cube([x - 1, 0, z - 1], [2, 6, 2], [20 + i * 8, 18])]})
-    return {"format_version": "1.12.0", "minecraft:geometry": [{"description": {"identifier": f"geometry.{m.identifier}",
-            "texture_width": 64, "texture_height": 32, "visible_bounds_width": 2, "visible_bounds_height": 1.5, "visible_bounds_offset": [0, 0.75, 0]},
-            "bones": bones}]}
+    """The base rig of the mob's body plan, renamed to the mob: the mod renders a correct silhouette before the designer runs."""
+    from .rigs import rig_geo_for
+    return rig_geo_for(m.body_plan, m.identifier)
 
 
 def placeholder_animation(m: Mob) -> dict:
-    walk = {}
-    for bone, sign in (("leg0", 1), ("leg3", 1), ("leg1", -1), ("leg2", -1)):
-        walk[bone] = {"rotation": {"0.0": [20 * sign, 0, 0], "0.5": [-20 * sign, 0, 0], "1.0": [20 * sign, 0, 0]}}
-    return {"format_version": "1.8.0", "animations": {
-        f"animation.{m.identifier}.idle": {"loop": True, "animation_length": 2.0, "bones": {"head": {"rotation": {"0.0": [0, 0, 0], "1.0": [3, 0, 0], "2.0": [0, 0, 0]}}}},
-        f"animation.{m.identifier}.walk": {"loop": True, "animation_length": 1.0, "bones": walk}}}
+    from .rigs import rig_animation_for
+    return rig_animation_for(m.body_plan, m.identifier)
+
+
+def placeholder_texture_size(m: Mob) -> tuple[int, int]:
+    from .rigs import rig_texture_size
+    return rig_texture_size(m.body_plan)
 
 
 def entity_loot(spec: Spec, m: Mob) -> dict:
