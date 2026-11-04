@@ -1,0 +1,472 @@
+{
+  "plan": "quadruped",
+  "name": "quadruped",
+  "identifier": "quadruped",
+  "modid": "rigs",
+  "model_type": "Entity",
+  "texture_width": 64,
+  "texture_height": 64,
+  "visible_box": [
+    2,
+    2,
+    1
+  ],
+  "bones": [
+    {
+      "name": "body",
+      "origin": [
+        0,
+        8,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "origin": [
+        0,
+        11,
+        -6
+      ]
+    },
+    {
+      "name": "tail",
+      "parent": "body",
+      "origin": [
+        0,
+        11,
+        6
+      ]
+    },
+    {
+      "name": "left_front_leg",
+      "parent": "body",
+      "origin": [
+        3,
+        6,
+        -4
+      ]
+    },
+    {
+      "name": "right_front_leg",
+      "parent": "body",
+      "origin": [
+        -3,
+        6,
+        -4
+      ]
+    },
+    {
+      "name": "left_back_leg",
+      "parent": "body",
+      "origin": [
+        3,
+        6,
+        4
+      ]
+    },
+    {
+      "name": "right_back_leg",
+      "parent": "body",
+      "origin": [
+        -3,
+        6,
+        4
+      ]
+    }
+  ],
+  "cubes": [
+    {
+      "name": "body_cube",
+      "bone": "body",
+      "from": [
+        -4,
+        6,
+        -6
+      ],
+      "to": [
+        4,
+        12,
+        6
+      ],
+      "uv_offset": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "head_cube",
+      "bone": "head",
+      "from": [
+        -3,
+        8,
+        -11
+      ],
+      "to": [
+        3,
+        14,
+        -6
+      ],
+      "uv_offset": [
+        40,
+        0
+      ]
+    },
+    {
+      "name": "snout",
+      "bone": "head",
+      "from": [
+        -2,
+        8,
+        -13
+      ],
+      "to": [
+        2,
+        11,
+        -11
+      ],
+      "uv_offset": [
+        44,
+        18
+      ]
+    },
+    {
+      "name": "tail_cube",
+      "bone": "tail",
+      "from": [
+        -1,
+        10,
+        6
+      ],
+      "to": [
+        1,
+        12,
+        10
+      ],
+      "uv_offset": [
+        32,
+        18
+      ]
+    },
+    {
+      "name": "left_front_leg_cube",
+      "bone": "left_front_leg",
+      "from": [
+        2,
+        0,
+        -5
+      ],
+      "to": [
+        4,
+        6,
+        -3
+      ],
+      "uv_offset": [
+        0,
+        18
+      ]
+    },
+    {
+      "name": "right_front_leg_cube",
+      "bone": "right_front_leg",
+      "from": [
+        -4,
+        0,
+        -5
+      ],
+      "to": [
+        -2,
+        6,
+        -3
+      ],
+      "uv_offset": [
+        8,
+        18
+      ]
+    },
+    {
+      "name": "left_back_leg_cube",
+      "bone": "left_back_leg",
+      "from": [
+        2,
+        0,
+        3
+      ],
+      "to": [
+        4,
+        6,
+        5
+      ],
+      "uv_offset": [
+        16,
+        18
+      ]
+    },
+    {
+      "name": "right_back_leg_cube",
+      "bone": "right_back_leg",
+      "from": [
+        -4,
+        0,
+        3
+      ],
+      "to": [
+        -2,
+        6,
+        5
+      ],
+      "uv_offset": [
+        24,
+        18
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "animation.quadruped.idle",
+      "length": 2.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                3.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "tail",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                8.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "animation.quadruped.walk",
+      "length": 1.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "left_front_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_back_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_front_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "left_back_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "body",
+          "channel": "position",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.5,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": "Diagonal gait: left_front with right_back, right_front with left_back. Head pivot is the neck (top-front of body), tail pivot the rump. Scale legs taller for deer, body longer for dachshund."
+}

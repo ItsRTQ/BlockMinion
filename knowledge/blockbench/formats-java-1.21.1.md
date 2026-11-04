@@ -40,7 +40,7 @@ Cube `uv_offset=[u,v]`, size `w=Δx, h=Δy, d=Δz` (floored). Faces occupy, in p
 | south | `[u+2d+w, v+d]`   | `[u+2d+2w, v+d+h]`    |
 
 One cube therefore needs a strip `(2d+2w) × (d+h)`. Lay cubes out so strips do not overlap and all fit inside
-`resolution` (64×32 for small quadrupeds, 64×64 for bipeds and armor). Box UV is the only mode the server exports
+`resolution` (64×64 for every base rig and most creatures with 30–70 cubes; 128 or 256 only for bosses or high-detail skins). Box UV is the only mode the server exports
 for cubes; per-face UV with face rotation bumps the geo `format_version` to `1.21.0` (server does this itself).
 
 ## 3. GeckoLib geometry and animation (`4.7.3`, Fabric 1.21.1)
@@ -135,7 +135,9 @@ invisible in hand and GUI.
 - Rotation keyframes in degrees, `[-360, 360]` (**enforced**); scale never ≤ 0; looping clips must start and end
   on the same value per channel (**enforced**: `LOOP_SEAM`). `snapping` is 20/s (**enforced**) so keyframes land
   on ticks: use times that are multiples of 0.05.
-- Keep bones small in number: every bone is a matrix multiply per frame; a quadruped needs ~7, a biped ~7–9.
+- Bone density: every cube that should move on its own (ears, jaw, tail segments, a hat, a held prop) gets its own bone;
+  finished community creatures run 15–35 bones (bosses 35–55) at ~1.5 cubes per bone. The base rigs are skeletons
+  (6–9 bones) to grow from, not a target. `bbmodel_quality_gates` allows 96 bones / 256 cubes.
 - Preview before export: `bbmodel_render` at rest and at `walk` time 0.25/0.5; `bbmodel_quality_gates` for the
   numeric gates (UV coverage, proportions, seam checks).
 
@@ -162,3 +164,20 @@ invisible in hand and GUI.
 - Free `java_block` rotation (reported for 1.21.6+; the two sources disagree, irrelevant here).
 - OptiFine CEM `.jem/.jpm`, Animated Java display-entity rigs, Easy Model Entities, armatures/weight painting:
   other runtimes or non-exporting features. Migration notes for 1.21.4+ are tracked in `docs/V2_BACKLOG.md`.
+
+## 9. Calibration — what finished community GeckoLib creatures look like (stats only, 2026-11-04)
+
+Read from public model pages on blockbenchworkshop.com; no geometry or files were taken. Use the numbers to judge
+whether a model is "done", not as something to copy.
+
+| creature (plan) | cubes | bones | cubes/bone | texture | clips |
+|---|---|---|---|---|---|
+| white unicorn (quadruped) | 54 | 33 | 1.6 | 256² | 1 (gallop) |
+| raccoon merchant (biped) | 29 | 19 | 1.5 | 64² | 13 (idle, sit/beg, eat, walk, run, wash, sneeze, backpack on/off/open/close/idle, happy) |
+| cosmic whale (fish, boss) | 55 | 37 | 1.5 | 256² | 6 (drift, swim, sing, roll, dive, emerge) |
+| crab captain (insect-like) | 72 | 54 | 1.3 | 64² | 8 (idle, walk, dance, drink, salute, snap, tipsy, hat toss) |
+| **base rigs here** | 5–9 | 5–9 | ~1.1 | 64² | 2 (idle, walk) |
+
+What the gap says: (a) legs with 2–3 articulated segments and props on their own bones are where the bone count
+comes from; (b) 64×64 is enough for 30–70 cubes when the UV is packed; (c) a creature with personality has
+6–13 clips, most of them short one-shot actions on top of idle/walk/run.

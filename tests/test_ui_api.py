@@ -126,7 +126,7 @@ class GuidanceGalleryFeedback(unittest.TestCase):
         from mod_orchestra.geckolib import placeholder_geo, placeholder_animation; from mod_orchestra.spec import Mob; from mod_orchestra.fabric import placeholder_png
         m = Mob(identifier="sky_critter", label="x")
         (root / "models/sky_critter.bbmodel").write_text("{}"); (root / "models/sky_critter.geo.json").write_text(json.dumps(placeholder_geo(m)))
-        (root / "models/sky_critter.animation.json").write_text(json.dumps(placeholder_animation(m))); (root / "models/sky_critter.png").write_bytes(placeholder_png("t", 64, 32))
+        (root / "models/sky_critter.animation.json").write_text(json.dumps(placeholder_animation(m))); (root / "models/sky_critter.png").write_bytes(placeholder_png("t", 64, 64))
         (root / "models/sky_critter_rest.png").write_bytes(placeholder_png("r", 32, 32))
         h = {"task": "g_mod:MODEL:sky_critter", "status": "DONE", "scope": "s", "changed_files": ["models/sky_critter.geo.json"], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "m"}, "risks": [], "unknowns": [], "needs_user": [], "next_agent": "coder"}
         from mod_orchestra.dispatch import dispatch
