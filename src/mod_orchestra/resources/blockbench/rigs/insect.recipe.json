@@ -1,0 +1,574 @@
+{
+  "plan": "insect",
+  "name": "insect",
+  "identifier": "insect",
+  "modid": "rigs",
+  "model_type": "Entity",
+  "texture_width": 64,
+  "texture_height": 32,
+  "visible_box": [
+    1,
+    0.75,
+    1.5
+  ],
+  "bones": [
+    {
+      "name": "body",
+      "origin": [
+        0,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "origin": [
+        0,
+        4.5,
+        -3
+      ]
+    },
+    {
+      "name": "abdomen",
+      "parent": "body",
+      "origin": [
+        0,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "left_front_leg",
+      "parent": "body",
+      "origin": [
+        2,
+        4,
+        -2.5
+      ]
+    },
+    {
+      "name": "left_mid_leg",
+      "parent": "body",
+      "origin": [
+        2,
+        4,
+        -1.5
+      ]
+    },
+    {
+      "name": "left_back_leg",
+      "parent": "body",
+      "origin": [
+        2,
+        4,
+        -0.5
+      ]
+    },
+    {
+      "name": "right_front_leg",
+      "parent": "body",
+      "origin": [
+        -2,
+        4,
+        -2.5
+      ]
+    },
+    {
+      "name": "right_mid_leg",
+      "parent": "body",
+      "origin": [
+        -2,
+        4,
+        -1.5
+      ]
+    },
+    {
+      "name": "right_back_leg",
+      "parent": "body",
+      "origin": [
+        -2,
+        4,
+        -0.5
+      ]
+    }
+  ],
+  "cubes": [
+    {
+      "name": "thorax",
+      "bone": "body",
+      "from": [
+        -2,
+        3,
+        -3
+      ],
+      "to": [
+        2,
+        6,
+        0
+      ],
+      "uv_offset": [
+        24,
+        0
+      ]
+    },
+    {
+      "name": "head_cube",
+      "bone": "head",
+      "from": [
+        -1.5,
+        3,
+        -6
+      ],
+      "to": [
+        1.5,
+        6,
+        -3
+      ],
+      "uv_offset": [
+        38,
+        0
+      ]
+    },
+    {
+      "name": "abdomen_cube",
+      "bone": "abdomen",
+      "from": [
+        -3,
+        2,
+        0
+      ],
+      "to": [
+        3,
+        6,
+        6
+      ],
+      "uv_offset": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "left_front_leg_cube",
+      "bone": "left_front_leg",
+      "from": [
+        2,
+        0,
+        -3
+      ],
+      "to": [
+        3,
+        4,
+        -2
+      ],
+      "uv_offset": [
+        50,
+        0
+      ]
+    },
+    {
+      "name": "left_mid_leg_cube",
+      "bone": "left_mid_leg",
+      "from": [
+        2,
+        0,
+        -2
+      ],
+      "to": [
+        3,
+        4,
+        -1
+      ],
+      "uv_offset": [
+        54,
+        0
+      ]
+    },
+    {
+      "name": "left_back_leg_cube",
+      "bone": "left_back_leg",
+      "from": [
+        2,
+        0,
+        -1
+      ],
+      "to": [
+        3,
+        4,
+        0
+      ],
+      "uv_offset": [
+        58,
+        0
+      ]
+    },
+    {
+      "name": "right_front_leg_cube",
+      "bone": "right_front_leg",
+      "from": [
+        -3,
+        0,
+        -3
+      ],
+      "to": [
+        -2,
+        4,
+        -2
+      ],
+      "uv_offset": [
+        0,
+        10
+      ]
+    },
+    {
+      "name": "right_mid_leg_cube",
+      "bone": "right_mid_leg",
+      "from": [
+        -3,
+        0,
+        -2
+      ],
+      "to": [
+        -2,
+        4,
+        -1
+      ],
+      "uv_offset": [
+        4,
+        10
+      ]
+    },
+    {
+      "name": "right_back_leg_cube",
+      "bone": "right_back_leg",
+      "from": [
+        -3,
+        0,
+        -1
+      ],
+      "to": [
+        -2,
+        4,
+        0
+      ],
+      "uv_offset": [
+        8,
+        10
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "animation.insect.idle",
+      "length": 2.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                4.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "abdomen",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                3.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "animation.insect.walk",
+      "length": 1.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "left_front_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "left_mid_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "left_back_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_front_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_mid_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_back_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "body",
+          "channel": "position",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.3,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": "Tripod gait: front+back of one side move with the middle leg of the other. Legs are 1x4x1 under the thorax; splay them outward (rotation Z \u00b130 on the bones) for a spider, drop two for a beetle."
+}

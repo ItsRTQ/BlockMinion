@@ -1,0 +1,571 @@
+{
+  "plan": "bird",
+  "name": "bird",
+  "identifier": "bird",
+  "modid": "rigs",
+  "model_type": "Entity",
+  "texture_width": 64,
+  "texture_height": 32,
+  "visible_box": [
+    1,
+    1.5,
+    1
+  ],
+  "bones": [
+    {
+      "name": "body",
+      "origin": [
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "origin": [
+        0,
+        10,
+        -3
+      ]
+    },
+    {
+      "name": "left_wing",
+      "parent": "body",
+      "origin": [
+        3,
+        9,
+        0
+      ]
+    },
+    {
+      "name": "right_wing",
+      "parent": "body",
+      "origin": [
+        -3,
+        9,
+        0
+      ]
+    },
+    {
+      "name": "tail",
+      "parent": "body",
+      "origin": [
+        0,
+        6,
+        4
+      ]
+    },
+    {
+      "name": "left_leg",
+      "parent": "body",
+      "origin": [
+        1.5,
+        4,
+        0
+      ]
+    },
+    {
+      "name": "right_leg",
+      "parent": "body",
+      "origin": [
+        -1.5,
+        4,
+        0
+      ]
+    }
+  ],
+  "cubes": [
+    {
+      "name": "body_cube",
+      "bone": "body",
+      "from": [
+        -3,
+        4,
+        -4
+      ],
+      "to": [
+        3,
+        10,
+        4
+      ],
+      "uv_offset": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "head_cube",
+      "bone": "head",
+      "from": [
+        -2,
+        10,
+        -6
+      ],
+      "to": [
+        2,
+        14,
+        -2
+      ],
+      "uv_offset": [
+        0,
+        14
+      ]
+    },
+    {
+      "name": "beak",
+      "bone": "head",
+      "from": [
+        -1,
+        11,
+        -8
+      ],
+      "to": [
+        1,
+        12,
+        -6
+      ],
+      "uv_offset": [
+        38,
+        14
+      ]
+    },
+    {
+      "name": "left_wing_cube",
+      "bone": "left_wing",
+      "from": [
+        3,
+        5,
+        -3
+      ],
+      "to": [
+        4,
+        9,
+        3
+      ],
+      "uv_offset": [
+        28,
+        0
+      ]
+    },
+    {
+      "name": "right_wing_cube",
+      "bone": "right_wing",
+      "from": [
+        -4,
+        5,
+        -3
+      ],
+      "to": [
+        -3,
+        9,
+        3
+      ],
+      "uv_offset": [
+        42,
+        0
+      ]
+    },
+    {
+      "name": "tail_cube",
+      "bone": "tail",
+      "from": [
+        -2,
+        5,
+        4
+      ],
+      "to": [
+        2,
+        6,
+        7
+      ],
+      "uv_offset": [
+        24,
+        14
+      ]
+    },
+    {
+      "name": "left_leg_cube",
+      "bone": "left_leg",
+      "from": [
+        1,
+        0,
+        -1
+      ],
+      "to": [
+        2,
+        4,
+        0
+      ],
+      "uv_offset": [
+        16,
+        14
+      ]
+    },
+    {
+      "name": "right_leg_cube",
+      "bone": "right_leg",
+      "from": [
+        -2,
+        0,
+        -1
+      ],
+      "to": [
+        -1,
+        4,
+        0
+      ],
+      "uv_offset": [
+        20,
+        14
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "animation.bird.idle",
+      "length": 2.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                4.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "left_wing",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                -6.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "right_wing",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                6.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "tail",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                5.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "animation.bird.walk",
+      "length": 1.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "left_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_leg",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -25,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "body",
+          "channel": "position",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.8,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                6,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -6,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                6,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "left_wing",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                -8
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.0,
+                8
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                -8
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_wing",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                8
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                0.0,
+                -8
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                8
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": "Wings pivot at the shoulder on the body's side and flap on Z. Head bobs with each step. For flight, add a fly clip with wings at \u00b140 on Z; for a big bird scale the body and lengthen the legs."
+}
