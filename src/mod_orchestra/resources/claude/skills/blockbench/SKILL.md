@@ -25,6 +25,12 @@ write must pass it as `expected_revision`. Tool names are `mcp__blockbench__<nam
 ## Conventions the exporter applies (do not compensate for them)
 X is mirrored on export (Blockbench +X = Bedrock −X) and rotation X/Y signs flip; this matches Blockbench's own Bedrock export. Animation names must be exactly `animation.<mob>.idle` and `animation.<mob>.walk`; the entity class plays them by name.
 
+## Reference
+Formats, box-UV strip layout, armor bone table, `java_block` constraints/display presets and the symptom checklist for
+this profile are in `knowledge/blockbench/formats-java-1.21.1.md` (`orchestra_knowledge_search "box uv"` finds it).
+Authoring rules: cubes only, unique snake_case bone names with `left_`/`right_` prefixes, pivots at the joints before
+animating, keyframe times in multiples of 0.05, looping clips end where they start.
+
 ## Rig cheat sheet (quadruped, 64x32)
 body [-4,6,-6]→[4,12,6] pivot [0,6,0]; head [-3,12,-10]→[3,16,-6] pivot [0,12,-6]; legs 2×6×2 at x=±3, z=±4, pivot at the hip (y=6). Walk: front-left and back-right legs rotate +20→−20→+20 on X over 1 s, the other pair opposite. Idle: head rotation 0→3→0 over 2 s, optional body position bob 0→0.5→0 with `easeInOutSine`.
 
