@@ -102,7 +102,7 @@ async function openProject(id) {
   qs("p-id").textContent = p.id + " · " + p.spec.package; qs("p-name").textContent = p.name;
   const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
   qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
-  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["mobs", renderGallery], ["items", renderFeatures], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
     try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) r.catch(e => toast(`${name}: ${e.message}`, "bad")); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
   }
   if (p.dispatching) pollUntilIdle(id);
@@ -114,7 +114,7 @@ function renderStepper(g) {
   g.stages.forEach((s, i) => { const d = el("div", null, "step " + (i < idx ? "done" : i === idx ? "current" : "")); d.append(el("div", (i < idx ? "✓ " : "") + (i + 1), "sn"), el("div", s, "st")); box.append(d); });
 }
 
-const POLICY_KEYS = ["approve_spec", "generate", "build", "server_smoke"];
+const POLICY_KEYS = ["approve_spec", "generate", "build", "gametest", "server_smoke"];
 async function savePolicy(pid) {
   const policy = Object.fromEntries(POLICY_KEYS.map(k => [k, qs("pol-" + k).checked]));
   try { await api(`/api/project/${pid}/autopilot`, policy); renderPolicySummary(policy); toast("Autopilot permissions saved.", "ok"); } catch (e) { toast(e.message, "bad"); }
@@ -151,6 +151,7 @@ function summarizeJob(job, r) {
   if (job === "dispatch") return `${r.role} on ${r.task} → ${r.task_state}${r.cost_usd ? " · " + fmtMoney(r.cost_usd) : ""}${r.duration_s ? " · " + fmtDur(r.duration_s) : ""}${r.error ? "\n" + r.error : ""}`;
   if (job === "orchestrate") return `Autopilot: ${r.runs.length} agent run(s)${r.gates?.length ? ", gates: " + r.gates.map(g => g.gate + (g.status ? " → " + g.status : "")).join(", ") : ""} · ${fmtMoney(r.total_cost_usd)}\nstopped because: ${r.stopped_because}`;
   if (job === "build") return `build → ${r.status} (exit ${r.exit_code}, ${fmtDur(r.duration_s)})${r.repair ? "\nrepair task opened: " + (r.repair.task || r.repair.error) : ""}`;
+  if (job === "gametest") return `GameTests: ${r.status} · ${r.junit?.tests ?? 0} test(s), ${r.junit?.failures ?? 0} failure(s)` + (r.junit?.failed?.length ? " — " + r.junit.failed.map(f => f.name).join(", ") : "") + (r.repair?.task ? ` · repair ${r.repair.task} opened` : "");
   if (job === "server-smoke") return `server smoke → ${r.status} (${fmtDur(r.duration_s)})${r.mod_errors?.length ? "\n" + r.mod_errors.join("\n") : ""}${r.repair ? "\nrepair task opened: " + (r.repair.task || r.repair.error) : ""}`;
   if (job === "run-client") return `client closed after ${fmtDur(r.duration_s)} · mod loaded: ${r.mod_loaded ? "yes" : "NO"} (${r.mods_loaded ?? "?"} mods)\nNow record what you saw in Verification.`;
   return JSON.stringify(r, null, 1).slice(0, 600);
@@ -178,6 +179,8 @@ function actionButton(p, s) {
     case "generate": return btn("Generate source", () => run(() => api(`/api/project/${id}/generate`, {}), "Source generated (unverified)."), "primary");
     case "request-build": return btn("Request build approval", () => run(() => api(`/api/project/${id}/request-build`, {}), "Approval requested. Grant it in Now."), "primary");
     case "request-smoke": return btn("Request server smoke", () => run(() => api(`/api/project/${id}/request-smoke`, {}), "Approval requested. Grant it in Now."), "primary");
+    case "request-gametest": return btn("Request GameTests", () => run(() => api(`/api/project/${id}/request-gametest`, {}), "Approval requested. Grant it in Now."), "secondary");
+    case "gametest": return btn("Run GameTests", async () => { await api(`/api/project/${id}/gametest`, s.payload); toast("GameTests running (2–5 min)…", "ok"); await openProject(id); }, "primary");
     case "decide": return btn(s.payload.grant ? "Grant" : "Deny", () => run(() => api(`/api/project/${id}/decide`, s.payload), s.payload.grant ? "Granted. Run it from Now." : "Denied."), "primary");
     case "build": return btn("Run trusted build", async () => { await api(`/api/project/${id}/build-bg`, s.payload); toast("Build started.", "ok"); await openProject(id); }, "primary");
     case "server-smoke": return btn("Run server smoke", async () => { await api(`/api/project/${id}/server-smoke`, s.payload); toast("Server starting…", "ok"); await openProject(id); }, "primary");
@@ -327,7 +330,8 @@ qs("addmob-form").onsubmit = async (e) => {
   e.preventDefault(); if (!selected) return;
   const drops = addMobDrops;
   try {
-    const out = await api(`/api/project/${selected}/add-mob`, { identifier: qs("am-id").value.trim(), label: qs("am-label").value.trim(), behavior: qs("am-behavior").value, drops });
+    const spawn = qs("am-spawn").checked ? { biomes: qs("am-biomes").value.split(",").map(s => s.trim()).filter(Boolean), weight: Number(qs("am-weight").value), min_group: Number(qs("am-gmin").value), max_group: Number(qs("am-gmax").value) } : null;
+    const out = await api(`/api/project/${selected}/add-mob`, { identifier: qs("am-id").value.trim(), label: qs("am-label").value.trim(), behavior: qs("am-behavior").value, drops, spawn });
     const desc = qs("am-desc").value.trim();
     if (desc) await api(`/api/project/${selected}/feedback`, { mob: qs("am-id").value.trim(), text: desc }).catch(() => {});
     qs("addmob-form").reset(); addMobDrops = []; qs("am-drops-summary").textContent = "nothing"; closeModal("modal-mob");
@@ -355,8 +359,10 @@ async function renderFeatures(p) {
     const mid = el("div"); const nm = el("div", null, "fname"); nm.append(document.createTextNode(f.label), el("span", f.kind, "fk")); mid.append(nm, el("div", `${p.id}:${f.identifier}`, "fid"));
     const bits = []; if (f.recipes?.length) bits.push("recipes: " + f.recipes.join(", ")); if (f.drop) bits.push(`drops ${f.drop.item} ${f.drop.count_min}-${f.drop.count_max}`);
     if (f.food) bits.push(`nutrition ${f.food.nutrition} · saturation ${f.food.saturation}` + (f.food.effects?.length ? " · " + f.food.effects.map(e => e.effect.replace("minecraft:", "")).join(", ") : ""));
+    if (f.ore) bits.push(`worldgen: ${f.ore.vein_size}-block veins ×${f.ore.veins_per_chunk}/chunk, y ${f.ore.min_y}..${f.ore.max_y}`);
     if (bits.length) mid.append(el("small", bits.join(" · ")));
     const right = el("div", null, "actions"); right.style.marginTop = "0";
+    if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = prompt(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"));
     right.append(btn("Rename", async () => { const label = prompt("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
@@ -371,7 +377,10 @@ async function renderFeatures(p) {
     const acts = el("div", null, "actions"); acts.style.marginTop = "0";
     if (hasArmor) {
       const helmet = pieces.find(f => f.armor_previews) || pieces.find(f => f.kind === "armor");
-      acts.append(btn("Design worn armor", async () => { const notes = prompt(`Notes for the designer about the ${mat} worn armor (style, motifs, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor-design`, { material: mat, notes }); if (confirm(`Task ${out.task} created. Start the designer now? (~$1, 2–4 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer painting the worn armor; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
+      const is3d = pieces.some(f => f.armor_style === "3d");
+      head.append(el("span", is3d ? "3D GeckoLib armor" : "textured armor", "pill"));
+      if (is3d) acts.append(btn("Design 3D armor", async () => { const notes = prompt(`Notes for the designer about the ${mat} 3D armor (silhouette, crest, pauldrons, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor3d-design`, { material: mat, notes }); if (confirm(`Task ${out.task} created. Start the designer now? (~$1–2, 3–6 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer modelling the armor in Blockbench; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
+      else acts.append(btn("Design worn armor", async () => { const notes = prompt(`Notes for the designer about the ${mat} worn armor (style, motifs, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor-design`, { material: mat, notes }); if (confirm(`Task ${out.task} created. Start the designer now? (~$1, 2–4 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer painting the worn armor; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
       acts.append(btn("Retint worn armor", async () => { const choice = prompt(`Worn armor for "${mat}":\n• leave EMPTY = match the icon's colours automatically\n• or type a colour like #2a9d8f`, ""); if (choice === null) return; const payload = choice.trim() ? { material: mat, color: choice.trim() } : { material: mat, match_icon: true }; const out = await api(`/api/project/${p.id}/retint-armor`, payload); toast(out.note, "ok"); await openProject(p.id); }, "mini secondary"));
       for (const layer of ["1", "2"]) { const upA = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: "armor_layer_" + layer, identifier: mat, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); }); acts.append(upA, btn(`Upload layer ${layer} (64×32)`, () => upA.click(), "mini secondary")); }
       head.append(acts); card.append(head);
@@ -389,8 +398,10 @@ async function renderFeatures(p) {
   addForm.onsubmit = async (e) => {
     e.preventDefault();
     try {
-      const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value });
-      addForm.reset(); delete qs("af-id").dataset.touched; closeModal("modal-feat");
+      const variants = [...qs("af-variants").querySelectorAll("input:checked")].map(i => i.value);
+      const out = await api(`/api/project/${p.id}/add-feature`, { kind: qs("af-kind").value, label: qs("af-label").value.trim(), identifier: qs("af-id").value.trim(), shape: qs("af-shape").value, color: qs("af-color-hex").value, tool: qs("af-tool").value, mining_level: qs("af-level").value, variants });
+      if (qs("af-kind").value === "block" && qs("af-ore").checked) { try { await api(`/api/project/${p.id}/add-ore`, { block: out.identifier, ...oreFromForm() }); } catch (e2) { toast("Block added but worldgen failed: " + e2.message, "bad"); } }
+      addForm.reset(); delete qs("af-id").dataset.touched; closeModal("modal-feat"); qs("af-kind").onchange();
       toast(out.generated ? `Added. Files written; the coder registers it (${out.task}) — see Now.` : "Added to the spec. Re-approve before generating.", "ok");
       await openProject(p.id);
     } catch (err) { toast(err.message, "bad"); }
@@ -433,7 +444,7 @@ qs("addmat-form").onsubmit = async (e) => {
     const out = await api(`/api/project/${selected}/add-material`, { identifier: qs("mt-id").value.trim(), label: qs("mt-label").value.trim(), ingredient: qs("mt-ingredient").value.trim(),
       tools: checked("mt-tools"), armor: checked("mt-armor"), durability: Number(qs("mt-durability").value), mining_speed: Number(qs("mt-speed").value), attack_damage_bonus: Number(qs("mt-attack").value),
       mining_level: qs("mt-level").value, enchantability: Number(qs("mt-ench").value), armor_defense: defense, armor_durability: Number(qs("mt-adur").value), toughness: Number(qs("mt-tough").value),
-      knockback_resistance: Number(qs("mt-kb").value), recipes: qs("mt-recipes").checked, color: qs("mt-color-hex").value, accent: qs("mt-accent-hex").value });
+      knockback_resistance: Number(qs("mt-kb").value), recipes: qs("mt-recipes").checked, color: qs("mt-color-hex").value, accent: qs("mt-accent-hex").value, armor_style: qs("mt-style").value });
     qs("addmat-form").reset(); delete qs("mt-id").dataset.touched; qs("mt-preset").onchange(); closeModal("modal-mat");
     toast(out.generated ? `Set added. Files written; the coder registers it (${out.task}) — see Now.` : `Set added to the spec (${(out.items || []).length} items). Re-approve before generating.`, "ok");
     await openProject(selected);
@@ -449,6 +460,60 @@ qs("addfood-form").onsubmit = async (e) => {
     qs("addfood-form").reset(); delete qs("fd-id").dataset.touched; closeModal("modal-food");
     toast(out.generated ? `Food added. Files written; the coder registers it (${out.task}) — see Now.` : "Food added to the spec. Re-approve before generating.", "ok");
     await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
+qs("af-kind").onchange = () => { const b = qs("af-kind").value === "block"; qs("af-block-row").style.display = b ? "" : "none"; qs("af-ore-row").style.display = b ? "" : "none"; qs("af-variants-row").style.display = b ? "" : "none"; }; qs("af-kind").onchange();
+qs("en-label").oninput = () => { if (!qs("en-id").dataset.touched) qs("en-id").value = qs("en-label").value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
+qs("en-id").oninput = () => { qs("en-id").dataset.touched = "1"; };
+qs("ench-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  try {
+    const out = await api(`/api/project/${selected}/add-enchantment`, { identifier: qs("en-id").value.trim(), label: qs("en-label").value.trim(), kind: qs("en-kind").value, max_level: Number(qs("en-level").value), items: qs("en-items").value || null, weight: Number(qs("en-weight").value) });
+    qs("ench-form").reset(); delete qs("en-id").dataset.touched; closeModal("modal-ench");
+    toast(out.generated ? out.note : "Enchantment added to the spec (re-approve before generating).", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
+qs("af-ore").onchange = () => { qs("af-ore-fields").style.display = qs("af-ore").checked ? "" : "none"; };
+const oreFromForm = () => ({ vein_size: Number(qs("af-ore-size").value), veins_per_chunk: Number(qs("af-ore-count").value), min_y: Number(qs("af-ore-miny").value), max_y: Number(qs("af-ore-maxy").value), biomes: qs("af-ore-biomes").value.split(",").map(s => s.trim()).filter(Boolean), discard_on_air: Number(qs("af-ore-discard").value) });
+qs("am-spawn").onchange = () => { qs("am-spawn-row").style.display = qs("am-spawn").checked ? "" : "none"; };
+// ---- World-Gen tab ----
+async function renderWorldgen(p) {
+  const list = qs("wg-list"); if (!list) return; list.replaceChildren();
+  let wg; try { wg = await api(`/api/project/${p.id}/worldgen`); } catch (e) { list.append(el("p", e.message, "muted")); return; }
+  const section = (title, items, fmt) => { if (!items.length) return; list.append(el("div", title, "eyebrow")); for (const it of items) { const row = el("div", null, "feature"); const mid = el("div"); const nm = el("div", null, "fname"); nm.append(document.createTextNode(it.label || it.identifier || it.block), el("span", title.replace(/s$/, ""), "fk")); mid.append(nm, el("small", fmt(it))); row.append(el("div"), mid); list.append(row); } };
+  section("ores", wg.ores, o => `${o.block}: ${o.vein_size}-block veins ×${o.veins_per_chunk}/chunk, y ${o.min_y}..${o.max_y}, ${(o.biomes || []).join(", ")}`);
+  section("structures", wg.structures, s => `${s.layers[0][0].length}×${s.layers.length}×${s.layers[0].length} · every ${s.spacing} chunks (min ${s.separation}) · ${(s.biomes || []).join(", ")} · ${s.step.replace("_structures", "")}`);
+  section("biomes", wg.biomes, b => `${b.base}-based · temp ${b.temperature} · sky ${b.sky_color}${b.mobs?.length ? " · mobs: " + b.mobs.join(", ") : ""}`);
+  section("dimensions", wg.dimensions, d => `${(d.biomes || []).join(", ") || "plains"} · ${d.sky} sky · ${d.noise.replace("minecraft:", "")} · key: ${d.key_item || d.identifier + "_key"}`);
+  if (!wg.ores.length && !wg.structures.length && !wg.biomes.length && !wg.dimensions.length) list.append(el("p", "Nothing yet. Ores live on blocks (Items tab); add structures, biomes and dimensions below.", "muted"));
+  const checks = (box, ids) => { const b = qs(box); b.replaceChildren(); for (const id of ids) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = id; l.append(c, document.createTextNode(" " + id)); b.append(l); } if (!ids.length) b.append(el("span", "none yet", "muted")); };
+  checks("bi-mobs", wg.mobs); checks("dm-biomes", wg.biomes.map(b => b.identifier));
+  for (const b of document.querySelectorAll('#sub-worldgen [data-modal]')) { b.disabled = !!wg.generated; b.title = wg.generated ? "After generation, request worldgen as a change on the Map" : ""; }
+}
+for (const [c, h] of [["bi-sky", "bi-sky-hex"], ["bi-fog", "bi-fog-hex"], ["bi-water", "bi-water-hex"]]) { qs(c).oninput = () => { qs(h).value = qs(c).value; }; qs(h).oninput = () => { if (/^#[0-9a-fA-F]{6}$/.test(qs(h).value)) qs(c).value = qs(h).value; }; }
+const slugify = (label, id) => { if (!qs(id).dataset.touched) qs(id).value = qs(label).value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
+for (const [l, i] of [["st-label", "st-id"], ["bi-label", "bi-id"], ["dm-label", "dm-id"]]) { qs(l).oninput = () => slugify(l, i); qs(i).oninput = () => { qs(i).dataset.touched = "1"; }; }
+qs("struct-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  const layers = qs("st-layers").value.replace(/\r/g, "").split(/\n\s*\n/).map(b => b.split("\n").map(r => r.replace(/\s+$/, "")).filter(Boolean)).filter(b => b.length);
+  const legend = Object.fromEntries(qs("st-legend").value.split(",").map(s => s.trim()).filter(Boolean).map(kv => { const [k, ...v] = kv.split("="); return [k.trim(), v.join("=").trim()]; }));
+  try {
+    await api(`/api/project/${selected}/add-structure`, { identifier: qs("st-id").value.trim(), label: qs("st-label").value.trim(), layers, legend, spacing: Number(qs("st-spacing").value), separation: Number(qs("st-sep").value), biomes: qs("st-biomes").value.split(",").map(s => s.trim()).filter(Boolean), step: qs("st-step").value });
+    qs("struct-form").reset(); delete qs("st-id").dataset.touched; closeModal("modal-struct"); toast("Structure added to the spec (re-approve before generating).", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
+qs("biome-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  try {
+    await api(`/api/project/${selected}/add-biome`, { identifier: qs("bi-id").value.trim(), label: qs("bi-label").value.trim(), base: qs("bi-base").value, temperature: Number(qs("bi-temp").value), downfall: Number(qs("bi-down").value), sky_color: qs("bi-sky-hex").value, fog_color: qs("bi-fog-hex").value, water_color: qs("bi-water-hex").value, grass_color: qs("bi-grass").value.trim(), foliage_color: qs("bi-foliage").value.trim(), mobs: [...qs("bi-mobs").querySelectorAll("input:checked")].map(c => c.value) });
+    qs("biome-form").reset(); delete qs("bi-id").dataset.touched; closeModal("modal-biome"); toast("Biome added to the spec.", "ok"); await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};
+qs("dim-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  try {
+    await api(`/api/project/${selected}/add-dimension`, { identifier: qs("dm-id").value.trim(), label: qs("dm-label").value.trim(), biomes: [...qs("dm-biomes").querySelectorAll("input:checked")].map(c => c.value), sky: qs("dm-sky").value, noise: qs("dm-noise").value, fixed_time: Number(qs("dm-time").value) });
+    qs("dim-form").reset(); delete qs("dm-id").dataset.touched; closeModal("modal-dim"); toast("Dimension added to the spec (a key item comes with it).", "ok"); await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };
 qs("af-label").oninput = () => { if (!qs("af-id").dataset.touched) qs("af-id").value = qs("af-label").value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50); };
@@ -548,3 +613,102 @@ function pollUntilIdle(id) {
   const projects = await api("/api/projects").catch(() => []);
   if (projects.length) await openProject(projects[0].id); else show("new");
 })();
+
+// ---------- mod map ----------
+const mapState = { data: null, pid: null, sel: null, view: { x: 0, y: 0, k: 1 }, pos: {}, dirty: false };
+const NODE_W = 190, NODE_H = 54, COL_GAP = 110, ROW_GAP = 26;
+function layoutMap(cards, edges) {
+  const ids = cards.map(c => c.id), inSet = new Set(ids);
+  const preds = Object.fromEntries(ids.map(i => [i, []])); const succs = Object.fromEntries(ids.map(i => [i, []]));
+  for (const e of edges) if (inSet.has(e.from) && inSet.has(e.to)) { preds[e.to].push(e.from); succs[e.from].push(e.to); }
+  const depth = {}; const visiting = new Set();
+  const d = (id) => { if (depth[id] != null) return depth[id]; if (visiting.has(id)) return 0; visiting.add(id); const v = preds[id].length ? 1 + Math.max(...preds[id].map(d)) : 0; visiting.delete(id); depth[id] = v; return v; };
+  for (const id of ids) d(id);
+  const cols = {}; for (const id of ids) { const isolated = !preds[id].length && !succs[id].length; const col = isolated ? -1 : depth[id]; (cols[col] ||= []).push(id); }
+  const pos = {}; const colKeys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  colKeys.forEach((col, ci) => { const list = cols[col].sort(); list.forEach((id, ri) => { pos[id] = { x: 40 + ci * (NODE_W + COL_GAP), y: 40 + ri * (NODE_H + ROW_GAP) }; }); });
+  return pos;
+}
+function svgEl(tag, attrs = {}) { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; }
+async function renderMap(p) {
+  const svg = qs("map-svg"); if (!svg) return;
+  let data; try { data = await api(`/api/project/${p.id}/map`); } catch (e) { toast("map: " + e.message, "bad"); return; }
+  const cards = data.cards.filter(c => c.kind !== "tab"), edges = data.edges;
+  if (mapState.pid !== p.id) { mapState.pid = p.id; mapState.view = { x: 0, y: 0, k: 1 }; mapState.sel = null; }
+  mapState.data = data;
+  const auto = layoutMap(cards, edges);
+  mapState.pos = Object.fromEntries(cards.map(c => [c.id, (data.layout && data.layout[c.id]) || mapState.pos[c.id] || auto[c.id]]));
+  drawMap(p);
+  qs("map-fit").onclick = () => { mapState.view = { x: 0, y: 0, k: 1 }; drawMap(p); };
+  qs("map-new-feature").onclick = () => { qs("modal-feature").classList.remove("hidden"); qs("ft-title").focus(); };
+  if (mapState.sel) openCard(p, mapState.sel);
+}
+function drawMap(p) {
+  const svg = qs("map-svg"); svg.replaceChildren();
+  const { cards, edges } = { cards: mapState.data.cards.filter(c => c.kind !== "tab"), edges: mapState.data.edges };
+  const g = svgEl("g", { transform: `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})` }); svg.append(g);
+  const defs = svgEl("defs"); defs.innerHTML = '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-2)"/></marker>'; svg.prepend(defs);
+  const byId = Object.fromEntries(cards.map(c => [c.id, c]));
+  for (const e of edges) {
+    const a = mapState.pos[e.from], b = mapState.pos[e.to]; if (!a || !b) continue;
+    const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2; const dx = Math.max(40, (x2 - x1) / 2);
+    const path = svgEl("path", { d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`, class: "edge " + e.kind, "marker-end": "url(#arrow)" }); g.append(path);
+    const lbl = (mapState.data.edge_labels[e.kind] || e.kind) + (e.label ? " · " + e.label : ""); const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const t = svgEl("text", { x: mx, y: my - 4, "text-anchor": "middle", class: "edge-label" }); t.textContent = lbl;
+    g.append(t); const bb = { w: lbl.length * 5.6 + 8, h: 14 }; const bg = svgEl("rect", { x: mx - bb.w / 2, y: my - 15, width: bb.w, height: bb.h, class: "edge-label-bg", rx: 3 }); g.insertBefore(bg, t);
+  }
+  for (const c of cards) {
+    const pos = mapState.pos[c.id]; const node = svgEl("g", { class: "node " + c.kind + (c.id === mapState.sel ? " sel" : ""), transform: `translate(${pos.x},${pos.y})` });
+    node.append(svgEl("rect", { width: NODE_W, height: NODE_H }));
+    const kind = svgEl("text", { x: 12, y: 16, class: "kind" }); kind.textContent = (c.kind === "material" ? "TOOL & ARMOR SET" : c.kind.toUpperCase()) + (c.open_tasks?.length ? " · " + c.open_tasks.length + " task" : ""); node.append(kind);
+    const title = svgEl("text", { x: 12, y: 34 }); title.textContent = (c.title || c.id).slice(0, 24); node.append(title);
+    const sub = svgEl("text", { x: 12, y: 47, class: "sub" }); sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? (c.status || "") : c.id; node.append(sub);
+    node.append(svgEl("circle", { cx: NODE_W - 12, cy: 12, r: 4, class: "dot " + (c.status || "vanilla") }));
+    let drag = null;
+    node.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); drag = { sx: ev.clientX, sy: ev.clientY, ox: pos.x, oy: pos.y, moved: false }; node.setPointerCapture(ev.pointerId); });
+    node.addEventListener("pointermove", (ev) => { if (!drag) return; const k = mapState.view.k; const nx = drag.ox + (ev.clientX - drag.sx) / k, ny = drag.oy + (ev.clientY - drag.sy) / k; if (Math.abs(nx - drag.ox) + Math.abs(ny - drag.oy) > 2) drag.moved = true; mapState.pos[c.id] = { x: nx, y: ny }; node.setAttribute("transform", `translate(${nx},${ny})`); });
+    node.addEventListener("pointerup", async (ev) => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) { drawMap(p); api(`/api/project/${p.id}/map-layout`, { layout: mapState.pos }).catch(() => {}); } else { mapState.sel = c.id; drawMap(p); openCard(p, c.id); } });
+    g.append(node);
+  }
+  let pan = null;
+  svg.onpointerdown = (ev) => { pan = { sx: ev.clientX, sy: ev.clientY, ox: mapState.view.x, oy: mapState.view.y }; };
+  svg.onpointermove = (ev) => { if (!pan) return; mapState.view.x = pan.ox + (ev.clientX - pan.sx); mapState.view.y = pan.oy + (ev.clientY - pan.sy); g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})`); };
+  svg.onpointerup = () => { pan = null; };
+  svg.onwheel = (ev) => { ev.preventDefault(); const k = Math.max(0.3, Math.min(2.5, mapState.view.k * (ev.deltaY < 0 ? 1.1 : 0.9))); mapState.view.k = k; g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${k})`); };
+}
+function openCard(p, cid) {
+  const side = qs("map-side"); const c = mapState.data.cards.find(x => x.id === cid); if (!c) { side.classList.add("hidden"); return; }
+  side.replaceChildren(); side.classList.remove("hidden");
+  const close = btn("✕", () => { mapState.sel = null; side.classList.add("hidden"); drawMap(p); }, "mini secondary"); close.style.float = "right"; side.append(close);
+  side.append(el("div", (c.kind === "material" ? "tool & armor set" : c.kind) + (c.status ? " · " + c.status : ""), "eyebrow"), el("h3", c.title || c.id), el("div", c.id, "fid"));
+  const descBox = el("p", c.description || ""); side.append(descBox);
+  if (c.pieces) { const ul = el("ul"); for (const pc of c.pieces) ul.append(el("li", `${pc.id} (${pc.kind})`)); side.append(el("div", "Pieces", "eyebrow"), ul); }
+  const rel = mapState.data.edges.filter(e => e.from === cid || e.to === cid);
+  if (rel.length) { const ul = el("ul"); for (const e of rel) ul.append(el("li", e.from === cid ? `→ ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""} → ${e.to}` : `← ${e.from} ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""}`)); side.append(el("div", "Relations", "eyebrow"), ul); }
+  if (c.acceptance?.length) { const ul = el("ul"); for (const a of c.acceptance) ul.append(el("li", a)); side.append(el("div", "Acceptance criteria", "eyebrow"), ul); }
+  if (c.files?.length) { const ul = el("ul", null, "files"); for (const f of c.files.slice(0, 12)) ul.append(el("li", f)); side.append(el("div", "Implemented in", "eyebrow"), ul); }
+  if (c.open_tasks?.length) { const ul = el("ul"); for (const t of c.open_tasks) ul.append(el("li", `${t.id} · ${t.state}`)); side.append(el("div", "Open tasks", "eyebrow"), ul); }
+  if (c.history?.length) { const ul = el("ul", null, "hist"); for (const h of c.history.slice(-5).reverse()) ul.append(el("li", `${ago(h.at)} · ${h.by}: ${h.what}`)); side.append(el("div", "History", "eyebrow"), ul); }
+  if (c.kind !== "vanilla") {
+    side.append(el("div", "Request a change", "eyebrow"));
+    const ta = el("textarea"); ta.rows = 3; ta.placeholder = c.kind === "custom" ? "e.g. make the inventory 25 slots instead of 20" : c.kind === "mob" ? "e.g. make it drop 2 scrap instead of 1 and walk faster" : "e.g. 1500 durability instead of 1200";
+    side.append(ta);
+    const acts = el("div", null, "actions");
+    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (confirm(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
+    if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
+    if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
+    if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = prompt("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
+    side.append(acts);
+  }
+}
+qs("feature-form").onsubmit = async (e) => {
+  e.preventDefault(); if (!selected) return;
+  const acceptance = qs("ft-accept").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const derived_from = qs("ft-from").value.split(",").map(s => s.trim()).filter(Boolean);
+  try {
+    const out = await api(`/api/project/${selected}/feature`, { title: qs("ft-title").value, description: qs("ft-desc").value, acceptance, derived_from });
+    qs("feature-form").reset(); closeModal("modal-feature");
+    if (confirm(`Card "${out.card.title}" created and task ${out.task} queued. Start the coder now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Coder implementing the feature; the card updates when it finishes.", "ok"); }
+    await openProject(selected);
+  } catch (err) { toast(err.message, "bad"); }
+};

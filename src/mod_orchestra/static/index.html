@@ -63,6 +63,7 @@
             <label class="check"><input type="checkbox" id="pol-approve_spec"><span>Approve the spec</span><small>Only when the interpreter has no questions.</small></label>
             <label class="check"><input type="checkbox" id="pol-generate"><span>Generate the source</span><small>Deterministic generator, never overwrites.</small></label>
             <label class="check"><input type="checkbox" id="pol-build"><span>Run trusted builds</span><small>Requests, grants and runs Gradle through the broker; failures go to the repair loop.</small></label>
+            <label class="check"><input type="checkbox" id="pol-gametest"><span>Run the GameTests</span><small>Headless test server after a passing build; failures go to the repair loop.</small></label>
             <label class="check"><input type="checkbox" id="pol-server_smoke"><span>Run the dedicated-server smoke</span><small>Accepts the Minecraft EULA in the isolated run/ folder, boots, checks, stops.</small></label>
           </div>
           <div class="actions"><button type="button" class="secondary mini" id="pol-all">Allow everything up to the client</button><button type="button" class="secondary mini" id="pol-none">Ask me for every gate</button></div>
@@ -83,6 +84,7 @@
       </details>
 
       <div class="tabs" id="tabs">
+        <button data-tab="map" class="tab">Map</button>
         <button data-tab="features" class="tab">Features</button>
         <button data-tab="spec" class="tab">Spec</button>
         <button data-tab="activity" class="tab active">Activity</button>
@@ -90,6 +92,18 @@
         <button data-tab="tasks" class="tab">Tasks</button>
       </div>
 
+      <div id="tab-map" class="tabpane hidden">
+        <div class="card map-card">
+          <div class="card-head map-head">
+            <div><h3>Mod map</h3><p class="muted">Every feature as a card; arrows show what derives from what. Click a card for details and to request a change — the coder gets that card's files and relations, not the whole project. Drag to arrange, wheel to zoom.</p></div>
+            <div class="actions" style="margin:0"><button type="button" class="primary" id="map-new-feature">＋ New feature</button><button type="button" class="secondary" id="map-fit">Fit</button></div>
+          </div>
+          <div class="map-wrap">
+            <svg id="map-svg" class="map-svg"></svg>
+            <aside id="map-side" class="map-side hidden"></aside>
+          </div>
+        </div>
+      </div>
       <div id="tab-features" class="tabpane hidden">
         <div class="subtabs" id="subtabs">
           <button data-sub="mobs" class="subtab active">Mobs</button>
@@ -109,14 +123,21 @@
               <button type="button" class="primary" data-modal="modal-mat">＋ Tool &amp; armor set</button>
               <button type="button" class="primary" data-modal="modal-food">＋ Food</button>
               <button type="button" class="primary" data-modal="modal-feat">＋ Item or block</button>
+              <button type="button" class="primary" data-modal="modal-ench">＋ Enchantment</button>
               <button type="button" class="secondary" id="sprites-btn">🎨 Paint icons with the designer</button>
             </div>
             <div id="sheet-box" class="hidden"><div class="muted" style="margin-top:12px">Latest contact sheet from the designer (click to enlarge):</div><div class="previews"><div class="preview" id="sheet-preview"><img id="sheet-img" alt="contact sheet"><small>sprites_contact_sheet.png</small></div></div></div>
           </div>
         </div>
         <div id="sub-worldgen" class="subpane hidden">
-          <div class="card"><div class="card-head"><h3>World-Gen</h3></div>
-            <div class="coming"><div class="coming-badge">Feature coming soon</div><p class="muted">Biomes, ore veins, structures and dimensions are planned after v1 (see docs/V2_BACKLOG.md). For now, ore blocks are placeable and craftable but do not spawn in the world.</p></div>
+          <div class="card">
+            <div class="card-head"><h3>World generation</h3><p class="muted">Ores are set on each block (Items tab). Structures, biomes and dimensions are added here <b>before generation</b>; afterwards ask for them as a change on the Map.</p></div>
+            <div id="wg-list"></div>
+            <div class="add-bar">
+              <button type="button" class="primary" data-modal="modal-struct">＋ Structure</button>
+              <button type="button" class="primary" data-modal="modal-biome">＋ Biome</button>
+              <button type="button" class="primary" data-modal="modal-dim">＋ Dimension</button>
+            </div>
           </div>
         </div>
       </div>
@@ -187,6 +208,7 @@
                   <label>Colour <div class="colour-row"><input type="color" id="mt-color" value="#c8102e"><input type="text" id="mt-color-hex" value="#c8102e" pattern="#[0-9a-fA-F]{6}"></div><small>Tints the generated tool and armor textures (you can upload your own art later).</small></label>
                   <label>Highlight <div class="colour-row"><input type="color" id="mt-accent" value="#ff6b7a"><input type="text" id="mt-accent-hex" value="#ff6b7a" pattern="#[0-9a-fA-F]{6}"></div><small>Light edge colour; leave as suggested if unsure.</small></label>
                 </div>
+                <label>Worn armor style <select id="mt-style"><option value="textured">Textured — painted on the player model (vanilla-like; designer paints the layers)</option><option value="3d">3D model — crests, pauldrons, tassets as a Blockbench model (GeckoLib; designer models it)</option></select><small>3D adds GeckoLib as a dependency and a designer step; textured is lighter and matches vanilla armor.</small></label>
                 <label class="check"><input type="checkbox" id="mt-recipes" checked><span>Generate the standard crafting recipes</span><small>Vanilla patterns: sword = 2 material + stick, pickaxe = 3 material + 2 sticks, helmet = 5 material, …</small></label>
                 <div class="actions"><button class="primary" type="submit">Add set</button></div>
               </form></div></div>
@@ -217,6 +239,23 @@
                   <label>Name <input id="af-label" required placeholder="Moon Shard"></label>
                 </div>
                 <label>Identifier <input id="af-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="moon_shard"><small>Becomes <code>yourmod:moon_shard</code> in <code>/give</code> and recipes; cannot change later.</small></label>
+                <div class="row" id="af-block-row">
+                  <label>Breaks with <select id="af-tool"><option value="">pickaxe (default)</option><option value="pickaxe">pickaxe</option><option value="axe">axe</option><option value="shovel">shovel</option><option value="hoe">hoe</option><option value="none">any / by hand</option></select><small>Blocks only. The tool that mines it fast and lets it drop.</small></label>
+                  <label>Needs tier <select id="af-level"><option value="">wood (any pickaxe)</option><option value="stone">stone</option><option value="iron">iron</option><option value="diamond">diamond</option><option value="netherite">netherite</option></select><small>Minimum tool tier for the block to drop (ores: iron is typical).</small></label>
+                </div>
+                <div class="row" id="af-variants-row">
+                  <label>Also make <div class="checks" id="af-variants"><label><input type="checkbox" value="stairs"> stairs</label><label><input type="checkbox" value="slab"> slab</label><label><input type="checkbox" value="fence"> fence</label><label><input type="checkbox" value="wall"> wall</label></div><small>Blocks only, before generation. Each gets models, recipe, loot and tags automatically.</small></label>
+                </div>
+                <div id="af-ore-row">
+                  <label class="check"><input type="checkbox" id="af-ore"><span>Generates in the world as ore veins</span><small>Blocks only. Uses vanilla-like placement; tweak below.</small></label>
+                  <div class="row numbers" id="af-ore-fields" style="display:none">
+                    <label>Vein size <input id="af-ore-size" type="number" min="1" max="64" value="9"><small>Blocks per vein (iron 9, diamond 8, emerald 3).</small></label>
+                    <label>Veins per chunk <input id="af-ore-count" type="number" min="1" max="64" value="8"><small>iron 10 · diamond 7 · gold 4.</small></label>
+                    <label>Height (min – max) <div class="row"><input id="af-ore-miny" type="number" min="-64" max="320" value="-64"><input id="af-ore-maxy" type="number" min="-64" max="320" value="64"></div><small>Most common in the middle. Diamond -64..16, iron -64..72.</small></label>
+                    <label>Biomes <input id="af-ore-biomes" value="overworld"><small>overworld / nether / end, tags (#minecraft:is_mountain) or ids, comma separated.</small></label>
+                    <label>Hide when exposed <input id="af-ore-discard" type="number" min="0" max="1" step="0.1" value="0"><small>0 = normal; 0.7 = mostly buried (diamond).</small></label>
+                  </div>
+                </div>
                 <div class="row">
                   <label>Icon shape <select id="af-shape"><option value="">auto (gem for items, cube for blocks)</option><option value="gem">gem</option><option value="ingot">ingot / bar</option><option value="food">round (fruit, orb)</option><option value="block">cube</option></select><small>Placeholder silhouette; upload your own PNG any time.</small></label>
                   <label>Colour <div class="colour-row"><input type="color" id="af-color" value="#7c9cff"><input type="text" id="af-color-hex" value="#7c9cff" pattern="#[0-9a-fA-F]{6}"></div></label>
@@ -232,6 +271,12 @@
                   <label>Behaviour <select id="am-behavior"><option value="passive">passive — wanders, never attacks</option><option value="neutral">neutral — minds its business, fights back when hurt (wolf / iron golem)</option><option value="hostile">hostile — attacks players on sight</option></select></label>
                   <label>Drops on death <div class="drops-field"><div id="am-drops-summary" class="muted">nothing</div><button type="button" class="secondary" id="am-drops-btn">Choose items…</button></div><small>Pick from the game's items and your mod's, with counts and chance.</small></label>
                 </div>
+                <label class="check"><input type="checkbox" id="am-spawn"><span>Spawns naturally in the world</span><small>Otherwise it only comes from its spawn egg.</small></label>
+                <div class="row" id="am-spawn-row" style="display:none">
+                  <label>Where <input id="am-biomes" value="overworld" placeholder="overworld, #minecraft:is_forest, minecraft:plains"><small>Comma separated: overworld / nether / end, biome tags (#minecraft:is_forest) or biome ids.</small></label>
+                  <label>How often <input id="am-weight" type="number" min="1" max="1000" value="10"><small>Relative weight: cow 8, zombie 95.</small></label>
+                  <label>Group size <div class="row"><input id="am-gmin" type="number" min="1" max="16" value="1"><input id="am-gmax" type="number" min="1" max="16" value="3"></div><small>min – max per spawn.</small></label>
+                </div>
                 <label>What should it look like? <textarea id="am-desc" rows="2" placeholder="Small fox with a crescent on its forehead, dark blue fur, bushy tail"></textarea><small>Sent to the designer as its first feedback note.</small></label>
                 <div class="actions"><button class="primary" type="submit">Add mob</button><span class="muted" id="am-note"></span></div>
               </form></div></div>
@@ -242,6 +287,86 @@
   <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all placeholders</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
   <label>Style notes (optional) <textarea id="sprites-notes" rows="2" placeholder="e.g. deep red rubies with a pink highlight; chunky outlines like vanilla"></textarea></label>
   <div class="actions"><button type="button" class="primary" id="sprites-go">Create task and run designer</button></div>
+</div></div>
+<div id="modal-ench" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add an enchantment</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Data-driven (1.21 JSON). Appears at the enchanting table and on books for the chosen item group.</p>
+  <form id="ench-form" class="form">
+    <div class="row"><label>Name <input id="en-label" required placeholder="Gem Edge"></label><label>Identifier <input id="en-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_edge"></label></div>
+    <div class="row">
+      <label>Effect <select id="en-kind"><option value="damage">damage — extra attack damage (weapons)</option><option value="protection">protection — damage reduction (armor)</option><option value="fire_aspect">fire aspect — sets targets on fire (weapons)</option></select></label>
+      <label>Max level <input id="en-level" type="number" min="1" max="10" value="3"></label>
+    </div>
+    <div class="row">
+      <label>Items <select id="en-items"><option value="">auto (weapons for damage/fire, armor for protection)</option><option value="#minecraft:enchantable/weapon">weapons</option><option value="#minecraft:enchantable/sword">swords only</option><option value="#minecraft:enchantable/armor">armor</option><option value="#minecraft:enchantable/mining">mining tools</option><option value="#minecraft:enchantable/bow">bows</option></select></label>
+      <label>Weight <input id="en-weight" type="number" min="1" max="100" value="5"><small>How common at the table (10 common, 2 rare).</small></label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Add enchantment</button></div>
+  </form>
+</div></div>
+<div id="modal-struct" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add a structure</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Draw it in text: each layer is a grid seen from above (rows north→south, characters west→east); layers go bottom to top, separated by a blank line. <code>.</code> is air. The legend maps letters to blocks.</p>
+  <form id="struct-form" class="form">
+    <div class="row"><label>Name <input id="st-label" required placeholder="Gem Shrine"></label><label>Identifier <input id="st-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_shrine"></label></div>
+    <label>Layers <textarea id="st-layers" rows="9" class="mono" placeholder="SSS&#10;SSS&#10;SSS&#10;&#10;S.S&#10;...&#10;S.S&#10;&#10;GGG&#10;G.G&#10;GGG"></textarea><small>Max 48×48×48. Keep it small; every layer must have the same width and depth.</small></label>
+    <label>Legend <input id="st-legend" required placeholder="S=minecraft:stone_bricks, G=gem_block, L=minecraft:lantern[hanging=true]"><small>letter=block, comma separated. Your blocks by id, vanilla as minecraft:…; block states in brackets.</small></label>
+    <div class="row">
+      <label>Spacing (chunks) <input id="st-spacing" type="number" min="2" max="256" value="32"><small>Attempts every N chunks (village 34).</small></label>
+      <label>Separation (chunks) <input id="st-sep" type="number" min="1" max="255" value="8"><small>Minimum distance between two (must be < spacing).</small></label>
+      <label>Where <input id="st-biomes" value="overworld"><small>overworld / nether / end, biome tags or ids, comma separated.</small></label>
+      <label>Placement <select id="st-step"><option value="surface_structures">on the surface</option><option value="underground_structures">underground (y -40..20)</option></select></label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Add structure</button></div>
+  </form>
+</div></div>
+<div id="modal-biome" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add a biome</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Custom biomes live in your dimensions (Fabric cannot inject them into the vanilla overworld without TerraBlender). Features and carvers are copied from a vanilla base.</p>
+  <form id="biome-form" class="form">
+    <div class="row"><label>Name <input id="bi-label" required placeholder="Gem Fields"></label><label>Identifier <input id="bi-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_fields"></label></div>
+    <div class="row">
+      <label>Based on <select id="bi-base"><option value="plains">plains</option><option value="forest">forest</option><option value="desert">desert</option><option value="taiga">taiga</option><option value="snowy_plains">snowy plains</option><option value="swamp">swamp</option></select></label>
+      <label>Temperature <input id="bi-temp" type="number" min="-2" max="2" step="0.1" value="0.8"><small>plains 0.8 · desert 2 · snowy 0 · swamp 0.8</small></label>
+      <label>Downfall <input id="bi-down" type="number" min="0" max="1" step="0.1" value="0.4"></label>
+    </div>
+    <div class="row">
+      <label>Sky <div class="colour-row"><input type="color" id="bi-sky" value="#78a7ff"><input type="text" id="bi-sky-hex" value="#78a7ff"></div></label>
+      <label>Fog <div class="colour-row"><input type="color" id="bi-fog" value="#c0d8ff"><input type="text" id="bi-fog-hex" value="#c0d8ff"></div></label>
+      <label>Water <div class="colour-row"><input type="color" id="bi-water" value="#3f76e4"><input type="text" id="bi-water-hex" value="#3f76e4"></div></label>
+    </div>
+    <div class="row">
+      <label>Grass tint <input id="bi-grass" placeholder="#RRGGBB or empty"><small>Empty = vanilla for the temperature.</small></label>
+      <label>Foliage tint <input id="bi-foliage" placeholder="#RRGGBB or empty"></label>
+    </div>
+    <label>Your mobs that spawn here <div class="checks" id="bi-mobs"></div></label>
+    <div class="actions"><button class="primary" type="submit">Add biome</button></div>
+  </form>
+</div></div>
+<div id="modal-dim" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>Add a dimension</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">A new world made of your biomes. A key item (<code>&lt;id&gt;_key</code>) is generated: right-click to travel there and back.</p>
+  <form id="dim-form" class="form">
+    <div class="row"><label>Name <input id="dm-label" required placeholder="Gem Realm"></label><label>Identifier <input id="dm-id" required pattern="[a-z][a-z0-9_]{1,49}" placeholder="gem_realm"></label></div>
+    <label>Biomes <div class="checks" id="dm-biomes"></div><small>None selected = plains.</small></label>
+    <div class="row">
+      <label>Sky <select id="dm-sky"><option value="overworld">overworld (day/night, beds work)</option><option value="nether">nether (no sky, ceiling)</option><option value="end">end</option></select></label>
+      <label>Terrain <select id="dm-noise"><option value="minecraft:overworld">overworld-like</option><option value="minecraft:floating_islands">floating islands</option><option value="minecraft:caves">caves</option><option value="minecraft:amplified">amplified</option></select></label>
+      <label>Fixed time <input id="dm-time" type="number" min="-1" max="24000" value="-1"><small>-1 = normal cycle; 18000 = always midnight; 6000 = always noon.</small></label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Add dimension</button></div>
+  </form>
+</div></div>
+<div id="modal-feature" class="lightbox hidden"><div class="modal">
+  <div class="modal-head"><h3>New feature</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Anything the generator has no form for (a backpack, a minimap, a magic system). A card is created and a coder implements it with the card as its brief; you check the acceptance criteria in-game.</p>
+  <form id="feature-form" class="form">
+    <label>Title <input id="ft-title" required placeholder="Ovis Backpack"></label>
+    <label>Description <textarea id="ft-desc" rows="3" required placeholder="A backpack item crafted from 8 leather around an ovis ingot. Right-click opens a 27-slot inventory that persists on the item."></textarea></label>
+    <label>Acceptance criteria (one per line) <textarea id="ft-accept" rows="3" placeholder="right-click opens a 27-slot inventory&#10;items stay after closing and reopening&#10;craftable with 8 leather + 1 ovis ingot"></textarea><small>What you will verify in the game. Be concrete.</small></label>
+    <label>Builds on (optional) <input id="ft-from" placeholder="ovis_ingot, raw_ovis"><small>Ids of existing cards, comma separated. The coder is told what they are and where they live.</small></label>
+    <div class="actions"><button class="primary" type="submit">Create card and run coder</button></div>
+  </form>
 </div></div>
 <div id="modal-delete" class="lightbox hidden"><div class="modal">
   <div class="modal-head"><h3>Delete project</h3><button type="button" class="secondary mini modal-close">✕</button></div>

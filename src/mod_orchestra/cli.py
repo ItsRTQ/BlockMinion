@@ -83,12 +83,19 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--item", required=True)
     a.add_argument("--min", type=int, default=1); a.add_argument("--max", type=int, default=1)
     a.add_argument("--fortune", action="store_true"); a.add_argument("--silk-touch", action="store_true")
+    a = sub.add_parser("add-feature", help="USER-ONLY: add a simple item or block (before generation: spec; after: files + coder task)")
+    a.add_argument("project"); a.add_argument("--kind", required=True, choices=["item", "block"]); a.add_argument("--label", required=True); a.add_argument("--id", default=None)
+    a.add_argument("--shape", choices=["gem", "ingot", "food", "block"], default=""); a.add_argument("--color", default="")
+    a.add_argument("--tool", choices=["pickaxe", "axe", "shovel", "hoe", "none"], default="", help="blocks: effective tool (default pickaxe)")
+    a.add_argument("--mining-level", choices=["wood", "stone", "iron", "diamond", "netherite"], default="", help="blocks: tier needed to drop items (default wood)")
     a = sub.add_parser("add-mob", help="USER-ONLY (before generate): add a GeckoLib mob (idle+walk, basic AI, spawn egg, loot)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
     a.add_argument("--behavior", choices=["passive", "hostile"], default="passive"); a.add_argument("--health", type=float, default=10.0)
     a.add_argument("--speed", type=float, default=0.25); a.add_argument("--width", type=float, default=0.8); a.add_argument("--height", type=float, default=0.9)
     a.add_argument("--attack", type=float, default=3.0, help="hostile only"); a.add_argument("--drops", nargs="*", default=None, help="local ids or minecraft:ids dropped on death")
     a.add_argument("--egg-colors", nargs=2, default=None, help="two hex colors, e.g. 8A6DD1 E6D8FF")
+    a.add_argument("--spawn", nargs="*", default=None, help="natural spawning: biomes (overworld | minecraft:plains | #minecraft:is_forest ...)")
+    a.add_argument("--spawn-weight", type=int, default=10); a.add_argument("--spawn-group", nargs=2, type=int, default=(1, 3), metavar=("MIN", "MAX"))
     a = sub.add_parser("remove-mob", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("add-material", help="USER-ONLY (before generate): a tier + tool/armor set (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
@@ -98,6 +105,8 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--mining-level", choices=["wood", "stone", "iron", "diamond", "netherite"], default=None); a.add_argument("--enchantability", type=int, default=None)
     a.add_argument("--defense", nargs=4, type=int, default=None, metavar=("HELMET", "CHEST", "LEGS", "BOOTS")); a.add_argument("--armor-durability", type=int, default=None)
     a.add_argument("--toughness", type=float, default=None); a.add_argument("--knockback-resistance", type=float, default=None); a.add_argument("--no-recipes", action="store_true")
+    a.add_argument("--armor-style", choices=["textured", "3d"], default=None, help="3d = GeckoLib armor model designed in Blockbench")
+    a.add_argument("--color", default=None, help="#RRGGBB tint for generated textures"); a.add_argument("--accent", default=None)
     a = sub.add_parser("remove-material", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
     a = sub.add_parser("add-food", help="USER-ONLY (before generate): an edible item")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
@@ -105,8 +114,34 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--effect", nargs="*", default=None, help="minecraft:regeneration:100:0:1.0 (id:duration_ticks:amplifier:chance)")
     a.add_argument("--always-edible", action="store_true"); a.add_argument("--fast", action="store_true")
     a = sub.add_parser("remove-food", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("add-sound", help="USER-ONLY (before generate): register a sound event; you upload the .ogg to assets/<mod>/sounds/<id>.ogg")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True, help="subtitle"); a.add_argument("--category", default="neutral")
+    a = sub.add_parser("set-variants", help="USER-ONLY (before generate): stairs/slab/fence/wall variants of a block")
+    a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--variants", nargs="*", default=[], choices=["stairs", "slab", "fence", "wall"])
+    a = sub.add_parser("add-enchantment", help="USER-ONLY (before generate): a data-driven enchantment (damage | protection | fire_aspect)")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True); a.add_argument("--kind", choices=["damage", "protection", "fire_aspect"], default="damage")
+    a.add_argument("--max-level", type=int, default=3); a.add_argument("--items", default=None, help="item tag, e.g. #minecraft:enchantable/weapon or #minecraft:enchantable/armor"); a.add_argument("--weight", type=int, default=5)
+    a = sub.add_parser("add-ore", help="USER-ONLY (before generate): make a block generate as ore veins in the world")
+    a.add_argument("project"); a.add_argument("--block", required=True); a.add_argument("--vein-size", type=int, default=9); a.add_argument("--veins-per-chunk", type=int, default=8)
+    a.add_argument("--min-y", type=int, default=-64); a.add_argument("--max-y", type=int, default=64); a.add_argument("--biomes", nargs="*", default=None); a.add_argument("--discard-on-air", type=float, default=0.0)
+    a = sub.add_parser("remove-ore", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--block", required=True)
+    a = sub.add_parser("add-structure", help="USER-ONLY (before generate): a structure from text layers; --layer 'SSS' 'S S' 'SSS' --layer ... (bottom first), --legend S=minecraft:stone_bricks G=gem_block")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
+    a.add_argument("--layer", action="append", nargs="+", required=True, metavar="ROW"); a.add_argument("--legend", nargs="+", required=True, metavar="C=block")
+    a.add_argument("--spacing", type=int, default=32); a.add_argument("--separation", type=int, default=8); a.add_argument("--biomes", nargs="*", default=None)
+    a.add_argument("--step", choices=["surface_structures", "underground_structures"], default="surface_structures")
+    a = sub.add_parser("add-biome", help="USER-ONLY (before generate): a biome (for your dimensions)")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True); a.add_argument("--base", choices=["plains", "forest", "desert", "taiga", "snowy_plains", "swamp"], default="plains")
+    a.add_argument("--temperature", type=float, default=None); a.add_argument("--downfall", type=float, default=None); a.add_argument("--sky", default=None, help="#RRGGBB"); a.add_argument("--fog", default=None); a.add_argument("--water", default=None); a.add_argument("--grass", default=None); a.add_argument("--foliage", default=None)
+    a.add_argument("--mobs", nargs="*", default=None, help="local mob ids that spawn here")
+    a = sub.add_parser("add-dimension", help="USER-ONLY (before generate): a dimension built from your biomes, with a key item to travel")
+    a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True); a.add_argument("--biomes", nargs="*", default=None)
+    a.add_argument("--sky", choices=["overworld", "nether", "end"], default=None); a.add_argument("--fixed-time", type=int, default=None)
+    a.add_argument("--noise", choices=["minecraft:overworld", "minecraft:floating_islands", "minecraft:caves", "minecraft:amplified"], default=None); a.add_argument("--key-item", default=None)
     a = sub.add_parser("set-tab", help="USER-ONLY (before generate): give the mod its own creative tab")
     a.add_argument("project"); a.add_argument("--label", default=None, help="omit to remove the tab"); a.add_argument("--icon", default=None, help="local item/block id")
+    a = sub.add_parser("request-gametest", help="USER-ONLY: ask approval to run the mod's GameTests (headless test server)"); a.add_argument("project")
+    a = sub.add_parser("gametest", help="USER-ONLY: run GameTests with an approval id"); a.add_argument("project"); a.add_argument("--approval-id", required=True)
     a = sub.add_parser("request-smoke", help="USER-ONLY: request a one-use approval to run the dedicated server with the built mod")
     a.add_argument("project")
     a = sub.add_parser("server-smoke", help="USER-ONLY: run the dedicated server smoke (needs a granted approval); records SERVER_BOOT_PASS or opens a repair task")
@@ -253,17 +288,21 @@ def dispatch(args: argparse.Namespace) -> object:
         from .specedit import add_drop
         return add_drop(store, args.project, block=args.block, item=args.item, count_min=args.min, count_max=args.max,
                         fortune=args.fortune, silk_touch=args.silk_touch)
+    if args.command == "add-feature":
+        from .content import add_feature
+        return add_feature(store, args.project, kind=args.kind, label=args.label, identifier=args.id, shape=args.shape, color=args.color, tool=args.tool, mining_level=args.mining_level)
     if args.command == "add-mob":
         from .specedit import add_mob
         colors = tuple(int(c, 16) for c in args.egg_colors) if args.egg_colors else None
+        spawn = {"biomes": args.spawn, "weight": args.spawn_weight, "min_group": args.spawn_group[0], "max_group": args.spawn_group[1]} if args.spawn else None
         if store.project(args.project)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
             from .models import add_mob_after_generation
-            from .spec import Mob
+            from .spec import Mob, coerce_spawn
             return add_mob_after_generation(store, args.project, Mob(identifier=args.id, label=args.label, behavior=args.behavior, health=args.health,
                                                                      speed=args.speed, width=args.width, height=args.height, attack_damage=args.attack,
-                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF)))
+                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn)))
         return add_mob(store, args.project, identifier=args.id, label=args.label, behavior=args.behavior, health=args.health, speed=args.speed,
-                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors)
+                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn)
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)
@@ -272,7 +311,7 @@ def dispatch(args: argparse.Namespace) -> object:
         return add_material(store, args.project, identifier=args.id, label=args.label, ingredient=args.ingredient, tools=args.tools, armor=args.armor,
                             durability=args.durability, mining_speed=args.mining_speed, attack_damage_bonus=args.attack_bonus, mining_level=args.mining_level,
                             enchantability=args.enchantability, armor_defense=tuple(args.defense) if args.defense else None, armor_durability=args.armor_durability,
-                            toughness=args.toughness, knockback_resistance=args.knockback_resistance, recipes=(not args.no_recipes))
+                            toughness=args.toughness, knockback_resistance=args.knockback_resistance, recipes=(not args.no_recipes), armor_style=args.armor_style, color=args.color, accent=args.accent)
     if args.command == "remove-material":
         from .specedit import remove_material
         return remove_material(store, args.project, args.id)
@@ -286,9 +325,41 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "remove-food":
         from .specedit import remove_food
         return remove_food(store, args.project, args.id)
+    if args.command == "add-sound":
+        from .specedit import add_sound
+        return add_sound(store, args.project, identifier=args.id, label=args.label, category=args.category)
+    if args.command == "set-variants":
+        from .specedit import set_variants
+        return set_variants(store, args.project, args.block, args.variants)
+    if args.command == "add-enchantment":
+        from .specedit import add_enchantment
+        items = args.items or ("#minecraft:enchantable/armor" if args.kind == "protection" else "#minecraft:enchantable/weapon")
+        return add_enchantment(store, args.project, identifier=args.id, label=args.label, kind=args.kind, max_level=args.max_level, items=items, weight=args.weight)
+    if args.command == "add-ore":
+        from .specedit import add_ore
+        return add_ore(store, args.project, block=args.block, vein_size=args.vein_size, veins_per_chunk=args.veins_per_chunk, min_y=args.min_y, max_y=args.max_y, biomes=args.biomes, discard_on_air=args.discard_on_air)
+    if args.command == "remove-ore":
+        from .specedit import remove_ore
+        return remove_ore(store, args.project, args.block)
+    if args.command == "add-structure":
+        from .specedit import add_structure
+        legend = dict(kv.split("=", 1) for kv in args.legend)
+        return add_structure(store, args.project, identifier=args.id, label=args.label, layers=args.layer, legend=legend, spacing=args.spacing, separation=args.separation, biomes=args.biomes, step=args.step)
+    if args.command == "add-biome":
+        from .specedit import add_biome
+        return add_biome(store, args.project, identifier=args.id, label=args.label, base=args.base, temperature=args.temperature, downfall=args.downfall, sky_color=args.sky, fog_color=args.fog, water_color=args.water, grass_color=args.grass, foliage_color=args.foliage, mobs=args.mobs)
+    if args.command == "add-dimension":
+        from .specedit import add_dimension
+        return add_dimension(store, args.project, identifier=args.id, label=args.label, biomes=args.biomes, sky=args.sky, fixed_time=args.fixed_time, noise=args.noise, key_item=args.key_item)
     if args.command == "set-tab":
         from .specedit import set_tab
         return set_tab(store, args.project, label=args.label, icon=args.icon)
+    if args.command == "request-gametest":
+        from .gametest import request_gametest
+        return request_gametest(store, args.project)
+    if args.command == "gametest":
+        from .gametest import run_gametest
+        return run_gametest(store, args.project, args.approval_id)
     if args.command == "request-smoke":
         from .smoke import request_smoke
         return request_smoke(store, args.project)

@@ -25,7 +25,7 @@ from .evidence import record_evidence
 from .fabric import validate_generated
 from .redact import redact
 
-MAX_BODY = 3_000_000  # texture uploads are base64 PNGs (≤2 MB)
+MAX_BODY = 7_000_000  # texture (≤2 MB) and sound (≤5 MB) uploads arrive base64-encoded
 
 def serve(store: Store, port: int = 8765) -> None:
     if not 1024 <= port <= 65535:
@@ -131,6 +131,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "items":
                         from .catalog import item_catalog
                         return item_catalog(store, pid)
+                    if op == "map":
+                        from .modmap import mod_map
+                        return mod_map(store, pid)
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
@@ -169,6 +172,12 @@ def serve(store: Store, port: int = 8765) -> None:
                                                                                     max_cost_usd=float(payload.get("max_cost_usd", 5.0))))
                     if op == "build-bg": return start_job(pid, "build", lambda: build_project(store, pid, payload["approval_id"]))
                     if op == "request-smoke": return request_smoke(store, pid)
+                    if op == "request-gametest":
+                        from .gametest import request_gametest
+                        return request_gametest(store, pid)
+                    if op == "gametest":
+                        from .gametest import run_gametest
+                        return start_job(pid, "gametest", lambda: run_gametest(store, pid, payload["approval_id"]))
                     if op == "server-smoke": return start_job(pid, "server-smoke", lambda: server_smoke(store, pid, payload["approval_id"]))
                     if op == "run-client": return start_job(pid, "run-client", lambda: run_client(store, pid))
                     if op == "answer": return answer(store, pid, str(payload.get("text", "")))
@@ -176,11 +185,12 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .models import add_mob_after_generation
                         from .spec import Mob
                         from .specedit import add_mob as add_mob_spec
+                        from .spec import coerce_spawn
                         m = Mob(identifier=str(payload.get("identifier", "")).strip(), label=str(payload.get("label", "")).strip() or str(payload.get("identifier", "")),
-                                behavior=str(payload.get("behavior", "passive")), drops=tuple(payload.get("drops") or ()))
+                                behavior=str(payload.get("behavior", "passive")), drops=tuple(payload.get("drops") or ()), spawn=coerce_spawn(payload.get("spawn")))
                         if store.project(pid)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
                             return add_mob_after_generation(store, pid, m)
-                        return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops))
+                        return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops), spawn=payload.get("spawn"))
                     if op == "autopilot":
                         from .dispatch import AUTOPILOT_DEFAULT
                         policy = {k: bool(payload.get(k, False)) for k in AUTOPILOT_DEFAULT}
@@ -198,13 +208,60 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "add-feature":
                         from .content import add_feature
                         return add_feature(store, pid, kind=str(payload.get("kind", "item")), label=str(payload.get("label", "")), identifier=payload.get("identifier") or None,
-                                           shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""))
+                                           shape=str(payload.get("shape") or ""), color=str(payload.get("color") or ""),
+                                           tool=str(payload.get("tool") or ""), mining_level=str(payload.get("mining_level") or ""), variants=[str(v) for v in (payload.get("variants") or [])])
+                    if op == "worldgen":
+                        sp = store.project(pid)["spec"]
+                        return {"structures": sp.get("structures", []), "biomes": sp.get("biomes", []), "dimensions": sp.get("dimensions", []), "ores": sp.get("ores", []),
+                                "mobs": [m["identifier"] for m in sp.get("mobs", [])], "blocks": [f["identifier"] for f in sp.get("features", []) if f["kind"] == "block"],
+                                "generated": store.project(pid)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED")}
+                    if op == "add-structure":
+                        from .specedit import add_structure
+                        return add_structure(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), layers=[[str(r) for r in l] for l in (payload.get("layers") or [])],
+                                             legend={str(k): str(v) for k, v in (payload.get("legend") or {}).items()}, spacing=int(payload.get("spacing", 32)), separation=int(payload.get("separation", 8)),
+                                             biomes=[str(b) for b in (payload.get("biomes") or [])] or None, step=str(payload.get("step") or "surface_structures"))
+                    if op == "add-biome":
+                        from .specedit import add_biome
+                        return add_biome(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), base=payload.get("base") or "plains",
+                                         temperature=payload.get("temperature"), downfall=payload.get("downfall"), sky_color=payload.get("sky_color"), fog_color=payload.get("fog_color"),
+                                         water_color=payload.get("water_color"), grass_color=payload.get("grass_color") or "", foliage_color=payload.get("foliage_color") or "", mobs=payload.get("mobs") or [])
+                    if op == "add-dimension":
+                        from .specedit import add_dimension
+                        return add_dimension(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), biomes=payload.get("biomes") or [],
+                                             sky=payload.get("sky") or "overworld", fixed_time=int(payload.get("fixed_time", -1)), noise=payload.get("noise") or "minecraft:overworld")
+                    if op == "set-variants":
+                        from .specedit import set_variants
+                        return set_variants(store, pid, str(payload.get("block", "")), [str(v) for v in (payload.get("variants") or [])])
+                    if op == "add-enchantment":
+                        from .content import add_enchantment_any
+                        return add_enchantment_any(store, pid, identifier=str(payload.get("identifier", "")), label=str(payload.get("label", "")), kind=str(payload.get("kind", "damage")),
+                                                   max_level=int(payload.get("max_level", 3)), items=payload.get("items") or None, weight=int(payload.get("weight", 5)))
+                    if op == "add-ore":
+                        from .content import add_ore_any
+                        return add_ore_any(store, pid, **{k: v for k, v in payload.items()})
                     if op == "add-material":
                         from .content import add_material_any
                         return add_material_any(store, pid, **{k: v for k, v in payload.items()})
                     if op == "add-food":
                         from .content import add_food_any
                         return add_food_any(store, pid, **{k: v for k, v in payload.items()})
+                    if op == "map-layout":
+                        store.set_setting(pid, "map_layout", {str(k): v for k, v in (payload.get("layout") or {}).items() if isinstance(v, dict)})
+                        return {"saved": True}
+                    if op == "feature":
+                        from .modmap import request_feature
+                        return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
+                                               acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "change":
+                        from .modmap import request_change
+                        return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")))
+                    if op == "card":
+                        from .modmap import update_card
+                        return update_card(store, pid, str(payload.get("card", "")), by="user", description=payload.get("description"),
+                                           acceptance=payload.get("acceptance"), note=payload.get("note") or "edited by the user")
+                    if op == "armor3d-design":
+                        from .armor3d import request_armor3d
+                        return request_armor3d(store, pid, str(payload.get("material", "")), str(payload.get("notes") or ""))
                     if op == "armor-design":
                         from .models import request_armor_design
                         return request_armor_design(store, pid, str(payload.get("material", "")), str(payload.get("notes") or ""))
@@ -220,6 +277,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "retint-armor":
                         from .content import retint_armor
                         return retint_armor(store, pid, str(payload.get("material", "")), str(payload.get("color") or ""), str(payload.get("accent") or ""), match_icon=bool(payload.get("match_icon")))
+                    if op == "set-sound":
+                        from .content import set_sound_file
+                        return set_sound_file(store, pid, identifier=str(payload.get("identifier", "")), ogg_base64=str(payload.get("ogg_base64", "")))
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))

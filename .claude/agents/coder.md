@@ -5,6 +5,19 @@ tools: Read, Grep, Glob, Edit, Write, Bash, mcp__minecraft-orchestra__orchestra_
 skills:
   - coder
   - recipes
+  - gui
+  - events
+  - client-ui
+  - commands
+  - loot-and-trades
+  - polish
+  - data
+  - effects
+  - items
+  - gametest
+  - worldgen
+  - mixins
+  - minimap
 model: inherit
 ---
 

@@ -65,6 +65,7 @@ def gear_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
                "net.minecraft.Util", "net.minecraft.tags.TagKey", "java.util.EnumMap", "java.util.List",
                "net.minecraft.world.food.FoodProperties", "net.minecraft.world.effect.MobEffectInstance"]
     imports += [f"{spec.package}.gear.{cls(m.identifier)}Tier" for m in spec.materials]
+    imports += [f"{spec.package}.gear.{cls(m.identifier)}ArmorItem" for m in spec.materials if m.armor and m.armor_style == "3d"]
     fields, init = [], []
     for m in spec.materials:
         tier = f"{cls(m.identifier)}Tier.INSTANCE"
@@ -83,10 +84,11 @@ def gear_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
             fields.append(f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{m.identifier}_{kind}"),')
             fields.append(f"        new {klass}({tier}, new Item.Properties().attributes({klass}.createAttributes({tier}, {dmg_lit}, {float(speed)}F))));")
             init.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.{'COMBAT' if kind == 'sword' else 'TOOLS_AND_UTILITIES'}).register(entries -> entries.accept({const}));")
+        armor_cls = f"{cls(m.identifier)}ArmorItem" if m.armor_style == "3d" else "ArmorItem"
         for kind in m.armor:
             const = f"{m.identifier}_{kind}".upper()
             fields.append(f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{m.identifier}_{kind}"),')
-            fields.append(f"        new ArmorItem({m.identifier.upper()}_ARMOR_MATERIAL, ArmorItem.Type.{ARMOR_TYPE[kind]}, new Item.Properties().durability(ArmorItem.Type.{ARMOR_TYPE[kind]}.getDurability({int(m.armor_durability)}))));")
+            fields.append(f"        new {armor_cls}({m.identifier.upper()}_ARMOR_MATERIAL, ArmorItem.Type.{ARMOR_TYPE[kind]}, new Item.Properties().durability(ArmorItem.Type.{ARMOR_TYPE[kind]}.getDurability({int(m.armor_durability)}))));")
             init.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.COMBAT).register(entries -> entries.accept({const}));")
     for f in spec.foods:
         const = f.identifier.upper()
@@ -101,6 +103,49 @@ def gear_registrations(spec: Spec) -> tuple[list[str], list[str], list[str]]:
         fields.append(f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{f.identifier}"), new Item(new Item.Properties().food({builder}.build())));')
         init.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.FOOD_AND_DRINKS).register(entries -> entries.accept({const}));")
     return imports, fields, init
+
+
+def sound_registrations(spec: Spec) -> tuple[list[str], list[str]]:
+    """(imports, ModMain fields) for SoundEvents; sounds.json is written by the generator."""
+    if not spec.sounds:
+        return [], []
+    fields = [f'    public static final SoundEvent {sd.identifier.upper()}_SOUND = Registry.register(BuiltInRegistries.SOUND_EVENT, id("{sd.identifier}"), SoundEvent.createVariableRangeEvent(id("{sd.identifier}")));' for sd in spec.sounds]
+    return ["net.minecraft.sounds.SoundEvent"], fields
+
+
+def sounds_json(spec: Spec) -> dict:
+    return {sd.identifier: {"category": sd.category, "subtitle": f"subtitles.{spec.mod_id}.{sd.identifier}", "sounds": [f"{spec.mod_id}:{sd.identifier}"]} for sd in spec.sounds}
+
+
+def ore_worldgen_files(spec: Spec) -> dict[str, dict]:
+    """Datapack JSON for each ore: configured_feature (what/where it replaces) + placed_feature (how often/height)."""
+    out = {}
+    for o in spec.ores:
+        state = {"Name": f"{spec.mod_id}:{o.block}"}
+        nether = any(b == "nether" for b in o.biomes)
+        targets = ([{"target": {"predicate_type": "minecraft:tag_match", "tag": "minecraft:base_stone_nether"}, "state": state}] if nether else
+                   [{"target": {"predicate_type": "minecraft:tag_match", "tag": "minecraft:stone_ore_replaceables"}, "state": state},
+                    {"target": {"predicate_type": "minecraft:tag_match", "tag": "minecraft:deepslate_ore_replaceables"}, "state": state}])
+        out[f"data/{spec.mod_id}/worldgen/configured_feature/{o.block}.json"] = {"type": "minecraft:ore", "config": {"size": int(o.vein_size), "discard_chance_on_air_exposure": float(o.discard_on_air), "targets": targets}}
+        out[f"data/{spec.mod_id}/worldgen/placed_feature/{o.block}.json"] = {"feature": f"{spec.mod_id}:{o.block}", "placement": [
+            {"type": "minecraft:count", "count": int(o.veins_per_chunk)}, {"type": "minecraft:in_square"},
+            {"type": "minecraft:height_range", "height": {"type": "minecraft:trapezoid", "min_inclusive": {"absolute": int(o.min_y)}, "max_inclusive": {"absolute": int(o.max_y)}}},
+            {"type": "minecraft:biome"}]}
+    return out
+
+
+def ore_registrations(spec: Spec) -> tuple[list[str], list[str]]:
+    """(imports, onInitialize lines) adding each placed feature to its biomes (Fabric has no JSON biome modifiers)."""
+    if not spec.ores:
+        return [], []
+    from .geckolib import biome_selector_java
+    imports = ["net.fabricmc.fabric.api.biome.v1.BiomeModifications", "net.fabricmc.fabric.api.biome.v1.BiomeSelectors", "net.minecraft.core.registries.Registries",
+               "net.minecraft.resources.ResourceKey", "net.minecraft.resources.ResourceLocation", "net.minecraft.tags.TagKey", "net.minecraft.world.level.levelgen.GenerationStep"]
+    lines = []
+    for o in spec.ores:
+        for b in o.biomes:
+            lines.append(f'        BiomeModifications.addFeature({biome_selector_java(b)}, GenerationStep.Decoration.UNDERGROUND_ORES, ResourceKey.create(Registries.PLACED_FEATURE, id("{o.block}")));')
+    return imports, lines
 
 
 def gear_item_ids(spec: Spec) -> list[str]:

@@ -29,6 +29,9 @@ class Feature:
     label: str
     shape: str = ""        # placeholder texture silhouette: gem | ingot | food | block (default by kind)
     color: str = ""        # optional hex (#RRGGBB) tint for the placeholder texture
+    tool: str = ""         # blocks: pickaxe | axe | shovel | hoe | none (default pickaxe); "none" = breaks by hand
+    mining_level: str = "" # blocks: wood | stone | iron | diamond | netherite (default wood = any pickaxe)
+    variants: tuple = ()   # blocks: subset of stairs | slab | fence | wall — generated as <id>_stairs etc. with recipes
 
 @dataclass(frozen=True)
 class Recipe:
@@ -78,6 +81,15 @@ def coerce_mob_drop(value) -> MobDrop:
 
 
 @dataclass(frozen=True)
+class Spawn:
+    """Natural spawning: where (biome tags like #minecraft:is_forest, biome ids, or 'overworld'), how often, group size."""
+    biomes: tuple = ("overworld",)
+    weight: int = 10            # relative to other mobs in the biome (zombie 95, cow 8)
+    min_group: int = 1
+    max_group: int = 3
+
+
+@dataclass(frozen=True)
 class Mob:
     """v1 criterion 6 'simple mob': GeckoLib-rendered entity with idle + walk, basic AI, spawn egg, loot."""
     identifier: str
@@ -89,6 +101,7 @@ class Mob:
     height: float = 0.9
     attack_damage: float = 3.0         # hostile only
     drops: tuple = ()                  # MobDrop entries (strings and dicts are coerced on read)
+    spawn: object = None               # Spawn or None (egg-only)
     egg_colors: tuple[int, int] = DEFAULT_EGG_COLORS
 
 
@@ -117,6 +130,7 @@ class Material:
     recipes: bool = True                  # standard crafting patterns
     color: str = ""                       # optional hex tint for tool/armor textures (default: stable hue from identifier)
     accent: str = ""                      # optional hex highlight
+    armor_style: str = "textured"         # textured (vanilla layers) | 3d (GeckoLib armor model designed in Blockbench)
 
     def item_ids(self) -> list[str]:
         return [f"{self.identifier}_{k}" for k in self.tools] + [f"{self.identifier}_{k}" for k in self.armor]
@@ -132,6 +146,85 @@ class Food:
     always_edible: bool = False
     fast: bool = False
     color: str = ""
+
+
+BLOCK_VARIANTS = ("stairs", "slab", "fence", "wall")
+ENCHANT_KINDS = {"damage": "minecraft:damage", "protection": "minecraft:damage_protection", "efficiency": "minecraft:attributes", "fire_aspect": "minecraft:post_attack"}
+
+
+@dataclass(frozen=True)
+class Enchantment:
+    """Data-driven enchantment (1.21 JSON). kind picks the vanilla effect component and sensible numbers."""
+    identifier: str
+    label: str
+    kind: str = "damage"          # damage | protection | fire_aspect
+    max_level: int = 3
+    items: str = "#minecraft:enchantable/weapon"   # tag of items it can go on
+    weight: int = 5
+    treasure: bool = False
+
+
+@dataclass(frozen=True)
+class Structure:
+    """A small structure from text layers (bottom layer first; rows run north→south, characters west→east).
+    legend maps a character to a block: local id, minecraft:id, optionally with [props]. '.' or ' ' = air."""
+    identifier: str
+    label: str
+    layers: tuple = ()            # tuple of tuples of strings, e.g. (("SSS","S S","SSS"), ("S.S","...","S.S"))
+    legend: dict = field(default_factory=dict)
+    spacing: int = 32             # chunks between attempts (vanilla village 34)
+    separation: int = 8           # minimum chunks apart (village 8)
+    biomes: tuple = ("overworld",)
+    step: str = "surface_structures"   # generation step; underground_structures for buried ones
+    salt: int = 0                 # 0 = derived from identifier
+
+
+@dataclass(frozen=True)
+class Biome:
+    identifier: str
+    label: str
+    temperature: float = 0.8
+    downfall: float = 0.4
+    sky_color: str = "#78A7FF"
+    fog_color: str = "#C0D8FF"
+    water_color: str = "#3F76E4"
+    grass_color: str = ""         # optional override
+    foliage_color: str = ""
+    base: str = "plains"          # vanilla biome whose features/carvers to copy: plains | forest | desert | taiga | snowy_plains | swamp
+    mobs: tuple = ()              # local mob ids that spawn here (weight 10, group 1-3)
+    precipitation: bool = True
+
+
+@dataclass(frozen=True)
+class Dimension:
+    identifier: str
+    label: str
+    biomes: tuple = ()            # local biome ids (first is the default); empty = minecraft:plains
+    key_item: str = ""            # local item id that teleports on right-click (created if missing: <id>_key)
+    sky: str = "overworld"        # overworld (day/night) | nether (no sky) | end
+    fixed_time: int = -1          # -1 = normal cycle, else 0-24000
+    noise: str = "minecraft:overworld"   # noise settings: minecraft:overworld | minecraft:floating_islands | minecraft:caves | minecraft:amplified
+
+
+@dataclass(frozen=True)
+class Ore:
+    """World generation for an ore block: veins of `vein_size` blocks, `veins_per_chunk` times per chunk,
+    between min_y and max_y (trapezoid: most common in the middle), in the given biomes (same syntax as Spawn)."""
+    block: str
+    vein_size: int = 9
+    veins_per_chunk: int = 8
+    min_y: int = -64
+    max_y: int = 64
+    biomes: tuple = ("overworld",)
+    discard_on_air: float = 0.0   # 0-1: chance to skip ore exposed to air (diamond uses 0.7 for buried-only)
+
+
+@dataclass(frozen=True)
+class Sound:
+    """A SoundEvent `<mod>:<identifier>` backed by assets/<mod>/sounds/<identifier>.ogg (the user uploads the .ogg)."""
+    identifier: str
+    label: str                 # subtitle shown with "show subtitles"
+    category: str = "neutral"  # master|music|record|weather|block|hostile|neutral|player|ambient|voice
 
 
 @dataclass(frozen=True)
@@ -153,12 +246,21 @@ class Spec:
     materials: list[Material] = field(default_factory=list)
     foods: list[Food] = field(default_factory=list)
     theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
+    sounds: list[Sound] = field(default_factory=list)
+    ores: list[Ore] = field(default_factory=list)
+    enchantments: list[Enchantment] = field(default_factory=list)
+    structures: list[Structure] = field(default_factory=list)
+    biomes: list[Biome] = field(default_factory=list)
+    dimensions: list[Dimension] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     def local_ids(self) -> set[str]:
         ids = {f.identifier for f in self.features}
+        for f in self.features:
+            ids.update(f"{f.identifier}_{v}" for v in f.variants)
+        ids.update((d.key_item or f"{d.identifier}_key") for d in self.dimensions)
         for m in self.materials:
             ids.update(m.item_ids())
         ids.update(f.identifier for f in self.foods)
@@ -243,6 +345,17 @@ def validate_drop(spec: "Spec", d: Drop) -> None:
 
 
 MOB_BEHAVIORS = ("passive", "neutral", "hostile")
+TOOLS_FOR_BLOCKS = ("pickaxe", "axe", "shovel", "hoe", "none")
+BIOME_RE = re.compile(r"^(#?[a-z0-9_.-]+:[a-z0-9_./-]+|overworld|nether|end)$")
+
+
+def coerce_spawn(value):
+    if value is None or isinstance(value, Spawn):
+        return value
+    if isinstance(value, dict):
+        return Spawn(biomes=tuple(str(b) for b in value.get("biomes", ("overworld",))), weight=int(value.get("weight", 10)),
+                     min_group=int(value.get("min_group", 1)), max_group=int(value.get("max_group", 3)))
+    raise InputError(f"Bad spawn: {value!r}")
 
 
 def validate_mob(spec: "Spec", m: Mob) -> None:
@@ -265,6 +378,12 @@ def validate_mob(spec: "Spec", m: Mob) -> None:
             raise InputError(f"Mob drop {d.item}: chance must be in (0, 1]")
     if len(m.egg_colors) != 2 or any(not (0 <= c <= 0xFFFFFF) for c in m.egg_colors):
         raise InputError("egg_colors must be two 24-bit RGB ints")
+    sp = coerce_spawn(m.spawn)
+    if sp is not None:
+        if not sp.biomes or any(not BIOME_RE.match(b) for b in sp.biomes):
+            raise InputError("spawn.biomes: use biome ids (minecraft:plains), biome tags (#minecraft:is_forest) or overworld|nether|end")
+        if not (1 <= sp.weight <= 1000) or not (1 <= sp.min_group <= sp.max_group <= 16):
+            raise InputError("spawn: weight 1-1000, 1 <= min_group <= max_group <= 16")
 
 
 EFFECT_RE = re.compile(r"^minecraft:[a-z_]+$")
@@ -281,6 +400,8 @@ def validate_material(spec: "Spec", m: Material) -> None:
         raise InputError("A material needs at least one tool or armor piece")
     if m.mining_level not in MINING_LEVELS:
         raise InputError(f"mining_level must be one of {MINING_LEVELS}")
+    if m.armor_style not in ("textured", "3d"):
+        raise InputError("armor_style must be textured or 3d")
     if not (1 <= m.durability <= 10000) or not (0.5 <= m.mining_speed <= 50) or not (0 <= m.attack_damage_bonus <= 50) or not (0 <= m.enchantability <= 50):
         raise InputError("Material numbers out of range (durability 1-10000, mining_speed 0.5-50, attack bonus 0-50, enchantability 0-50)")
     if len(m.armor_defense) != 4 or any(not (0 <= int(d) <= 20) for d in m.armor_defense) or not (1 <= m.armor_durability <= 100):
@@ -305,11 +426,96 @@ def validate_spec_content(spec: "Spec") -> None:
     seen_all: dict[str, str] = {}
     for f in spec.features:
         seen_all[f.identifier] = "feature"
+        if f.kind == "block":
+            for v in f.variants:
+                if v not in BLOCK_VARIANTS:
+                    raise InputError(f"Block {f.identifier}: variants must be from {BLOCK_VARIANTS}")
+                vid = f"{f.identifier}_{v}"
+                if vid in seen_all: raise InputError(f"Variant {vid!r} collides with {seen_all[vid]}")
+                seen_all[vid] = f"variant of {f.identifier}"
+            if f.tool and f.tool not in TOOLS_FOR_BLOCKS:
+                raise InputError(f"Block {f.identifier}: tool must be one of {TOOLS_FOR_BLOCKS}")
+            if f.mining_level and f.mining_level not in MINING_LEVELS:
+                raise InputError(f"Block {f.identifier}: mining_level must be one of {MINING_LEVELS}")
     for mat in spec.materials:
         validate_material(spec, mat)
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
             seen_all[i] = f"material {mat.identifier}"
+    local_blocks = {f.identifier for f in spec.features if f.kind == "block"} | {f"{f.identifier}_{v}" for f in spec.features for v in f.variants}
+    for st in spec.structures:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", st.identifier):
+            raise InputError(f"Structure identifier must be snake_case: {st.identifier!r}")
+        if not st.layers or not all(st.layers) or any(not isinstance(row, str) for layer in st.layers for row in layer):
+            raise InputError(f"Structure {st.identifier}: layers must be non-empty tuples of strings")
+        w = len(st.layers[0][0]); d = len(st.layers[0])
+        for layer in st.layers:
+            if len(layer) != d or any(len(row) != w for row in layer):
+                raise InputError(f"Structure {st.identifier}: every layer must be {w}x{d} (same width and depth)")
+        if w > 48 or d > 48 or len(st.layers) > 48:
+            raise InputError("Structure: at most 48x48x48")
+        chars = {c for layer in st.layers for row in layer for c in row} - {".", " "}
+        for c in chars:
+            if c not in st.legend:
+                raise InputError(f"Structure {st.identifier}: character {c!r} has no legend entry")
+            block = st.legend[c].split("[")[0]
+            if ":" not in block and block not in local_blocks:
+                raise InputError(f"Structure {st.identifier}: {block!r} is not a block of this mod (use minecraft:... for vanilla)")
+        if not (1 <= st.separation < st.spacing <= 256):
+            raise InputError("Structure: 1 <= separation < spacing <= 256")
+        if st.step not in ("surface_structures", "underground_structures"):
+            raise InputError("Structure step must be surface_structures or underground_structures")
+        if any(not BIOME_RE.match(b) for b in st.biomes):
+            raise InputError("Structure biomes: overworld|nether|end, tags or biome ids")
+    local_mobs = {m.identifier for m in spec.mobs}
+    for b in spec.biomes:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", b.identifier):
+            raise InputError(f"Biome identifier must be snake_case: {b.identifier!r}")
+        if b.base not in ("plains", "forest", "desert", "taiga", "snowy_plains", "swamp"):
+            raise InputError("Biome base must be plains, forest, desert, taiga, snowy_plains or swamp")
+        for c in (b.sky_color, b.fog_color, b.water_color, b.grass_color, b.foliage_color):
+            if c and not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
+                raise InputError("Biome colours must be #RRGGBB")
+        if not (-2 <= b.temperature <= 2) or not (0 <= b.downfall <= 1):
+            raise InputError("Biome temperature -2..2, downfall 0..1")
+        bad = [m for m in b.mobs if m not in local_mobs]
+        if bad:
+            raise InputError(f"Biome {b.identifier}: unknown mobs {bad}")
+    local_biomes = {b.identifier for b in spec.biomes}
+    for dm in spec.dimensions:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", dm.identifier):
+            raise InputError(f"Dimension identifier must be snake_case: {dm.identifier!r}")
+        bad = [b for b in dm.biomes if b not in local_biomes]
+        if bad:
+            raise InputError(f"Dimension {dm.identifier}: unknown biomes {bad}")
+        if dm.sky not in ("overworld", "nether", "end") or not (-1 <= dm.fixed_time <= 24000):
+            raise InputError("Dimension sky must be overworld|nether|end; fixed_time -1 or 0..24000")
+        if dm.noise not in ("minecraft:overworld", "minecraft:floating_islands", "minecraft:caves", "minecraft:amplified"):
+            raise InputError("Dimension noise must be a vanilla noise settings id")
+    for e in spec.enchantments:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", e.identifier):
+            raise InputError(f"Enchantment identifier must be snake_case: {e.identifier!r}")
+        if e.kind not in ("damage", "protection", "fire_aspect"):
+            raise InputError("Enchantment kind must be damage, protection or fire_aspect")
+        if not (1 <= e.max_level <= 10) or not (1 <= e.weight <= 100) or not e.items.startswith("#"):
+            raise InputError("Enchantment: max_level 1-10, weight 1-100, items must be a tag (#minecraft:enchantable/weapon)")
+    blocks = {f.identifier for f in spec.features if f.kind == "block"}
+    seen_ores: set[str] = set()
+    for o in spec.ores:
+        if o.block not in blocks:
+            raise InputError(f"Ore {o.block!r} is not a block of this mod")
+        if o.block in seen_ores:
+            raise InputError(f"One worldgen rule per block: {o.block}")
+        seen_ores.add(o.block)
+        if not (1 <= o.vein_size <= 64) or not (1 <= o.veins_per_chunk <= 64) or not (-64 <= o.min_y < o.max_y <= 320) or not (0 <= o.discard_on_air <= 1):
+            raise InputError("Ore: vein_size 1-64, veins_per_chunk 1-64, -64 <= min_y < max_y <= 320, discard_on_air 0-1")
+        if not o.biomes or any(not BIOME_RE.match(b) for b in o.biomes):
+            raise InputError("Ore biomes: overworld|nether|end, biome tags (#minecraft:is_mountain) or biome ids")
+    for sd in spec.sounds:
+        if not re.fullmatch(r"[a-z][a-z0-9_.]{1,49}", sd.identifier):
+            raise InputError(f"Sound identifier must be snake_case: {sd.identifier!r}")
+        if sd.category not in ("master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient", "voice"):
+            raise InputError("Sound category must be a vanilla SoundSource name")
     for fd in spec.foods:
         validate_food(spec, fd)
         if fd.identifier in seen_all: raise InputError(f"Food {fd.identifier!r} collides with {seen_all[fd.identifier]}")
@@ -433,7 +639,7 @@ def read_spec(raw: dict) -> Spec:
         schema_version=SCHEMA_VERSION, name=str(raw["name"]), mod_id=normalize_id(raw["mod_id"]),
         package=validate_package(raw["package"]), idea=str(raw["idea"]),
         profile=str(raw["profile"]),
-        features=[Feature(**f) for f in raw.get("features", [])],
+        features=[Feature(**{**f, "variants": tuple(f.get("variants", ()))}) for f in raw.get("features", [])],
         questions=list(raw.get("questions", [])), assumptions=list(raw.get("assumptions", [])),
         recipes=[Recipe(**{**r, "pattern": tuple(r.get("pattern", ())), "ingredients": tuple(r.get("ingredients", ()))}) for r in raw.get("recipes", [])],
         drops=[Drop(**d) for d in raw.get("drops", [])],
@@ -441,7 +647,13 @@ def read_spec(raw: dict) -> Spec:
         materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2)))}) for m in raw.get("materials", [])],
         foods=[Food(**{**f, "effects": tuple(f.get("effects", ()))}) for f in raw.get("foods", [])],
         theme=str(raw.get("theme") or "")[:600],
-        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())),
+        sounds=[Sound(**x) for x in raw.get("sounds", [])],
+        ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
+        enchantments=[Enchantment(**e) for e in raw.get("enchantments", [])],
+        structures=[Structure(**{**x, "layers": tuple(tuple(l) for l in x.get("layers", ())), "biomes": tuple(x.get("biomes", ("overworld",)))}) for x in raw.get("structures", [])],
+        biomes=[Biome(**{**b, "mobs": tuple(b.get("mobs", ()))}) for b in raw.get("biomes", [])],
+        dimensions=[Dimension(**{**d, "biomes": tuple(d.get("biomes", ()))}) for d in raw.get("dimensions", [])],
+        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],
     )

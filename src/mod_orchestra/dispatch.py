@@ -16,6 +16,7 @@ from .fabric import accept_changes
 from .provider import AgentProvider, ClaudeCodeProvider, FakeProvider, TaskEnvelope, RunResult
 from .redact import redact_obj
 from .state import Store, StateError
+from .validation import InputError
 
 DISPATCHABLE_ROLES = tuple(r for r in CAPABILITIES if r not in ("controller", "user"))  # BUILD/GAME are never agent tasks
 LEASE_TTL = 3600
@@ -73,9 +74,13 @@ def build_envelope(store: Store, pid: str, task: dict) -> TaskEnvelope:
     elif ":SPRITES:" in task["id"]:
         from .models import SPRITES_INSTRUCTIONS, theme_block
         extra = SPRITES_INSTRUCTIONS + theme_block(store, pid)
+    elif ":ARMOR3D:" in task["id"]:
+        from .armor3d import ARMOR3D_INSTRUCTIONS
+        from .models import theme_block
+        extra = ARMOR3D_INSTRUCTIONS.replace("<material>", task["id"].split(":ARMOR3D:")[1].split(":")[0]) + theme_block(store, pid)
     elif ":ARMOR:" in task["id"]:
         from .models import ARMOR_INSTRUCTIONS, theme_block
-        extra = ARMOR_INSTRUCTIONS.replace("<material>", task["id"].split(":ARMOR:")[1]) + theme_block(store, pid)
+        extra = ARMOR_INSTRUCTIONS.replace("<material>", task["id"].split(":ARMOR:")[1].split(":")[0]) + theme_block(store, pid)
     elif ":MODEL:" in task["id"]:
         from .models import MODEL_INSTRUCTIONS, theme_block
         from .feedback import feedback_context
@@ -123,6 +128,27 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         status = "WAITING_USER"  # the user answers or approves; the controller, not the worker, closes SPEC via approve-spec
     if ":ADD_MOB:" in task["id"] and status == "DONE":
         _reopen_build(store, pid)
+    if (":FEATURE:" in task["id"] or ":CHANGE:" in task["id"]) and status == "DONE":
+        from .modmap import apply_card_handoff
+        try:
+            apply_card_handoff(store, pid, task["id"], h, run["id"])
+        except (InputError, StateError) as exc:
+            store.add_event(pid, "controller", "CARD_UPDATE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
+        _reopen_build(store, pid)
+    if ":ARMOR3D:" in task["id"] and status == "DONE":
+        from .armor3d import install_armor3d
+        from .validation import InputError
+        material = task["id"].split(":ARMOR3D:")[1].split(":")[0]
+        try:
+            a3 = install_armor3d(store, pid, task["id"], material, run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D armor deliverables rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"armor3d": a3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(a3["installed"]))
     if ":ARMOR:" in task["id"] and status == "DONE":
         from .models import install_armor_design
         from .validation import InputError
@@ -275,7 +301,7 @@ MAX_AUTO_RETRIES = 1
 HUMAN_NEEDED = ("WAITING_USER", "BLOCKED", "FAILED")
 
 
-AUTOPILOT_DEFAULT = {"approve_spec": False, "generate": False, "build": False, "server_smoke": False}
+AUTOPILOT_DEFAULT = {"approve_spec": False, "generate": False, "build": False, "gametest": False, "server_smoke": False}
 
 
 def autopilot_policy(store: Store, pid: str) -> dict:
@@ -312,6 +338,14 @@ def _autopilot_gate(store: Store, pid: str, policy: dict, gates: list[dict]) -> 
         store.add_event(pid, "controller", "AUTOPILOT_GATE", {"gate": "build", "status": res["status"]})
         if res["status"] != "BUILD_PASS" and (res.get("repair") or {}).get("exhausted"):
             return False, "build failed and the repair loop is exhausted: " + str(res["repair"].get("error"))
+        return True, ""
+    if stage == "server" and policy.get("gametest") and "GAMETEST_PASS" not in g.get("levels", []):
+        from .gametest import request_gametest, run_gametest
+        a = request_gametest(store, pid); store.decide_approval(a["id"], True)
+        res = run_gametest(store, pid, a["id"]); gates.append({"gate": "gametest", "status": res["status"]})
+        store.add_event(pid, "controller", "AUTOPILOT_GATE", {"gate": "gametest", "status": res["status"]})
+        if res["status"] != "GAMETEST_PASS" and (res.get("repair") or {}).get("exhausted"):
+            return False, "GameTests failed and the repair loop is exhausted"
         return True, ""
     if stage == "server":
         if not policy["server_smoke"]:

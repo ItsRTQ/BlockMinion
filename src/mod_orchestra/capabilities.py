@@ -51,6 +51,7 @@ def handoff(store: Store, pid: str, task_id: str) -> str:
         f"Assigned role: {match['role']}", f"Task state: {match['state']}",
         f"Minecraft profile: {profile}", f"Workspace: {proj['root']}",
         "", "## User's original idea", proj["spec"]["idea"][:1800],
+        "", __import__("mod_orchestra.modmap", fromlist=["map_text"]).map_text(store, pid),
         "", "## Constraints", "- No unapproved executable, dependency, file overwrite, world change or publication.",
         "- Fabric-first; check exact API signatures before proposing patches.",
         "- Agent roles are prompts; they do not provide a sandbox.",

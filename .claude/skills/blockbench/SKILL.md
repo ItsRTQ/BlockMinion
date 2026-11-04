@@ -38,3 +38,12 @@ layout; inflate 1). Do not edit its geometry. Paint `models/sprites/<material>_l
 `bbmodel_render {file, output_file: "<material>_armor_layer1.png", overwrite: true}`; repeat for layer 2. The render
 shows front/right/back/iso: if the face is covered, a region is shifted, or it reads flat, fix the PNG and render again.
 Edges: soft gradient steps 15–20% darker than the fill, never black outlines; adjacent faces of one piece share edge colour.
+
+## 3D GeckoLib armor (ARMOR3D tasks)
+`models/<material>_armor.bbmodel` is the GeckoLib armor template: bones `armorHead`, `armorBody`, `armorRightArm`,
+`armorLeftArm`, `armorRightLeg`, `armorLeftLeg`, `armorRightBoot`, `armorLeftBoot` with vanilla pivots and one base
+cube each (64x64 UV). Never rename, re-pivot or delete them; add cubes with `group_uuid` of the bone they belong to
+(a crest under armorHead, pauldrons under the arm bones, tassets under armorBody). Export with
+`bbmodel_geckolib_export_geometry` → `models/<material>_armor.geo.json` (identifier must stay
+`geometry.<material>_armor`) and `bbmodel_geckolib_export_animations` after `bbmodel_geckolib_upsert_animation`
+for `animation.<material>_armor.idle` (can be static). Render to `models/<material>_armor_render.png` and look.

@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XXX"
+  ],
+  "key": {
+    "X": {
+      "item": "kitchen_sink:crystal_bricks"
+    }
+  },
+  "result": {
+    "id": "kitchen_sink:crystal_bricks_slab",
+    "count": 6
+  }
+}

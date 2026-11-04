@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "kitchen_sink",
+  "version": "${version}",
+  "name": "Kitchen Sink",
+  "description": "Generated Fabric starter from a user idea",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.example.kitchensink.ModMain"
+    ],
+    "client": [
+      "com.example.kitchensink.client.ModClient"
+    ],
+    "fabric-gametest": [
+      "com.example.kitchensink.gametest.ModGameTests"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "geckolib": ">=4.7"
+  },
+  "license": "ARR",
+  "mixins": [
+    "kitchen_sink.mixins.json"
+  ]
+}

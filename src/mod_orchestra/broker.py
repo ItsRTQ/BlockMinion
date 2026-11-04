@@ -100,7 +100,8 @@ def run_watch(cmd: list[str], *, cwd: Path, log: Path, timeout: int, ready: "re.
     matched = False
     with log.open("wb") as f:
         f.write(f"$ {' '.join(cmd)}\n".encode()); f.flush()
-        proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=f, stderr=subprocess.STDOUT, env=env, stdin=subprocess.PIPE, **popen_kwargs)
+        proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=f, stderr=subprocess.STDOUT, env=env,
+                                stdin=subprocess.PIPE if stop_input is not None else subprocess.DEVNULL, **popen_kwargs)  # a test server blocks on an open pipe
         pos = 0
         while time.time() - started < timeout and proc.poll() is None:
             time.sleep(1.0)

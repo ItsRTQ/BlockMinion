@@ -18,7 +18,11 @@ from .state import StateError
 from .config import PROFILE, WRAPPER_DIR, WRAPPER_FILES, GENERATOR_VERSION
 from .spec import Spec, Recipe, Drop, resolve_ingredient, resolve_result
 from .textures import tinted_item_png, armor_layer_png, material_colors
-from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls
+from .gametest_gen import gametests_java
+from .worldgen import structure_files, biome_json, dimension_files, dimension_key_java, dimension_registrations
+from .armor3d import armor3d_materials, armor_item_java, armor_renderer_java, armor3d_assets, cls as a3cls
+from .variants import variant_java, variant_resources, variant_recipes, variant_lang, variant_tag_members, enchantment_json
+from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
                        client_init_java, placeholder_geo, placeholder_animation, entity_loot, class_name)
 from .validation import InputError, safe_inside, ensure_new_directory
@@ -173,10 +177,10 @@ archives_base_name={spec.mod_id}
 
 # Dependencies
 fabric_api_version={p['fabric_api']}
-{"geckolib_version=" + GECKOLIB_VERSION if spec.mobs else ""}
+{"geckolib_version=" + GECKOLIB_VERSION if needs_geckolib(spec) else ""}
 """)
     gecko_repo, gecko_dep = "", ""
-    if spec.mobs:
+    if needs_geckolib(spec):
         repo_block, dep_line = gradle_dependency_lines()
         gecko_repo = "repositories {\n" + repo_block + "\n}\n\n"
         gecko_dep = dep_line + "\n"
@@ -190,6 +194,15 @@ loom {{
     mods {{
         "{spec.mod_id}" {{
             sourceSet sourceSets.main
+        }}
+    }}
+    runs {{
+        gametest {{
+            server()
+            name "Game Test"
+            vmArg "-Dfabric-api.gametest"
+            vmArg "-Dfabric-api.gametest.report-file=${{layout.buildDirectory.get()}}/gametest/junit.xml"
+            runDir "build/gametest"
         }}
     }}
 }}
@@ -270,7 +283,9 @@ Your idea: {spec.idea}
         "import net.minecraft.world.item.Item;",
         "import net.minecraft.world.level.block.Block;",
         "import net.minecraft.world.level.block.state.BlockBehaviour;",
-    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + ([
+        "import org.slf4j.Logger;",
+        "import org.slf4j.LoggerFactory;",
+    ] + [f"import {i};" for i in main_registrations(spec)[0]] + [f"import {i};" for i in variant_java(spec)[0]] + [f"import {i};" for i in gear_registrations(spec)[0]] + [f"import {i};" for i in sound_registrations(spec)[0]] + [f"import {i};" for i in ore_registrations(spec)[0]] + ([
         "import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;",
         "import net.minecraft.core.registries.Registries;",
         "import net.minecraft.network.chat.Component;",
@@ -281,6 +296,7 @@ Your idea: {spec.idea}
         "",
         "public class ModMain implements ModInitializer {",
         f'    public static final String MOD_ID = "{spec.mod_id}";',
+        "    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);",
         "",
         "    private static ResourceLocation id(String path) {",
         "        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);",
@@ -292,13 +308,32 @@ Your idea: {spec.idea}
         if feature.kind == "item":
             lines.append(f'    public static final Item {varname} = Registry.register(BuiltInRegistries.ITEM, id("{feature.identifier}"), new Item(new Item.Properties()));')
         else:
-            lines.append(f'    public static final Block {varname} = Registry.register(BuiltInRegistries.BLOCK, id("{feature.identifier}"), new Block(BlockBehaviour.Properties.of().strength(3.0F)));')
+            tool = feature.tool or "pickaxe"
+            props = "BlockBehaviour.Properties.of().strength(3.0F)" + (".requiresCorrectToolForDrops()" if tool != "none" else "")
+            lines.append(f'    public static final Block {varname} = Registry.register(BuiltInRegistries.BLOCK, id("{feature.identifier}"), new Block({props}));')
             lines.append(f'    public static final Item {varname}_ITEM = Registry.register(BuiltInRegistries.ITEM, id("{feature.identifier}"), new BlockItem({varname}, new Item.Properties()));')
+    # dedupe imports (several generators may ask for the same class), keep order
+    seen_imports: set[str] = set(); deduped = []
+    for l in lines:
+        if l.startswith("import "):
+            if l in seen_imports: continue
+            seen_imports.add(l)
+        deduped.append(l)
+    lines = deduped
     mob_imports, mob_fields, mob_init = main_registrations(spec)
+    _, variant_fields, variant_init = variant_java(spec)
+    if variant_fields:
+        lines += ["", "    // Block variants (stairs/slab/fence/wall) of the blocks above"] + variant_fields
     lines += mob_fields
     gear_imports, gear_fields, gear_init = gear_registrations(spec)
     if gear_fields:
         lines += ["", "    // Tools, armor and food (generated from materials/foods in the spec)"] + gear_fields
+    dim_fields, dim_init = dimension_registrations(spec)
+    if dim_fields:
+        lines += ["", "    // Dimension keys (right-click to travel)"] + dim_fields
+    _, sound_fields = sound_registrations(spec)
+    if sound_fields:
+        lines += ["", "    // Sounds: assets/<mod>/sounds/<id>.ogg (upload your .ogg; play with level.playSound(null, pos, X_SOUND, SoundSource.NEUTRAL, 1f, 1f))"] + sound_fields
     def item_const(feature):
         return feature.identifier.upper() + ("_ITEM" if feature.kind == "block" else "")
     if spec.tab:
@@ -316,12 +351,19 @@ Your idea: {spec.idea}
             lines.append(f"            output.accept({m.identifier.upper()}_SPAWN_EGG);")
         for gid in gear_item_ids(spec):
             lines.append(f"            output.accept({gid.upper()});")
+        for _, _, vid in __import__("mod_orchestra.variants", fromlist=["variant_ids"]).variant_ids(spec):
+            lines.append(f"            output.accept({vid.upper()}_ITEM);")
+        for d in spec.dimensions:
+            lines.append(f"            output.accept({(d.key_item or d.identifier + '_key').upper()});")
         lines += ["        })", "        .build();"]
     lines += ["", "    @Override", "    public void onInitialize() {"]
     if spec.tab:
         lines.append("        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB_KEY, TAB);")
     lines += mob_init
+    lines += variant_init
     lines += gear_init
+    lines += ore_registrations(spec)[1]
+    lines += dimension_registrations(spec)[1]
     for feature in spec.features:
         group = "BUILDING_BLOCKS" if feature.kind == "block" else "INGREDIENTS"
         lines.append(f"        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.{group}).register(entries -> entries.accept({item_const(feature)}));")
@@ -330,9 +372,10 @@ Your idea: {spec.idea}
     put("src/main/resources/fabric.mod.json", json.dumps({
         "schemaVersion": 1, "id": spec.mod_id, "version": "${version}", "name": spec.name,
         "description": "Generated Fabric starter from a user idea", "environment": "*",
-        "entrypoints": {"main": [spec.package + ".ModMain"], **({"client": [spec.package + ".client.ModClient"]} if spec.mobs else {})},
+        "entrypoints": {"main": [spec.package + ".ModMain"], **({"client": [spec.package + ".client.ModClient"]} if spec.mobs else {}),
+                        "fabric-gametest": [spec.package + ".gametest.ModGameTests"]},
         "depends": {"fabricloader": ">=" + p["fabric_loader"], "minecraft": "~1.21.1", "java": ">=21", "fabric-api": "*",
-                    **({"geckolib": ">=4.7"} if spec.mobs else {})},
+                    **({"geckolib": ">=4.7"} if needs_geckolib(spec) else {})},
         "license": "ARR",
     }, indent=2) + "\n")
     res = f"src/main/resources/assets/{spec.mod_id}"
@@ -372,11 +415,49 @@ Your idea: {spec.idea}
         put(f"{res}/models/item/{f.identifier}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{f.identifier}"}}, indent=2) + "\n")
         put(f"{res}/textures/item/{f.identifier}.png", tinted_item_png("food", base, acc))
         lang[f"item.{spec.mod_id}.{f.identifier}"] = f.label
-    for recipe in list(spec.recipes) + gear_recipes(spec):
+    for rel, data in ore_worldgen_files(spec).items():
+        put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
+    for rel, data in variant_resources(spec).items():
+        put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
+    for rel, data in structure_files(spec).items():
+        put("src/main/resources/" + rel, data if isinstance(data, bytes) else json.dumps(data, indent=2) + "\n")
+    for b in spec.biomes:
+        put(f"src/main/resources/data/{spec.mod_id}/worldgen/biome/{b.identifier}.json", json.dumps(biome_json(spec, b), indent=2) + "\n")
+        lang[f"biome.{spec.mod_id}.{b.identifier}"] = b.label
+    for rel, data in dimension_files(spec).items():
+        put("src/main/resources/" + rel, json.dumps(data, indent=2) + "\n")
+    for d in spec.dimensions:
+        key = d.key_item or f"{d.identifier}_key"
+        put(f"{java_dir}/{''.join(x.capitalize() for x in d.identifier.split('_'))}KeyItem.java", dimension_key_java(spec, d))
+        put(f"{res}/models/item/{key}.json", json.dumps({"parent": "item/generated", "textures": {"layer0": f"{spec.mod_id}:item/{key}"}}, indent=2) + "\n")
+        put(f"{res}/textures/item/{key}.png", tinted_item_png("gem", *material_colors(spec.mod_id + "/" + key)))
+        lang[f"item.{spec.mod_id}.{key}"] = f"{d.label} Key"
+        lang[f"structure.{spec.mod_id}.{d.identifier}"] = d.label
+    for st in spec.structures:
+        lang[f"structure.{spec.mod_id}.{st.identifier}"] = st.label
+    lang.update(variant_lang(spec))
+    for e in spec.enchantments:
+        put(f"src/main/resources/data/{spec.mod_id}/enchantment/{e.identifier}.json", json.dumps(enchantment_json(spec, e), indent=2) + "\n")
+        lang[f"enchantment.{spec.mod_id}.{e.identifier}"] = e.label
+    if spec.enchantments:
+        table = [f"{spec.mod_id}:{e.identifier}" for e in spec.enchantments if not e.treasure]
+        treasure = [f"{spec.mod_id}:{e.identifier}" for e in spec.enchantments if e.treasure]
+        if table: put("src/main/resources/data/minecraft/tags/enchantment/in_enchanting_table.json", json.dumps({"replace": False, "values": table}, indent=2) + "\n")
+        if treasure: put("src/main/resources/data/minecraft/tags/enchantment/treasure.json", json.dumps({"replace": False, "values": treasure}, indent=2) + "\n")
+    merged_tags = block_tags(spec)
+    for tag, members in variant_tag_members(spec).items():
+        merged_tags.setdefault(tag, []).extend(members)
+    for tag, members in merged_tags.items():
+        put(f"src/main/resources/data/minecraft/tags/block/{tag}.json", json.dumps({"replace": False, "values": members}, indent=2) + "\n")
+    for recipe in list(spec.recipes) + gear_recipes(spec) + variant_recipes(spec):
         put(f"src/main/resources/data/{spec.mod_id}/recipe/{recipe.id}.json", json.dumps(recipe_json(spec, recipe), indent=2) + "\n")
         put(f"src/main/resources/data/{spec.mod_id}/advancement/recipes/{recipe.id}.json", json.dumps(recipe_advancement_json(spec, recipe), indent=2) + "\n")
     if spec.tab:
         lang[f"itemGroup.{spec.mod_id}.{tab_id(spec)}"] = spec.tab
+    if spec.sounds:
+        put(f"{res}/sounds.json", json.dumps(sounds_json(spec), indent=2) + "\n")
+        for sd in spec.sounds:
+            lang[f"subtitles.{spec.mod_id}.{sd.identifier}"] = sd.label
     if spec.mobs:
         put(f"{java_dir}/client/ModClient.java", client_init_java(spec))
         for m in spec.mobs:
@@ -390,6 +471,12 @@ Your idea: {spec.idea}
             put(f"{res}/models/item/{m.identifier}_spawn_egg.json", json.dumps({"parent": "minecraft:item/template_spawn_egg"}, indent=2) + "\n")
             lang[f"entity.{spec.mod_id}.{m.identifier}"] = m.label
             lang[f"item.{spec.mod_id}.{m.identifier}_spawn_egg"] = f"{m.label} Spawn Egg"
+    put(f"{java_dir}/gametest/ModGameTests.java", gametests_java(spec))
+    for m in armor3d_materials(spec):
+        put(f"{java_dir}/gear/{a3cls(m.identifier)}ArmorItem.java", armor_item_java(spec, m))
+        put(f"{java_dir}/client/{a3cls(m.identifier)}ArmorRenderer.java", armor_renderer_java(spec, m))
+    for rel, data in armor3d_assets(spec).items():
+        put("src/main/resources/" + rel, data)
     put(f"{res}/lang/en_us.json", json.dumps(lang, indent=2, sort_keys=True) + "\n")
     manifest = {"generator": "mod-orchestra 0.1.0", "generator_version": GENERATOR_VERSION, "status": "GENERATED_UNVERIFIED", "profile": p["id"], "files": written.copy(), "build_verified": False, "runtime_verified": False}
     put(".mod-orchestra/generation-manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -401,6 +488,28 @@ def feature_texture(spec: Spec, feature) -> bytes:
     shape = feature.shape or ("block" if feature.kind == "block" else "gem")
     base, acc = material_colors(spec.mod_id + "/" + feature.identifier, feature.color or None)
     return tinted_item_png(shape, base, acc)
+
+
+def needs_geckolib(spec: Spec) -> bool:
+    return bool(spec.mobs) or bool(armor3d_materials(spec))
+
+
+def block_tags(spec: Spec) -> dict[str, list[str]]:
+    """Vanilla tool tags: mineable/<tool> decides which tool is effective, needs_<level>_tool which tier drops items."""
+    tags: dict[str, list[str]] = {}
+    for f in spec.features:
+        if f.kind != "block":
+            continue
+        tool = f.tool or "pickaxe"
+        if tool == "none":
+            continue
+        tags.setdefault(f"mineable/{tool}", []).append(f"{spec.mod_id}:{f.identifier}")
+        level = f.mining_level or "wood"
+        if level in ("stone", "iron", "diamond"):
+            tags.setdefault(f"needs_{level}_tool", []).append(f"{spec.mod_id}:{f.identifier}")
+        elif level == "netherite":
+            tags.setdefault("needs_diamond_tool", []).append(f"{spec.mod_id}:{f.identifier}")  # vanilla has no netherite tier tag
+    return tags
 
 
 def tab_id(spec: Spec) -> str:

@@ -93,6 +93,15 @@ def guidance(store: Store, pid: str) -> dict:
             step("Request a build approval", "user", action="request-build", detail="One-use approval; Gradle is executable project code.")
         step("Or look at it in the game now", "user", action="run-client", detail="runClient compiles the current source and opens Minecraft with only this mod. The trusted build is still needed for evidence.")
     elif stage == "server":
+        gt_granted = [a for a in granted if a["kind"] == "run_gametests"]
+        gt_pending = [a for a in pending if a["kind"] == "run_gametests"]
+        if "GAMETEST_PASS" not in levels:
+            if gt_granted:
+                step("Run the mod's GameTests", "controller", action="gametest", payload={"approval_id": gt_granted[0]["id"]}, detail="Headless test server; generated checks plus any tests written for custom features. Records GAMETEST_PASS or opens a repair.")
+            elif gt_pending:
+                step("Grant the pending GameTest approval", "user", action="decide", payload={"approval_id": gt_pending[0]["id"], "grant": True}, detail=gt_pending[0]["description"])
+            else:
+                step("Request a GameTest run (optional, cheap)", "user", action="request-gametest", detail="Runs the generated checks (items registered, blocks place, mobs spawn, recipes load) and the coder's tests for custom features in a headless server.")
         smoke_granted = [a for a in granted if a["kind"] == "run_dedicated_server_smoke"]
         smoke_pending = [a for a in pending if a["kind"] == "run_dedicated_server_smoke"]
         if smoke_granted:
@@ -113,12 +122,19 @@ def guidance(store: Store, pid: str) -> dict:
             continue
         step(f"{t['id']} is {t['state']}", "user", action="requeue", payload={"task": t["id"]}, detail=t.get("last_error") or "Requeue to try again")
     for t in ready:
-        if any(k in t["id"] for k in (":ADD_ITEM:", ":ADD_BLOCK:", ":ADD_MATERIAL:", ":ADD_FOOD:")):
+        if ":FEATURE:" in t["id"] or ":CHANGE:" in t["id"]:
+            what = "implement the feature" if ":FEATURE:" in t["id"] else "make the change"
+            steps.insert(0, {"label": f"Dispatch the coder to {what} ({t['id'].split(':', 1)[1]})", "who": "agent", "action": "dispatch",
+                             "payload": {"task": t["id"]}, "command": None, "detail": "The coder gets the card's files, relations and your request — not the whole project."})
+        elif any(k in t["id"] for k in (":ADD_ITEM:", ":ADD_BLOCK:", ":ADD_MATERIAL:", ":ADD_FOOD:", ":ADD_ORE:")):
             steps.insert(0, {"label": f"Dispatch the coder to register the new {t['id'].split(':')[-2].split('_')[1].lower()} ({t['id'].split(':')[-1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Its model, texture and lang are already written; the coder only adds the registration lines and compiles."})
         elif ":ADD_MOB:" in t["id"]:
             steps.insert(0, {"label": f"Dispatch the coder to register the new mob ({t['id'].split(':ADD_MOB:')[1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "The mob's own files are already written; the coder only wires ModMain/ModClient and compiles."})
+        elif ":ARMOR3D:" in t["id"]:
+            steps.insert(0, {"label": f"Dispatch the designer to model the 3D armor ({t['id'].split(':ARMOR3D:')[1]})", "who": "agent", "action": "dispatch",
+                             "payload": {"task": t["id"]}, "command": None, "detail": "Edits the GeckoLib armor template in Blockbench (MCP), textures it, renders it; the controller validates the bones and installs. ~$1–2."})
         elif ":ARMOR:" in t["id"]:
             steps.insert(0, {"label": f"Dispatch the designer to paint worn armor ({t['id'].split(':ARMOR:')[1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Paints both armor layers in the mod's theme, renders them worn on the player template, installs. ~$1."})

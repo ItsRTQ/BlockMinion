@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AGENTS = ROOT / ".claude/agents"
 SKILLS = ROOT / ".claude/skills"
 GUARD = ROOT / ".claude/hooks/guard.py"
-USER_ONLY = ("approve-spec", "request-build", "decide", "build", "evidence", "delete", "release", "new", "requeue", "add-task", "dispatch", "orchestrate", "autopilot", "accept-changes", "break", "server-smoke", "request-smoke", "add-recipe", "remove-recipe", "add-drop", "add-mob", "remove-mob", "add-material", "remove-material", "add-food", "remove-food", "set-tab", "run-client", "answer", "interpret-suite")
+USER_ONLY = ("approve-spec", "request-build", "decide", "build", "evidence", "delete", "release", "new", "requeue", "add-task", "dispatch", "orchestrate", "autopilot", "accept-changes", "break", "server-smoke", "request-smoke", "add-recipe", "remove-recipe", "add-drop", "add-feature", "add-sound", "add-ore", "remove-ore", "set-variants", "add-enchantment", "add-structure", "add-biome", "add-dimension", "add-mob", "remove-mob", "add-material", "remove-material", "add-food", "remove-food", "set-tab", "run-client", "answer", "interpret-suite")
 
 
 def frontmatter(path: Path) -> dict:

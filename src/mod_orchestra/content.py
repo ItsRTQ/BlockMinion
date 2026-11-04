@@ -28,7 +28,7 @@ def _armor_previews(store: Store, pid: str, ws: Path, material: str) -> list[str
     runs = {r["id"]: r.get("created_at", 0) for r in store.runs(pid)}
     dirs = sorted((d for d in root.iterdir() if d.is_dir()), key=lambda d: runs.get(d.name, 0))
     for d in reversed(dirs):
-        files = sorted(d.glob(f"{material}_armor_layer*.png"))
+        files = sorted(d.glob(f"{material}_armor_layer*.png")) + sorted(d.glob(f"{material}_armor_render*.png"))
         if files:
             return [f".mod-orchestra/previews/{d.name}/{f.name}" for f in files]
     return []
@@ -51,14 +51,15 @@ def list_features(store: Store, pid: str) -> list[dict]:
         tex = f"src/main/resources/assets/{pid}/textures/{'block' if kind == 'block' else 'item'}/{key}.png"
         out.append({"kind": kind, "identifier": key, "label": f["label"], "texture": tex if (ws / tex).is_file() else None,
                     "recipes": [r["id"] for r in spec.get("recipes", []) if r["result"] == key or key in json.dumps(r)],
-                    "drop": next((d for d in spec.get("drops", []) if d["block"] == key), None)})
+                    "drop": next((d for d in spec.get("drops", []) if d["block"] == key), None),
+                    "ore": next((o for o in spec.get("ores", []) if o["block"] == key), None)})
     for m in spec.get("materials", []):
         for kind in list(m.get("tools", [])) + list(m.get("armor", [])):
             key = f"{m['identifier']}_{kind}"; tex = f"src/main/resources/assets/{pid}/textures/item/{key}.png"
             out.append({"kind": "tool" if kind in ("sword", "pickaxe", "axe", "shovel", "hoe") else "armor", "identifier": key, "label": f"{m['label']} {kind.capitalize()}",
                         "texture": tex if (ws / tex).is_file() else None, "material": m["identifier"], "recipes": [key] if m.get("recipes", True) else [], "drop": None,
                         "armor_layers": [f"src/main/resources/assets/{pid}/textures/models/armor/{m['identifier']}_layer_{n}.png" for n in (1, 2)] if kind in ("helmet", "chestplate", "leggings", "boots") else None,
-                        "armor_previews": _armor_previews(store, pid, ws, m["identifier"]) if kind == "helmet" else None})
+                        "armor_previews": _armor_previews(store, pid, ws, m["identifier"]) if kind == "helmet" else None, "armor_style": m.get("armor_style", "textured")})
     for f in spec.get("foods", []):
         tex = f"src/main/resources/assets/{pid}/textures/item/{f['identifier']}.png"
         out.append({"kind": "food", "identifier": f["identifier"], "label": f["label"], "texture": tex if (ws / tex).is_file() else None,
@@ -73,7 +74,7 @@ def _save_spec(store: Store, pid: str, spec, reason: str) -> None:
         store.event(con, pid, "user", "SPEC_CHANGED", {"reason": reason})
 
 
-def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: str | None = None, shape: str = "", color: str = "") -> dict:
+def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: str | None = None, shape: str = "", color: str = "", tool: str = "", mining_level: str = "", variants: list[str] | None = None) -> dict:
     """Before generation: spec edit (approval reset). After generation: files + coder task."""
     if kind not in ("item", "block"):
         raise InputError("kind must be item or block")
@@ -86,12 +87,14 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         raise InputError("shape must be gem, ingot, food or block")
     if color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         raise InputError("color must be #RRGGBB")
-    feature = Feature(kind=kind, identifier=ident, label=label.strip() or ident, shape=shape, color=color)
+    feature = Feature(kind=kind, identifier=ident, label=label.strip() or ident, shape=shape, color=color, tool=tool if kind == "block" else "", mining_level=mining_level if kind == "block" else "", variants=tuple(variants or ()) if kind == "block" else ())
     new_spec = replace(spec, features=list(spec.features) + [feature])
     check_java_name_collisions(new_spec.features)
     if proj["status"] not in GENERATED_STATUSES:
         from .specedit import _save
         return _save(store, pid, new_spec, f"add {kind} {ident}") | {"identifier": ident, "generated": False}
+    if feature.variants:
+        raise InputError("Variants (stairs/slab/fence/wall) can be chosen for new blocks before generation; after generation ask for them as a change on the block's card")
     ws = Path(proj["root"]); res = ws / "src/main/resources"; assets = res / "assets" / pid
     written: list[str] = []
 
@@ -109,6 +112,10 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         put(assets / "models/item" / f"{ident}.json", (json.dumps({"parent": f"{pid}:block/{ident}"}, indent=2) + "\n").encode())
         put(assets / "textures/block" / f"{ident}.png", feature_texture(new_spec, feature))
         put(res / "data" / pid / "loot_table/blocks" / f"{ident}.json", (json.dumps(loot_table_json(new_spec, ident, None), indent=2) + "\n").encode())
+        from .fabric import block_tags
+        for tag, members in block_tags(new_spec).items():
+            tf = res / "data/minecraft/tags/block" / f"{tag}.json"; tf.parent.mkdir(parents=True, exist_ok=True)
+            tf.write_text(json.dumps({"replace": False, "values": members}, indent=2) + "\n", encoding="utf8"); written.append(str(tf.relative_to(ws)).replace("\\", "/"))
     lang_file = assets / "lang/en_us.json"
     lang = json.loads(lang_file.read_text(encoding="utf8")) if lang_file.is_file() else {}
     lang[f"{'block' if kind == 'block' else 'item'}.{pid}.{ident}"] = feature.label
@@ -122,7 +129,8 @@ def add_feature(store: Store, pid: str, *, kind: str, label: str, identifier: st
         lines = [f'    public static final Item {const} = Registry.register(BuiltInRegistries.ITEM, id("{ident}"), new Item(new Item.Properties()));']
         tab_line = f"            output.accept({const});"; group = "INGREDIENTS"; accept_const = const
     else:
-        lines = [f'    public static final Block {const} = Registry.register(BuiltInRegistries.BLOCK, id("{ident}"), new Block(BlockBehaviour.Properties.of().strength(3.0F)));',
+        props = "BlockBehaviour.Properties.of().strength(3.0F)" + ("" if (tool or "pickaxe") == "none" else ".requiresCorrectToolForDrops()")
+        lines = [f'    public static final Block {const} = Registry.register(BuiltInRegistries.BLOCK, id("{ident}"), new Block({props}));',
                  f'    public static final Item {const}_ITEM = Registry.register(BuiltInRegistries.ITEM, id("{ident}"), new BlockItem({const}, new Item.Properties()));']
         tab_line = f"            output.accept({const}_ITEM);"; group = "BUILDING_BLOCKS"; accept_const = const + "_ITEM"
     java_dir = f"src/main/java/{spec.package.replace('.', '/')}"
@@ -390,3 +398,89 @@ def restore_designer_sprites(store: Store, pid: str) -> dict:
     if not ids and not mats:
         raise StateError("models/sprites/ has no sprites matching this mod's content")
     return install_sprites(store, pid, "restore", ids, run_id=f"restore-{int(__import__('time').time())}", actor="user", armor_materials=mats)
+
+
+def set_sound_file(store: Store, pid: str, *, identifier: str, ogg_base64: str) -> dict:
+    """Install the user's .ogg for a registered sound event (assets/<mod>/sounds/<id>.ogg)."""
+    proj = store.project(pid)
+    if proj["status"] not in GENERATED_STATUSES:
+        raise StateError("Generate the project first")
+    spec = read_spec(proj["spec"])
+    if identifier not in {sd.identifier for sd in spec.sounds}:
+        raise InputError(f"No sound event {identifier!r} in the spec (craftctl add-sound before generating)")
+    try:
+        raw = _b64.b64decode(ogg_base64, validate=True)
+    except Exception:
+        raise InputError("ogg_base64 is not valid base64")
+    if not raw.startswith(b"OggS") or len(raw) > 5_000_000:
+        raise InputError("Not an Ogg file (or larger than 5 MB). Minecraft needs Ogg Vorbis, mono for positional sounds.")
+    ws = Path(proj["root"]); rel = f"src/main/resources/assets/{pid}/sounds/{identifier}.ogg"
+    (ws / rel).parent.mkdir(parents=True, exist_ok=True); (ws / rel).write_bytes(raw)
+    accepted = accept_changes(ws, run_id=f"sound:{identifier}", actor="user", changed=[rel])
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid); _reopen_build(store, pid)
+    store.add_event(pid, "user", "SOUND_UPLOADED", {"identifier": identifier, "file": rel, "bytes": len(raw)})
+    return {"file": rel, "accepted": accepted["accepted"], "note": "Sound installed; rebuild to apply."}
+
+
+def add_ore_any(store: Store, pid: str, **kw) -> dict:
+    """Before generation: spec. After: worldgen JSON written by the controller + a coder task for the ModMain line."""
+    from .specedit import add_ore
+    from .spec import Ore
+    from .gear import ore_worldgen_files, ore_registrations
+    proj = store.project(pid)
+    if proj["status"] not in GENERATED_STATUSES:
+        return add_ore(store, pid, **kw) | {"generated": False}
+    spec = read_spec(proj["spec"])
+    ore = Ore(block=kw["block"], vein_size=int(kw.get("vein_size", 9)), veins_per_chunk=int(kw.get("veins_per_chunk", 8)), min_y=int(kw.get("min_y", -64)), max_y=int(kw.get("max_y", 64)),
+              biomes=tuple(kw.get("biomes") or ("overworld",)), discard_on_air=float(kw.get("discard_on_air", 0.0)))
+    if any(o.block == ore.block for o in spec.ores):
+        raise InputError(f"{ore.block} already has worldgen; remove it first")
+    new_spec = replace(spec, ores=list(spec.ores) + [ore]); validate_spec_content(new_spec)
+    ws = Path(proj["root"]); written = []
+    for rel, data in ore_worldgen_files(replace(new_spec, ores=[ore])).items():
+        f = ws / "src/main/resources" / rel; f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(data, indent=2) + "\n", encoding="utf8"); written.append(str(f.relative_to(ws)).replace("\\", "/"))
+    _save_spec(store, pid, new_spec, f"ore worldgen {ore.block} after generation")
+    accepted = accept_changes(ws, run_id=f"ore:{ore.block}", actor="user", changed=written)
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid)
+    imports, lines = ore_registrations(replace(new_spec, ores=[ore]))
+    task_id = f"{pid}:ADD_ORE:{ore.block}"
+    instructions = [f"Register the ore worldgen for `{ore.block}` in src/main/java/{spec.package.replace('.', '/')}/ModMain.java (the datapack JSON is already written):",
+                    "1. Add these imports if missing:"] + ["   import " + i + ";" for i in imports] + ["2. In onInitialize(), add:"] + ["   " + l.strip() for l in lines] + [
+                    "3. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0."]
+    store.add_task(pid, task_id, "coder", f"Register ore worldgen for {ore.block}")
+    with store.tx() as con:
+        con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
+    _reopen_build(store, pid)
+    store.add_event(pid, "controller", "FEATURE_ADDED", {"kind": "ore", "identifier": ore.block, "files": written, "task": task_id})
+    return {"block": ore.block, "generated": True, "files": written, "accepted": accepted["accepted"], "task": task_id, "next": {"action": "dispatch", "payload": {"task": task_id}}}
+
+
+def add_enchantment_any(store: Store, pid: str, **kw) -> dict:
+    """Enchantments are datapack JSON: after generation the controller writes the file and lang entry directly (no coder)."""
+    from .specedit import add_enchantment
+    from .spec import Enchantment
+    from .variants import enchantment_json
+    proj = store.project(pid)
+    if proj["status"] not in GENERATED_STATUSES:
+        return add_enchantment(store, pid, **kw) | {"generated": False}
+    spec = read_spec(proj["spec"])
+    e = Enchantment(identifier=kw["identifier"], label=kw["label"], kind=kw.get("kind", "damage"), max_level=int(kw.get("max_level", 3)),
+                    items=kw.get("items") or ("#minecraft:enchantable/armor" if kw.get("kind") == "protection" else "#minecraft:enchantable/weapon"), weight=int(kw.get("weight", 5)))
+    new_spec = replace(spec, enchantments=[x for x in spec.enchantments if x.identifier != e.identifier] + [e]); validate_spec_content(new_spec)
+    ws = Path(proj["root"]); res = ws / "src/main/resources"
+    f = res / "data" / pid / "enchantment" / f"{e.identifier}.json"; f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(enchantment_json(new_spec, e), indent=2) + "\n", encoding="utf8")
+    lang_file = res / "assets" / pid / "lang/en_us.json"
+    lang = json.loads(lang_file.read_text(encoding="utf8")) if lang_file.is_file() else {}
+    lang[f"enchantment.{pid}.{e.identifier}"] = e.label
+    lang_file.write_text(json.dumps(lang, indent=2, sort_keys=True) + "\n", encoding="utf8")
+    written = [str(f.relative_to(ws)).replace("\\", "/"), f"src/main/resources/assets/{pid}/lang/en_us.json"]
+    _save_spec(store, pid, new_spec, f"enchantment {e.identifier} after generation")
+    accepted = accept_changes(ws, run_id=f"enchant:{e.identifier}", actor="user", changed=written)
+    from .dispatch import _source_changed, _reopen_build
+    _source_changed(store, pid); _reopen_build(store, pid)
+    store.add_event(pid, "user", "FEATURE_ADDED", {"kind": "enchantment", "identifier": e.identifier, "files": written})
+    return {"identifier": e.identifier, "generated": True, "files": written, "accepted": accepted["accepted"], "note": "Enchantment JSON written; rebuild to apply."}
