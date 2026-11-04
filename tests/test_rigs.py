@@ -176,9 +176,11 @@ class TestIntegration(unittest.TestCase):
         """The renamed .bbmodel is something the designer's tools accept as-is."""
         from mod_orchestra.models import rig_block, MODEL_DIR
         rig_block(self.store, "r_mod", "cave_golem", self.root)
+        server = (ROOT / "tools/blockbench-mcp-safe/src/geckolib.mjs").as_uri()          # file:// works on every OS for ESM imports
+        source = (self.root / MODEL_DIR / "cave_golem.bbmodel").as_posix()               # no backslash escapes inside the JS string
         script = ("import {readFileSync} from 'node:fs';"
-                  f"import {{validateGecko, exportGeometry, exportAnimations}} from '{ROOT}/tools/blockbench-mcp-safe/src/geckolib.mjs';"
-                  f"const m=JSON.parse(readFileSync('{self.root / MODEL_DIR / 'cave_golem.bbmodel'}','utf8'));"
+                  f"import {{validateGecko, exportGeometry, exportAnimations}} from '{server}';"
+                  f"const m=JSON.parse(readFileSync('{source}','utf8'));"
                   "const v=validateGecko(m); if(!v.valid) throw Error(JSON.stringify(v));"
                   "console.log(JSON.stringify({id:exportGeometry(m)['minecraft:geometry'][0].description.identifier, clips:Object.keys(exportAnimations(m).animations)}));")
         proc = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True)
