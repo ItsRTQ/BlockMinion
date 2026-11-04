@@ -3,7 +3,7 @@
 Task <project>:MODEL:<mob> (role designer) runs with two MCP servers: minecraft-orchestra and the
 vendored zero-dependency `blockbench-mcp-safe` (tools/blockbench-mcp-safe, packaged under resources/),
 started by the controller with --root <workspace>/models --allow-write. The worker writes
-models/<mob>.bbmodel, exports models/<mob>.geo.json + models/<mob>.animation.json, and leaves a 64x32
+models/<mob>.bbmodel, exports models/<mob>.geo.json + models/<mob>.animation.json, and leaves a 64x64
 (or declared) PNG next to them. The controller validates the trio against the mob and the
 DefaultedEntityGeoModel layout, then installs it over the placeholders as a manifest revision.
 The .bbmodel stays in models/ as the editable source for the user.

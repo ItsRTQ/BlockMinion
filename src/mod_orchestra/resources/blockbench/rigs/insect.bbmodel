@@ -7,7 +7,7 @@
   "name": "insect",
   "resolution": {
     "width": 64,
-    "height": 32
+    "height": 64
   },
   "elements": [
     {

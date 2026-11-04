@@ -96,7 +96,7 @@ class Generated(unittest.TestCase):
         anim = json.loads((a / "animations/entity/sky_critter.animation.json").read_text())
         self.assertEqual(set(anim["animations"]), {"animation.sky_critter.idle", "animation.sky_critter.walk"})
         png = (a / "textures/entity/sky_critter.png").read_bytes()
-        self.assertTrue(png.startswith(b"\x89PNG")); self.assertEqual(int.from_bytes(png[16:20], "big"), 64); self.assertEqual(int.from_bytes(png[20:24], "big"), 32)
+        self.assertTrue(png.startswith(b"\x89PNG")); self.assertEqual(int.from_bytes(png[16:20], "big"), 64); self.assertEqual(int.from_bytes(png[20:24], "big"), 64)
         loot = json.loads((self.res / "data/c_mod/loot_table/entities/sky_critter.json").read_text())
         self.assertEqual(loot["pools"][0]["entries"][0]["name"], "c_mod:sky_crystal")
         functions = {f["function"] for f in loot["pools"][0]["entries"][0]["functions"]}

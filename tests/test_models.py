@@ -44,7 +44,7 @@ class Base(unittest.TestCase):
         (self.models / f"{mob}.bbmodel").write_text("{}")
         (self.models / f"{mob}.geo.json").write_text(json.dumps(geo or placeholder_geo(m)))
         (self.models / f"{mob}.animation.json").write_text(json.dumps(anim or placeholder_animation(m)))
-        (self.models / f"{mob}.png").write_bytes(png or placeholder_png("t", 64, 32))
+        (self.models / f"{mob}.png").write_bytes(png or placeholder_png("t", 64, 64))
 
 
 class Planning(Base):
@@ -101,7 +101,7 @@ class Deliverables(Base):
         with self.assertRaisesRegex(InputError, "not in geo.json"):
             validate_model_files(self.ws, "sky_critter")
         self.deliver(png=placeholder_png("t", 32, 32))
-        with self.assertRaisesRegex(InputError, "geo declares 64x32"):
+        with self.assertRaisesRegex(InputError, "geo declares 64x64"):
             validate_model_files(self.ws, "sky_critter")
         bad = placeholder_animation(Mob(identifier="sky_critter", label="x")); del bad["animations"]["animation.sky_critter.idle"]
         self.deliver(anim=bad)

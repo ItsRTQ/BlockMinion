@@ -2,7 +2,7 @@
 
 Produces, per mob: entity class (PathfinderMob or Monster) implementing GeoEntity with idle/walk
 controllers, renderer + client entrypoint, EntityType + SpawnEggItem registration, attributes,
-loot table, lang, and placeholder assets (geo, animation, 64x32 texture) that a designer worker
+loot table, lang, and placeholder assets (geo, animation, texture at the body plan's resolution) that a designer worker
 later replaces with a real Blockbench model. Asset layout follows DefaultedEntityGeoModel:
 assets/<mod>/geo/entity/<id>.geo.json, animations/entity/<id>.animation.json, textures/entity/<id>.png.
 """

@@ -5,7 +5,7 @@
   "modid": "rigs",
   "model_type": "Entity",
   "texture_width": 64,
-  "texture_height": 32,
+  "texture_height": 64,
   "visible_box": [
     1,
     0.75,

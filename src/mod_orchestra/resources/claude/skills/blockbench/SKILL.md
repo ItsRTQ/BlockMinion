@@ -40,14 +40,17 @@ with `replace: true`); keep the bone names so the walk/idle patterns keep applyi
 
 | plan | texture | bones | how to adapt |
 |---|---|---|---|
-| `quadruped` | 64x32 | body, head, tail, left_front_leg, right_front_leg, left_back_leg, right_back_leg | Diagonal gait: left_front with right_back, right_front with left_back. Head pivot is the neck (top-front of body), tail pivot the rump. Scale legs taller for deer, body longer for dachshund. |
+| `quadruped` | 64x64 | body, head, tail, left_front_leg, right_front_leg, left_back_leg, right_back_leg | Diagonal gait: left_front with right_back, right_front with left_back. Head pivot is the neck (top-front of body), tail pivot the rump. Scale legs taller for deer, body longer for dachshund. |
 | `biped` | 64x64 | body, head, left_arm, right_arm, left_leg, right_leg | Vanilla humanoid pivots (head 24, arms ±5/22, legs ±2/12): armor and held items line up. Arms swing opposite to the leg on the same side. Shrink to 3/4 for a child, widen torso for a brute. |
-| `bird` | 64x32 | body, head, left_wing, right_wing, tail, left_leg, right_leg | Wings pivot at the shoulder on the body's side and flap on Z. Head bobs with each step. For flight, add a fly clip with wings at ±40 on Z; for a big bird scale the body and lengthen the legs. |
-| `fish` | 64x32 | body, head, top_fin, left_fin, right_fin, tail, tail_fin | walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel. |
-| `serpent` | 64x32 | body, head, segment_2, segment_3, tail | Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra. |
-| `insect` | 64x32 | body, head, abdomen, left_front_leg, left_mid_leg, left_back_leg, right_front_leg, right_mid_leg, right_back_leg | Tripod gait: front+back of one side move with the middle leg of the other. Legs are 1x4x1 under the thorax; splay them outward (rotation Z ±30 on the bones) for a spider, drop two for a beetle. |
+| `bird` | 64x64 | body, head, left_wing, right_wing, tail, left_leg, right_leg | Wings pivot at the shoulder on the body's side and flap on Z. Head bobs with each step. For flight, add a fly clip with wings at ±40 on Z; for a big bird scale the body and lengthen the legs. |
+| `fish` | 64x64 | body, head, top_fin, left_fin, right_fin, tail, tail_fin | walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel. |
+| `serpent` | 64x64 | body, head, segment_2, segment_3, tail | Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra. |
+| `insect` | 64x64 | body, head, abdomen, left_front_leg, left_mid_leg, left_back_leg, right_front_leg, right_mid_leg, right_back_leg | Tripod gait: front+back of one side move with the middle leg of the other. Legs are 1x4x1 under the thorax; splay them outward (rotation Z ±30 on the bones) for a spider, drop two for a beetle. |
 
 Pairing rule: a `left_*` bone always has a `right_*` twin with the X of its pivot negated; keep that when adding limbs.
+Target density: the base rig is a 6–9 bone skeleton; a finished creature runs 15–35 bones at ~1.5 cubes per bone
+(every part that moves on its own gets a bone: ears, jaw, tail segments, props). See the calibration table in
+`knowledge/blockbench/formats-java-1.21.1.md` §9.
 
 ## Report
 `changed_files`: `models/<mob>.bbmodel`, `models/<mob>.geo.json`, `models/<mob>.animation.json`, `models/<mob>.png`. `checks_run`: the validate call and its result. Evidence level `STATIC` (the controller installs and the user verifies in-game).

@@ -91,7 +91,7 @@ def _recipe(plan: str, *, texture: tuple[int, int], visible_box: list, bones: li
 
 
 def quadruped() -> dict:
-    """Cow/wolf/deer family: body root with a neck-hinged head, four hip-pivoted legs and a tail. 64x32."""
+    """Cow/wolf/deer family: body root with a neck-hinged head, four hip-pivoted legs and a tail. 64x64."""
     bones = [
         {"name": "body", "origin": [0, 8, 0]},
         {"name": "head", "parent": "body", "origin": [0, 11, -6]},
@@ -115,7 +115,7 @@ def quadruped() -> dict:
     walk = [swing("left_front_leg", 1.0, 25, 1), swing("right_back_leg", 1.0, 25, 1),
             swing("right_front_leg", 1.0, 25, -1), swing("left_back_leg", 1.0, 25, -1),
             bob("body", 1.0, 0.5)]
-    return _recipe("quadruped", texture=(64, 32), visible_box=[2, 2, 1], bones=bones, cubes=cubes, idle=idle, walk=walk,
+    return _recipe("quadruped", texture=(64, 64), visible_box=[2, 2, 1], bones=bones, cubes=cubes, idle=idle, walk=walk,
                    notes="Diagonal gait: left_front with right_back, right_front with left_back. Head pivot is the neck "
                          "(top-front of body), tail pivot the rump. Scale legs taller for deer, body longer for dachshund.")
 
@@ -148,7 +148,7 @@ def biped() -> dict:
 
 
 def bird() -> dict:
-    """Chicken/parrot family: compact body, head on a neck pivot, beak, two flapping wings, tail, thin legs. 64x32."""
+    """Chicken/parrot family: compact body, head on a neck pivot, beak, two flapping wings, tail, thin legs. 64x64."""
     bones = [
         {"name": "body", "origin": [0, 6, 0]},
         {"name": "head", "parent": "body", "origin": [0, 10, -3]},
@@ -172,13 +172,13 @@ def bird() -> dict:
             bob("right_wing", 2.0, 6.0, channel="rotation", axis=2), bob("tail", 2.0, 5.0, channel="rotation", axis=0)]
     walk = [swing("left_leg", 1.0, 25, 1), swing("right_leg", 1.0, 25, -1), bob("body", 1.0, 0.8),
             swing("head", 1.0, 6, 1), swing("left_wing", 1.0, 8, -1, axis=2), swing("right_wing", 1.0, 8, 1, axis=2)]
-    return _recipe("bird", texture=(64, 32), visible_box=[1, 1.5, 1], bones=bones, cubes=cubes, idle=idle, walk=walk,
+    return _recipe("bird", texture=(64, 64), visible_box=[1, 1.5, 1], bones=bones, cubes=cubes, idle=idle, walk=walk,
                    notes="Wings pivot at the shoulder on the body's side and flap on Z. Head bobs with each step. For flight, "
                          "add a fly clip with wings at ±40 on Z; for a big bird scale the body and lengthen the legs.")
 
 
 def fish() -> dict:
-    """Cod/salmon family: body with head, tail and tail fin chained behind, dorsal fin, two pectoral fins. 64x32."""
+    """Cod/salmon family: body with head, tail and tail fin chained behind, dorsal fin, two pectoral fins. 64x64."""
     bones = [
         {"name": "body", "origin": [0, 5, 0]},
         {"name": "head", "parent": "body", "origin": [0, 5, -5]},
@@ -200,13 +200,13 @@ def fish() -> dict:
     idle = [swing("tail", 2.0, 8, 1, axis=1), swing("tail_fin", 2.0, 12, 1, axis=1), bob("body", 2.0, 0.5)]
     walk = [swing("body", 1.0, 5, -1, axis=1), swing("tail", 1.0, 20, 1, axis=1), swing("tail_fin", 1.0, 30, 1, axis=1),
             swing("left_fin", 1.0, 15, 1, axis=1), swing("right_fin", 1.0, 15, -1, axis=1)]
-    return _recipe("fish", texture=(64, 32), visible_box=[1, 1, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk,
+    return _recipe("fish", texture=(64, 64), visible_box=[1, 1, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk,
                    notes="walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. "
                          "Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel.")
 
 
 def serpent() -> dict:
-    """Snake/worm family: head and four body segments chained so a Y-wag on each one slithers. 64x32."""
+    """Snake/worm family: head and four body segments chained so a Y-wag on each one slithers. 64x64."""
     bones = [
         {"name": "body", "origin": [0, 2, 0]},
         {"name": "head", "parent": "body", "origin": [0, 2, -4]},
@@ -224,13 +224,13 @@ def serpent() -> dict:
     idle = [bob("head", 2.0, 3.0, channel="rotation", axis=0), swing("tail", 2.0, 6, 1, axis=1)]
     walk = [swing("body", 1.0, 12, 1, axis=1), swing("segment_2", 1.0, 20, -1, axis=1),
             swing("segment_3", 1.0, 20, 1, axis=1), swing("tail", 1.0, 25, -1, axis=1), swing("head", 1.0, 8, -1, axis=1)]
-    return _recipe("serpent", texture=(64, 32), visible_box=[1, 0.5, 2], bones=bones, cubes=cubes, idle=idle, walk=walk,
+    return _recipe("serpent", texture=(64, 64), visible_box=[1, 0.5, 2], bones=bones, cubes=cubes, idle=idle, walk=walk,
                    notes="Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. "
                          "Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra.")
 
 
 def insect() -> dict:
-    """Beetle/spider family: thorax root with head and abdomen, six legs in a tripod gait. 64x32."""
+    """Beetle/spider family: thorax root with head and abdomen, six legs in a tripod gait. 64x64."""
     bones = [
         {"name": "body", "origin": [0, 4, 0]},
         {"name": "head", "parent": "body", "origin": [0, 4.5, -3]},
@@ -256,7 +256,7 @@ def insect() -> dict:
     walk = [swing(f"{s}_{p}_leg", 1.0, 25, ph) for s, p, ph in (
         ("left", "front", 1), ("left", "mid", -1), ("left", "back", 1),
         ("right", "front", -1), ("right", "mid", 1), ("right", "back", -1))] + [bob("body", 1.0, 0.3)]
-    return _recipe("insect", texture=(64, 32), visible_box=[1, 0.75, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk,
+    return _recipe("insect", texture=(64, 64), visible_box=[1, 0.75, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk,
                    notes="Tripod gait: front+back of one side move with the middle leg of the other. Legs are 1x4x1 under the "
                          "thorax; splay them outward (rotation Z ±30 on the bones) for a spider, drop two for a beetle.")
 
