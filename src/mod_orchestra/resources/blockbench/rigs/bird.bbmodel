@@ -1497,7 +1497,7 @@
               "uuid": "75d32312-c698-4c11-80ca-bb9202fc9536",
               "channel": "rotation",
               "time": 0.2,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": -25,
@@ -1510,7 +1510,7 @@
               "uuid": "69416d3a-daa3-4e55-89e8-89f1a6feeb73",
               "channel": "rotation",
               "time": 0.4,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 40,
@@ -1568,7 +1568,7 @@
               "uuid": "7c441b48-6b87-4b69-8c38-a0da68813d83",
               "channel": "position",
               "time": 0.2,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 0,
@@ -1581,7 +1581,7 @@
               "uuid": "eb316bc6-dd64-4361-8e79-9386f5d4cdbc",
               "channel": "position",
               "time": 0.4,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 0,

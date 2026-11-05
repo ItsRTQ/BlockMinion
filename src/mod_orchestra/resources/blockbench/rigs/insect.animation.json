@@ -836,16 +836,14 @@
                 25,
                 0,
                 0
-              ],
-              "lerp_mode": "catmullrom"
+              ]
             },
             "0.4": {
               "vector": [
                 -30,
                 0,
                 0
-              ],
-              "lerp_mode": "catmullrom"
+              ]
             },
             "0.55": {
               "vector": [

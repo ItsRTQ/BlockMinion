@@ -97,6 +97,21 @@ class TestRecipes(unittest.TestCase):
         self.assertFalse(any(c.get("rotation") for b in geo.values() for c in b.get("cubes", [])), "shape comes from bone rest pose, not cube rotation")
 
 
+    def test_snap_and_chain_helpers(self):
+        c = rigs.curve("a", "rotation", [(0, [0, 0, 0]), (0.3, [-100, 0, 0]), (0.45, [20, 0, 0]), (1.0, [0, 0, 0])], snap=2)
+        self.assertEqual([k["interpolation"] for k in c["keyframes"]], ["catmullrom", "linear", "linear", "catmullrom"])
+        for plan in rigs.BODY_PLANS:   # every attack has a linear impact pair
+            atk = next(a for a in rigs.recipe(plan)["animations"] if a["name"].endswith(".attack"))
+            self.assertTrue(any([k["interpolation"] for k in ch["keyframes"]].count("linear") >= 2 for ch in atk["channels"]), plan)
+        ch = rigs.chain(["s1", "s2", "s3"], 1.0, 10, axis=1, lag=0.25, grow=2, samples=8)
+        self.assertEqual([c["bone"] for c in ch], ["s1", "s2", "s3"])
+        for c in ch:
+            self.assertEqual(c["keyframes"][0]["value"], c["keyframes"][-1]["value"])
+        peak = lambda c: max(abs(k["value"][1]) for k in c["keyframes"])
+        self.assertLess(peak(ch[0]), peak(ch[1])); self.assertLess(peak(ch[1]), peak(ch[2]))   # amplitude grows to the tip
+        self.assertEqual(ch[0]["keyframes"][2]["value"][1], 10.0); self.assertEqual(ch[1]["keyframes"][4]["value"][1], 20.0)   # lag of a quarter cycle
+
+
 class TestPacker(unittest.TestCase):
     def test_strips_never_overlap_and_fit(self):
         for plan in rigs.BODY_PLANS:

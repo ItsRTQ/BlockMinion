@@ -439,28 +439,82 @@
               "time": 0.0,
               "value": [
                 0.0,
+                8.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                -2.25,
+                4.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -2.99,
                 0.0,
                 0.0
               ],
-              "interpolation": "easeInOutSine"
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                -1.98,
+                -4.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
             },
             {
               "time": 1.0,
               "value": [
-                0.0,
-                8.0,
+                0.19,
+                -8.0,
                 0.0
               ],
-              "interpolation": "easeInOutSine"
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                2.25,
+                -4.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.5,
+              "value": [
+                2.99,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.75,
+              "value": [
+                1.98,
+                4.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
             },
             {
               "time": 2.0,
               "value": [
                 0.0,
-                0.0,
+                8.0,
                 0.0
               ],
-              "interpolation": "easeInOutSine"
+              "interpolation": "catmullrom"
             }
           ]
         },
@@ -954,7 +1008,7 @@
                 1,
                 1
               ],
-              "interpolation": "catmullrom"
+              "interpolation": "linear"
             },
             {
               "time": 0.5,
@@ -963,7 +1017,7 @@
                 -0.5,
                 -3
               ],
-              "interpolation": "catmullrom"
+              "interpolation": "linear"
             },
             {
               "time": 0.7,
@@ -1005,7 +1059,7 @@
                 0,
                 0
               ],
-              "interpolation": "catmullrom"
+              "interpolation": "linear"
             },
             {
               "time": 0.5,
@@ -1014,7 +1068,7 @@
                 0,
                 0
               ],
-              "interpolation": "catmullrom"
+              "interpolation": "linear"
             },
             {
               "time": 0.7,

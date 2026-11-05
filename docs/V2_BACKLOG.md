@@ -17,4 +17,4 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 - GeckoLib locators + `particle_effects`/`sound_effects` keyframes (footstep dust, attack sparks) in the blockbench server and skill.
 - Profile migration notes for 1.21.4+: client item definitions (`assets/<ns>/items/*.json`, `minecraft:item_model`) replace `overrides`; `EntityModel<EntityRenderState>` for any vanilla `ModelPart` code; see §8 of the formats note.
 - Rig library follow-ups (jointed limbs and the attack clip landed 2026-11-04): a third joint (hand/foot) and a `death` clip with `hold_on_last_frame` + entity removal delay; UV-rectangle opacity check against the PNG in `validate_model_files`; optional `body_plan` inference from the interpreter's mob text (only with a zero-false-positive vocabulary); "import your own .bbmodel" from the UI (decided 2026-11-04: v2).
-
+- Animation states beyond idle/walk/attack: `run` (speed threshold), `hold` state clips with part visibility via scale 0 (carrying, sitting), and an optional `emote` one-shot the controller can trigger from a command; learned from community models on 2026-11-05.
