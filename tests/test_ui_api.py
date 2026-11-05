@@ -90,6 +90,16 @@ class UiApi(unittest.TestCase):
             time.sleep(0.1)
         self.assertFalse(self.call("/api/project/u_mod")[1]["dispatching"])
 
+    def test_2b_agent_runtime_setting(self):
+        code, out = self.call("/api/settings")
+        self.assertEqual(code, 200); self.assertEqual(out["choices"], ["claude-code", "gemini-cli"]); self.assertIn("available", out)
+        code, out = self.call("/api/settings", {"provider": "gemini-cli"})
+        self.assertEqual((code, out["provider"], out["saved"]), (200, "gemini-cli", "gemini-cli"))
+        self.assertEqual(self.call("/api/settings")[1]["provider"], "gemini-cli")
+        self.assertEqual(self.call("/api/settings", {"provider": "codex"})[0], 400)
+        code, out = self.call("/api/settings", {"provider": None})
+        self.assertEqual((code, out["saved"]), (200, None))
+
     def test_3_requeue_and_evidence_from_ui(self):
         code, out = self.call("/api/task/u_mod:WORK/requeue", {})
         self.assertEqual((code, out["state"]), (200, "READY"))

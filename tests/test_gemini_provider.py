@@ -147,3 +147,30 @@ class TestSelection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRuntimeSetting(unittest.TestCase):
+    """The runtime saved from the UI wins over CRAFTCTL_PROVIDER, which wins over the default."""
+
+    def setUp(self):
+        from mod_orchestra.state import Store
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.store = Store(Path(self.tmp.name) / "s.sqlite")
+        self.addCleanup(lambda: os.environ.pop("CRAFTCTL_PROVIDER", None))
+
+    def test_precedence(self):
+        from mod_orchestra.dispatch import provider_name_for, provider_for
+        os.environ.pop("CRAFTCTL_PROVIDER", None)
+        self.assertEqual(provider_name_for(self.store), "claude-code")
+        os.environ["CRAFTCTL_PROVIDER"] = "gemini-cli"
+        self.assertEqual(provider_name_for(self.store), "gemini-cli")
+        self.store.set_global("provider", "claude-code")
+        self.assertEqual(provider_name_for(self.store), "claude-code"); self.assertEqual(provider_for(self.store).name, "claude-code")
+        self.store.set_global("provider", None)
+        self.assertEqual(provider_name_for(self.store), "gemini-cli")
+        self.assertEqual(provider_name_for(None), "gemini-cli")
+
+    def test_global_settings_roundtrip(self):
+        self.assertIsNone(self.store.get_global("provider"))
+        self.store.set_global("provider", "gemini-cli"); self.assertEqual(self.store.get_global("provider"), "gemini-cli")
+        self.store.set_global("provider", None); self.assertIsNone(self.store.get_global("provider"))

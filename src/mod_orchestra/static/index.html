@@ -41,6 +41,10 @@
 
     <section id="view-env" class="view hidden">
       <header class="page-head"><h1>Environment</h1><p>What this machine can do. Nothing here changes your system.</p></header>
+      <div class="card" id="runtime-card">
+        <div class="card-head"><h3>Agent runtime</h3><p>Which installed CLI runs every agent (interpreter, coder, designer, debugger). Saved on this machine; <code>--provider</code> on the command line overrides it for one call.</p></div>
+        <div class="form inline"><select id="env-provider"></select><span id="env-provider-note" class="muted"></span></div>
+      </div>
       <div id="env-grid" class="grid"></div>
     </section>
 
