@@ -122,3 +122,56 @@ class Generated(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestContentWithoutItemsOrBlocks(unittest.TestCase):
+    """A spec made only of mobs and/or a material set (no free items or blocks) is a real mod: the generator and the
+    interpreter must agree on it. Regression: 'At least one deterministic item/block feature required'."""
+
+    def spec(self, **over):
+        from mod_orchestra.spec import read_spec
+        raw = {"schema_version": 2, "name": "Grokos", "mod_id": "grokos", "package": "com.example.grokos", "idea": "orks", "profile": "fabric-1.21.1-candidate",
+               "features": [], "questions": [], "assumptions": [], "tab": None, "tab_icon": None, "recipes": [], "drops": [],
+               "mobs": [{"identifier": "small_groko", "label": "Small Groko", "behavior": "hostile", "health": 14, "speed": 0.32, "width": 0.6, "height": 1.3,
+                         "attack_damage": 3, "drops": [{"item": "groko_tribe_axe", "count_min": 1, "count_max": 1, "chance": 0.25}], "egg_colors": [4876842, 8943932], "spawn": None}],
+               "materials": [{"identifier": "groko_tribe", "label": "Groko Tribe", "ingredient": "minecraft:iron_ingot", "tools": ["sword", "axe"], "armor": ["helmet", "boots"],
+                              "durability": 350, "mining_speed": 6.5, "attack_damage_bonus": 2.5, "mining_level": "iron", "enchantability": 12, "armor_defense": [2, 6, 5, 2],
+                              "armor_durability": 18, "toughness": 1.0, "knockback_resistance": 0.0, "recipes": False, "armor_style": "textured"}],
+               "foods": [], "sounds": [], "enchantments": [], "structures": [], "biomes": [], "dimensions": [], "ores": [], "theme": "tribal"}
+        raw.update(over)
+        if not raw["materials"]:   # without the gear set, its drops would point at items that do not exist
+            for m in raw["mobs"]:
+                m["drops"] = [{"item": "minecraft:bone", "count_min": 1, "count_max": 1, "chance": 0.5}]
+        return read_spec(raw)
+
+    def generate(self, spec):
+        import tempfile
+        from mod_orchestra import fabric
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        fabric._generate_into(spec, Path(tmp.name) / "out")
+        return Path(tmp.name) / "out"
+
+    def test_has_content(self):
+        from mod_orchestra.spec import has_content
+        self.assertTrue(has_content(self.spec()))                                   # mobs + material
+        self.assertTrue(has_content(self.spec(materials=[])))                       # mobs only
+        self.assertTrue(has_content(self.spec(mobs=[])))                            # gear only
+        self.assertFalse(has_content(self.spec(mobs=[], materials=[])))             # nothing at all
+
+    def test_mobs_and_gear_without_items_or_blocks_generate(self):
+        root = self.generate(self.spec())
+        main = (root / "src/main/java/com/example/grokos/ModMain.java").read_text()
+        for needle in ("SMALL_GROKO_SPAWN_EGG", "GROKO_TRIBE_SWORD", "GROKO_TRIBE_AXE", "GROKO_TRIBE_HELMET", "GROKO_TRIBE_BOOTS", "CreativeModeTabs.SPAWN_EGGS", "CreativeModeTabs.COMBAT"):
+            self.assertIn(needle, main)
+        self.assertNotIn("_TAB", main)   # no creative tab was asked for, none invented
+        for rel in ("assets/grokos/lang/en_us.json", "assets/grokos/geo/entity/small_groko.geo.json", "data/grokos/loot_table/entities/small_groko.json"):
+            self.assertTrue((root / "src/main/resources" / rel).is_file(), rel)
+
+    def test_mobs_only_and_gear_only_generate(self):
+        self.generate(self.spec(materials=[]))
+        self.generate(self.spec(mobs=[]))
+
+    def test_empty_spec_is_still_rejected_with_a_useful_message(self):
+        from mod_orchestra.validation import InputError
+        with self.assertRaisesRegex(InputError, "Nothing to generate"):
+            self.generate(self.spec(mobs=[], materials=[]))

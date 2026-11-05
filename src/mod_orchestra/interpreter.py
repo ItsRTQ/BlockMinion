@@ -95,8 +95,9 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
     spec = read_spec(raw)
-    if not spec.features and not spec.mobs and not spec.materials and not spec.foods:
-        raise InputError("spec proposal has no items, blocks, mobs, materials or foods")
+    from .spec import has_content
+    if not has_content(spec):
+        raise InputError("spec proposal has no items, blocks, mobs, materials, foods, enchantments, structures, biomes, dimensions or sounds")
     from .spec import check_java_name_collisions
     check_java_name_collisions(spec.features)
     return spec

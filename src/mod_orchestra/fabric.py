@@ -128,8 +128,9 @@ def generate(spec: Spec, directory: Path) -> dict:
 def _generate_into(spec: Spec, directory: Path) -> dict:
     if spec.questions:
         raise InputError("Cannot generate until blocking questions are resolved: " + "; ".join(spec.questions))
-    if not spec.features:
-        raise InputError("At least one deterministic item/block feature required")
+    from .spec import has_content
+    if not has_content(spec):
+        raise InputError("Nothing to generate: the spec has no items, blocks, mobs, materials (tools/armor), foods, enchantments, structures, biomes, dimensions or sounds")
     if spec.profile != PROFILE["id"]:
         raise InputError("Unsupported target profile")
     directory = Path(directory).expanduser()
