@@ -280,6 +280,8 @@ def biped() -> dict:
             ("shin", [2 * sx, 6, 0], [lx, 0, -2], [lx + 4, 6, 2]),        # shin, knee pivot
         ])
         bones += b; cubes += c
+    # Empty bone at the right palm (forearm end): the entity's main-hand item is drawn here, so the weapon follows every arm animation.
+    bones.insert(next(i for i, b in enumerate(bones) if b["name"] == "right_arm_forearm") + 1, {"name": "held_item", "parent": "right_arm_forearm", "origin": [-6, 12, 0]})
     idle = [combine(bob("head", 2.0, 2.0, channel="rotation", axis=0), drift("head", 2.0, (0.8, 3.0, 0.5), seed=1)),
             bob("left_arm", 2.0, 2.5, channel="rotation", axis=2), bob("right_arm", 2.0, -2.5, channel="rotation", axis=2),
             bob("body", 2.0, 0.3), drift("body", 2.0, (0.5, 0.8, 0.4))]
@@ -296,6 +298,7 @@ def biped() -> dict:
     return _recipe("biped", texture=(64, 64), visible_box=[1.5, 2.5, 1.25], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=1.0,
                    notes="Vanilla humanoid pivots (head 24, shoulders ±5/22, hips ±2/12): armor and held items line up. Elbows "
                          "at y 18, knees at y 6. Arms swing opposite to the leg on the same side; forearms follow through. "
+                         "The empty `held_item` bone at the right palm carries the weapon the entity holds: keep it, move it to the grip if the hand moves. "
                          "Shrink to 3/4 for a child, widen torso for a brute, add a third joint (hand) for a boss. Attack: Overhead right-arm swing: windup 0.3 (arm back, torso twists), impact 0.5 (arm down, torso follows), recovery 0.65, rest 1.0.")
 
 

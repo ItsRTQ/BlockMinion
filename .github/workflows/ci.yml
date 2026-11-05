@@ -113,6 +113,7 @@ jobs:
           set -euo pipefail
           craftctl new --name "CI Gear" --id ci_gear --package com.example.cigear --idea "hostile mobs: ci brute, ci scout"
           craftctl add-material ci_gear --id ci_tribe --label "CI Tribe" --ingredient minecraft:iron_ingot --tools sword axe --armor helmet boots --no-recipes > /dev/null
+          craftctl add-mob ci_gear --id ci_chief --label "CI Chief" --behavior hostile --body-plan biped --drops ci_tribe_helmet ci_tribe_sword > /dev/null   # a biped that holds its sword (BlockAndItemGeoLayer + finalizeSpawn must compile)
           craftctl plan ci_gear > /dev/null
           craftctl approve-spec ci_gear > /dev/null
           craftctl generate ci_gear > /dev/null

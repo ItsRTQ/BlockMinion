@@ -57,9 +57,13 @@ def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
     rec = load_rig(plan, "recipe")
     bones = ", ".join(f"{b['name']}" + (f" (child of {b['parent']})" if b.get("parent") else " (root)") for b in rec["bones"])
     state = "placed now" if staged["staged"] else "already present (edited before; keep working on it)"
+    from .geckolib import held_item_for
+    held = held_item_for(spec, mob) if mob else None
+    held_text = (f" The entity holds `{held}` in its main hand and draws it on the empty `held_item` bone at the right palm: keep that bone "
+                 f"(a child of the forearm), keep it at the grip when you reshape the arm, and give it a rotation if the weapon points the wrong way.") if held else ""
     return (f"\n## Base rig: {plan} — `{staged['path']}` {state}\n"
             f"Bones: {bones}. Texture {rec['texture_width']}x{rec['texture_height']}, box UV already packed without overlaps "
-            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}\n")
+            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}{held_text}\n")
 
 
 MODEL_INSTRUCTIONS = """
@@ -100,7 +104,7 @@ def required_clips(mob_id: str, behavior: str = "passive") -> list[str]:
     return clips
 
 
-def validate_model_files(workspace: Path, mob_id: str, behavior: str = "passive") -> dict:
+def validate_model_files(workspace: Path, mob_id: str, behavior: str = "passive", needs_held_item: bool = False) -> dict:
     """Check the designer's deliverables against the mob and GeckoLib's expectations."""
     root = workspace / MODEL_DIR
     files = {k: root / f"{mob_id}.{ext}" for k, ext in (("bbmodel", "bbmodel"), ("geo", "geo.json"), ("anim", "animation.json"), ("png", "png"))}
@@ -129,6 +133,9 @@ def validate_model_files(workspace: Path, mob_id: str, behavior: str = "passive"
     # Structure the renderer assumes (learned from boss-scale rigs): one root, acyclic parents, keys inside the clip,
     # every box-UV strip inside the atlas.
     parents = {b["name"]: b.get("parent") for b in g["bones"]}
+    if needs_held_item and "held_item" not in parents:
+        raise InputError("geo.json lacks the `held_item` bone: the entity holds a weapon and draws it on an empty bone named held_item at the right palm "
+                         "(a child of the forearm); add it back, or set the mob's held_item to none in the spec")
     roots = [n for n, p in parents.items() if not p]
     if len(roots) != 1:
         raise InputError(f"geo.json must have exactly one root bone, found {roots}")
@@ -179,7 +186,9 @@ def install_model(store: Store, pid: str, mob_id: str, *, run_id: str, actor: st
     ws = Path(proj["root"])
     from .specedit import _load
     mob = next((x for x in _load(store, pid).mobs if x.identifier == mob_id), None)
-    info = validate_model_files(ws, mob_id, mob.behavior if mob else "passive")
+    from .geckolib import held_item_for
+    info = validate_model_files(ws, mob_id, mob.behavior if mob else "passive",
+                                needs_held_item=bool(mob and held_item_for(_load(store, pid), mob)))
     res = ws / "src" / "main" / "resources" / "assets" / pid
     targets = {
         "geo": res / "geo" / "entity" / f"{mob_id}.geo.json",

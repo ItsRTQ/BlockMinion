@@ -74,6 +74,15 @@ class TestRecipes(unittest.TestCase):
         self.assertEqual([x["name"] for x in b], ["left_x", "left_x_lower"]); self.assertEqual(b[1]["parent"], "left_x"); self.assertEqual(c[1]["bone"], "left_x_lower")
 
 
+    def test_biped_carries_an_empty_held_item_bone_at_the_right_palm(self):
+        rec = rigs.recipe("biped"); bones = {b["name"]: b for b in rec["bones"]}
+        self.assertEqual((bones["held_item"]["parent"], bones["held_item"]["origin"]), ("right_arm_forearm", [-6, 12, 0]))   # the forearm ends at y 12
+        self.assertFalse([c for c in rec["cubes"] if c["bone"] == "held_item"])
+        geo = {b["name"]: b for b in rigs.load_rig("biped", "geo")["minecraft:geometry"][0]["bones"]}
+        self.assertEqual((geo["held_item"]["parent"], geo["held_item"]["pivot"]), ("right_arm_forearm", [6, 12, 0]))         # exported with the X mirror
+        for plan in ("quadruped", "bird", "fish", "serpent", "insect"):
+            self.assertNotIn("held_item", [b["name"] for b in rigs.recipe(plan)["bones"]], plan)
+
     def test_combine_drift_lift_helpers(self):
         a = rigs.swing("b", 1.0, 20, 1, axis=1); b = rigs.lift("b", 1.0, 10, 1, axis=2)
         c = rigs.combine(a, b)
