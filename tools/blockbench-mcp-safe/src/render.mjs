@@ -187,8 +187,9 @@ function draw(tris,view,size,texture){
       if(texture&&tri.textured&&tri.uvs.every(uv=>uv!==null)){
         const u=wa*tri.uvs[0][0]+wb*tri.uvs[1][0]+wc*tri.uvs[2][0];
         const v=wa*tri.uvs[0][1]+wb*tri.uvs[1][1]+wc*tri.uvs[2][1];
-        if(u<0||u>=texture.width||v<0||v>=texture.height)continue;
-        const si=(Math.floor(v)*texture.width+Math.floor(u))*4;
+        const tu=u*(texture.scale||1),tv=v*(texture.scale||1);
+        if(tu<0||tu>=texture.width||tv<0||tv>=texture.height)continue;
+        const si=(Math.floor(tv)*texture.width+Math.floor(tu))*4;
         r=texture.pixels[si];g=texture.pixels[si+1];bl=texture.pixels[si+2];alpha=texture.pixels[si+3];
       }
       if(alpha===0)continue;
