@@ -81,6 +81,9 @@ class Generated(unittest.TestCase):
         hostile = (self.java / "entity/ShadowStalkerEntity.java").read_text()
         self.assertIn("extends Monster implements GeoEntity", hostile); self.assertIn("NearestAttackableTargetGoal<>(this, Player.class, true)", hostile)
         self.assertIn("ATTACK_DAMAGE, 3.0", hostile)
+        self.assertIn('thenPlay("animation.shadow_stalker.attack")', hostile); self.assertIn('.triggerableAnim("attack", ATTACK)', hostile)
+        self.assertIn("public boolean doHurtTarget(Entity target)", hostile); self.assertIn('triggerAnim("main", "attack")', hostile)
+        self.assertNotIn("ATTACK", passive); self.assertNotIn("doHurtTarget", passive)
         for cls in ("SkyCritter", "ShadowStalker"):
             r = (self.java / f"client/{cls}Renderer.java").read_text()
             self.assertIn(f"extends GeoEntityRenderer<{cls}Entity>", r); self.assertIn("DefaultedEntityGeoModel<>(ResourceLocation.fromNamespaceAndPath(ModMain.MOD_ID,", r)
@@ -94,7 +97,7 @@ class Generated(unittest.TestCase):
         from mod_orchestra.rigs import recipe
         self.assertEqual([b["name"] for b in geo["minecraft:geometry"][0]["bones"]], [b["name"] for b in recipe("quadruped")["bones"]])  # default body plan
         anim = json.loads((a / "animations/entity/sky_critter.animation.json").read_text())
-        self.assertEqual(set(anim["animations"]), {"animation.sky_critter.idle", "animation.sky_critter.walk"})
+        self.assertEqual(set(anim["animations"]), {"animation.sky_critter.idle", "animation.sky_critter.walk", "animation.sky_critter.attack"})
         png = (a / "textures/entity/sky_critter.png").read_bytes()
         self.assertTrue(png.startswith(b"\x89PNG")); self.assertEqual(int.from_bytes(png[16:20], "big"), 64); self.assertEqual(int.from_bytes(png[20:24], "big"), 64)
         loot = json.loads((self.res / "data/c_mod/loot_table/entities/sky_critter.json").read_text())

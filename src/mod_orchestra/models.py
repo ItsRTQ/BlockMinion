@@ -74,7 +74,9 @@ Start from `models/<mob>.bbmodel`: the controller places the base rig of the mob
 `bbmodel_geckolib_upsert_animation` with `replace: true` to tune the clips; keep the bone names. Only start a fresh
 `bbmodel_geckolib_create` when the creature's body plan is genuinely different from every base rig.
 Required: a readable rig (body/head/limbs as bones with sensible pivots), animations named exactly
-`animation.<mob>.idle` and `animation.<mob>.walk` (loop), `bbmodel_geckolib_validate` with
+`animation.<mob>.idle` and `animation.<mob>.walk` (loop) — plus `animation.<mob>.attack` (one-shot, `loop: once`,
+windup → impact → recovery → rest) for hostile and neutral mobs, which the entity triggers on every hit; the staged rig
+already carries all three, retune rather than drop them — `bbmodel_geckolib_validate` with
 `require_idle_walk: true` passing, `bbmodel_render` used at least once to look at the result (rest + a walk frame),
 and both exports written with `overwrite: true` when re-exporting. Keep the texture simple but not noise:
 flat colours per body part on the UV layout is enough for v1. Report the four file paths in `changed_files`
@@ -90,7 +92,15 @@ def _load(path: Path) -> dict:
         raise InputError(f"{path.name}: {exc}")
 
 
-def validate_model_files(workspace: Path, mob_id: str) -> dict:
+def required_clips(mob_id: str, behavior: str = "passive") -> list[str]:
+    """idle + walk always; attack when the entity class triggers it (hostile and neutral mobs)."""
+    clips = [f"animation.{mob_id}.idle", f"animation.{mob_id}.walk"]
+    if behavior in ("hostile", "neutral"):
+        clips.append(f"animation.{mob_id}.attack")
+    return clips
+
+
+def validate_model_files(workspace: Path, mob_id: str, behavior: str = "passive") -> dict:
     """Check the designer's deliverables against the mob and GeckoLib's expectations."""
     root = workspace / MODEL_DIR
     files = {k: root / f"{mob_id}.{ext}" for k, ext in (("bbmodel", "bbmodel"), ("geo", "geo.json"), ("anim", "animation.json"), ("png", "png"))}
@@ -110,19 +120,54 @@ def validate_model_files(workspace: Path, mob_id: str) -> dict:
         raise InputError("geo.json has no bones")
     anim = _load(files["anim"])
     clips = anim.get("animations") or {}
-    for req in (f"animation.{mob_id}.idle", f"animation.{mob_id}.walk"):
+    for req in required_clips(mob_id, behavior):
         if req not in clips:
             raise InputError(f"animation.json lacks {req} (has: {', '.join(clips) or 'none'})")
     unknown = sorted({b for c in clips.values() for b in (c.get("bones") or {}) if b not in bones})
     if unknown:
         raise InputError(f"animation.json animates bones that are not in geo.json: {unknown}")
+    # Structure the renderer assumes (learned from boss-scale rigs): one root, acyclic parents, keys inside the clip,
+    # every box-UV strip inside the atlas.
+    parents = {b["name"]: b.get("parent") for b in g["bones"]}
+    roots = [n for n, p in parents.items() if not p]
+    if len(roots) != 1:
+        raise InputError(f"geo.json must have exactly one root bone, found {roots}")
+    for n in parents:
+        seen, cur = set(), n
+        while cur:
+            if cur in seen:
+                raise InputError(f"geo.json bone parents form a cycle at {n}")
+            seen.add(cur); cur = parents.get(cur)
+            if cur is not None and cur not in parents:
+                raise InputError(f"geo.json bone {n} points at unknown parent {cur}")
+    for name, c in clips.items():
+        length = float(c.get("animation_length") or 0)
+        for b, chans in (c.get("bones") or {}).items():
+            for ch, keys in chans.items():
+                if isinstance(keys, dict):
+                    for t in keys:
+                        try:
+                            tt = float(t)
+                        except ValueError:
+                            raise InputError(f"{name}/{b}/{ch}: keyframe time {t!r} is not a number")
+                        if not (0 <= tt <= length + 1e-6):
+                            raise InputError(f"{name}/{b}/{ch}: keyframe at {t}s is outside the clip length {length}s")
+    tw, th = int(desc.get("texture_width") or 0), int(desc.get("texture_height") or 0)
+    for b in g["bones"]:
+        for cube in b.get("cubes") or []:
+            uv, size = cube.get("uv"), cube.get("size")
+            if isinstance(uv, list) and len(uv) == 2 and isinstance(size, list) and len(size) == 3:
+                w_, h_, d_ = (max(1, int(abs(v))) for v in size)
+                if uv[0] < 0 or uv[1] < 0 or uv[0] + 2 * d_ + 2 * w_ > tw or uv[1] + d_ + h_ > th:
+                    raise InputError(f"geo.json bone {b['name']}: a cube's box-UV strip at {uv} ({2*d_+2*w_}x{d_+h_}) leaves the {tw}x{th} texture")
     png = files["png"].read_bytes()
     if not png.startswith(b"\x89PNG\r\n\x1a\n"):
         raise InputError("texture is not a PNG")
     w, h = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
     tw, th = desc.get("texture_width"), desc.get("texture_height")
-    if (tw, th) != (w, h):
-        raise InputError(f"texture is {w}x{h} but geo declares {tw}x{th}")
+    ok = tw and th and w % int(tw) == 0 and h % int(th) == 0 and w // int(tw) == h // int(th) and w >= int(tw)
+    if not ok:   # the PNG may be the UV resolution or an integer multiple of it (2x/4x hi-res skins)
+        raise InputError(f"texture is {w}x{h} but geo declares {tw}x{th} (the PNG must be that size or a uniform integer multiple of it)")
     cubes = sum(len(b.get("cubes", [])) for b in g["bones"])
     return {"bones": sorted(bones), "cubes": cubes, "animations": sorted(clips), "texture": [w, h],
             "files": {k: str(v.relative_to(workspace)).replace("\\", "/") for k, v in files.items()}}
@@ -132,7 +177,9 @@ def install_model(store: Store, pid: str, mob_id: str, *, run_id: str, actor: st
     """Validate and copy the designer's exports over the placeholder assets, as a manifest revision."""
     proj = store.project(pid)
     ws = Path(proj["root"])
-    info = validate_model_files(ws, mob_id)
+    from .specedit import _load
+    mob = next((x for x in _load(store, pid).mobs if x.identifier == mob_id), None)
+    info = validate_model_files(ws, mob_id, mob.behavior if mob else "passive")
     res = ws / "src" / "main" / "resources" / "assets" / pid
     targets = {
         "geo": res / "geo" / "entity" / f"{mob_id}.geo.json",

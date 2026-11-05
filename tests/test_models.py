@@ -101,12 +101,34 @@ class Deliverables(Base):
         with self.assertRaisesRegex(InputError, "not in geo.json"):
             validate_model_files(self.ws, "sky_critter")
         self.deliver(png=placeholder_png("t", 32, 32))
+        self.deliver(png=placeholder_png("t", 128, 128)); validate_model_files(self.ws, "sky_critter")   # 2x hi-res skin is fine
+        self.deliver(png=placeholder_png("t", 128, 64))
+        with self.assertRaisesRegex(InputError, "uniform integer multiple"):
+            validate_model_files(self.ws, "sky_critter")
         with self.assertRaisesRegex(InputError, "geo declares 64x64"):
             validate_model_files(self.ws, "sky_critter")
         bad = placeholder_animation(Mob(identifier="sky_critter", label="x")); del bad["animations"]["animation.sky_critter.idle"]
         self.deliver(anim=bad)
         with self.assertRaisesRegex(InputError, "lacks animation.sky_critter.idle"):
             validate_model_files(self.ws, "sky_critter")
+        two_roots = placeholder_geo(Mob(identifier="sky_critter", label="x")); del two_roots["minecraft:geometry"][0]["bones"][1]["parent"]
+        self.deliver(geo=two_roots)
+        with self.assertRaisesRegex(InputError, "exactly one root"):
+            validate_model_files(self.ws, "sky_critter")
+        overflow = placeholder_geo(Mob(identifier="sky_critter", label="x")); overflow["minecraft:geometry"][0]["bones"][1]["cubes"][0]["uv"] = [60, 60]
+        self.deliver(geo=overflow)
+        with self.assertRaisesRegex(InputError, "leaves the 64x64 texture"):
+            validate_model_files(self.ws, "sky_critter")
+        self.deliver(geo=placeholder_geo(Mob(identifier="sky_critter", label="x")))
+        late = placeholder_animation(Mob(identifier="sky_critter", label="x")); late["animations"]["animation.sky_critter.walk"]["bones"]["head"] = {"rotation": {"0.0": [0, 0, 0], "5.0": [1, 0, 0]}}
+        self.deliver(anim=late)
+        with self.assertRaisesRegex(InputError, "outside the clip length"):
+            validate_model_files(self.ws, "sky_critter")
+        no_attack = placeholder_animation(Mob(identifier="sky_critter", label="x")); del no_attack["animations"]["animation.sky_critter.attack"]
+        self.deliver(anim=no_attack)
+        validate_model_files(self.ws, "sky_critter")  # passive: attack optional
+        with self.assertRaisesRegex(InputError, "lacks animation.sky_critter.attack"):
+            validate_model_files(self.ws, "sky_critter", "hostile")
 
 
 class VendoredServer(unittest.TestCase):

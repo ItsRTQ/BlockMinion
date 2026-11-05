@@ -16,7 +16,16 @@
       },
       "bones": [
         {
+          "name": "root",
+          "pivot": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
           "name": "body",
+          "parent": "root",
           "pivot": [
             0,
             12,
@@ -80,12 +89,12 @@
             {
               "origin": [
                 -8,
-                12,
+                18,
                 -2
               ],
               "size": [
                 4,
-                12,
+                6,
                 4
               ],
               "uv": [
@@ -96,23 +105,23 @@
           ]
         },
         {
-          "name": "right_arm",
-          "parent": "body",
+          "name": "left_arm_forearm",
+          "parent": "left_arm",
           "pivot": [
-            5,
-            22,
+            -5,
+            18,
             0
           ],
           "cubes": [
             {
               "origin": [
-                4,
+                -8,
                 12,
                 -2
               ],
               "size": [
                 4,
-                12,
+                6,
                 4
               ],
               "uv": [
@@ -134,17 +143,98 @@
             {
               "origin": [
                 -4,
-                0,
+                6,
                 -2
               ],
               "size": [
                 4,
-                12,
+                6,
                 4
               ],
               "uv": [
                 32,
                 16
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left_leg_shin",
+          "parent": "left_leg",
+          "pivot": [
+            -2,
+            6,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                -4,
+                0,
+                -2
+              ],
+              "size": [
+                4,
+                6,
+                4
+              ],
+              "uv": [
+                48,
+                16
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm",
+          "parent": "body",
+          "pivot": [
+            5,
+            22,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                4,
+                18,
+                -2
+              ],
+              "size": [
+                4,
+                6,
+                4
+              ],
+              "uv": [
+                0,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_arm_forearm",
+          "parent": "right_arm",
+          "pivot": [
+            5,
+            18,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                4,
+                12,
+                -2
+              ],
+              "size": [
+                4,
+                6,
+                4
+              ],
+              "uv": [
+                16,
+                26
               ]
             }
           ]
@@ -161,17 +251,44 @@
             {
               "origin": [
                 0,
+                6,
+                -2
+              ],
+              "size": [
+                4,
+                6,
+                4
+              ],
+              "uv": [
+                32,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right_leg_shin",
+          "parent": "right_leg",
+          "pivot": [
+            2,
+            6,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                0,
                 0,
                 -2
               ],
               "size": [
                 4,
-                12,
+                6,
                 4
               ],
               "uv": [
                 48,
-                16
+                26
               ]
             }
           ]

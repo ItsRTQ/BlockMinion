@@ -14,6 +14,7 @@ Linux and macOS work the same way (the CI runs the Linux path on every push); co
 | **Git** | getting the code and updates | any recent |
 | **JDK 25** | building mods (Gradle 9.7.1 runs on it; mods compile for Java 21) | 25 |
 | **Claude Code** | every agent run (interpreter, coder, designer, debugger). Uses **your** Claude login; no API key | current |
+| **Gemini CLI** (optional) | alternative agent runtime for every role (`CRAFTCTL_PROVIDER=gemini-cli`). Uses **your** Google login | current |
 | **Node.js** | the designer worker's Blockbench MCP (vendored, zero dependencies, runs on Node) | 22 LTS |
 | Blockbench | optional: open/edit the `.bbmodel` files the designer makes (install the *GeckoLib Animation Utils* plugin inside Blockbench) | current |
 | Minecraft | **not** needed to generate or build. `run-client` launches an isolated dev client through Gradle; a Minecraft account is only needed if you want to log in there | — |
@@ -111,7 +112,9 @@ python -m pip install -e .
 
 ## 7. Agent runtime
 
-v1 runs agents through **Claude Code** only (`claude -p`, headless; your Claude login or `ANTHROPIC_API_KEY`), on Windows, Linux or macOS — the controller must be able to start `claude` as a local process, so Claude Code inside WSL does not work with a Windows controller. Everything else (controller, MCP servers, generator, builds, UI) is runtime-agnostic; other agent CLIs can be added behind the `AgentProvider` interface (`src/mod_orchestra/provider.py`) — planned for v2.
+Agents run through **Claude Code** by default (`claude -p`, headless; your Claude login or `ANTHROPIC_API_KEY`), on Windows, Linux or macOS — the controller must be able to start `claude` as a local process, so Claude Code inside WSL does not work with a Windows controller.
+
+**Gemini CLI** is the alternative runtime: install it, run `gemini` once to log in with your Google account, then either set `CRAFTCTL_PROVIDER=gemini-cli` (every role, UI included) or pass `--provider gemini-cli` to `craftctl dispatch` / `orchestrate`. `craftctl doctor` reports it under `gemini_cli`; `CRAFTCTL_GEMINI_BIN` points at a binary that is not on PATH (also the way to use a compatible fork), `CRAFTCTL_GEMINI_MODEL` pins a model, `CRAFTCTL_GEMINI_APPROVAL` overrides the `--approval-mode` (`yolo` by default: a headless run has nobody to answer a confirmation prompt; the MCP server still refuses USER-ONLY operations itself). Each run writes the two MCP servers into the workspace's `.gemini/settings.json` and restores the file afterwards; the role definition and skills are inlined in the prompt because Gemini CLI has no `--agents`. Everything else (controller, MCP servers, generator, builds, UI) is runtime-agnostic — the `AgentProvider` interface in `src/mod_orchestra/provider.py` is the whole contract.
 
 ## 8. Security model in one paragraph
 

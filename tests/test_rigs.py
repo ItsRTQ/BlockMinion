@@ -46,16 +46,70 @@ class TestRecipes(unittest.TestCase):
     def test_clips_are_idle_and_walk_on_tick_boundaries(self):
         for plan in rigs.BODY_PLANS:
             rec = rigs.recipe(plan)
-            self.assertEqual([a["name"] for a in rec["animations"]], [f"animation.{plan}.idle", f"animation.{plan}.walk"])
+            self.assertEqual([a["name"] for a in rec["animations"]], [f"animation.{plan}.idle", f"animation.{plan}.walk", f"animation.{plan}.attack"])
             bones = {b["name"] for b in rec["bones"]}
             for a in rec["animations"]:
-                self.assertEqual(a["loop"], "loop")
+                self.assertEqual(a["loop"], "once" if a["name"].endswith(".attack") else "loop")
                 for ch in a["channels"]:
                     self.assertIn(ch["bone"], bones, (plan, a["name"]))
                     keys = ch["keyframes"]
-                    self.assertEqual(keys[0]["value"], keys[-1]["value"], f"{plan}/{a['name']}/{ch['bone']}: loop seam")
+                    self.assertEqual(keys[0]["time"], 0.0); self.assertEqual(keys[-1]["time"], a["length"], (plan, a["name"], ch["bone"]))
+                    if a["loop"] == "loop":
+                        self.assertEqual(keys[0]["value"], keys[-1]["value"], f"{plan}/{a['name']}/{ch['bone']}: loop seam")
+                    else:  # one-shot: starts and ends at rest so it blends with idle/walk
+                        self.assertEqual(keys[0]["value"], [0, 0, 0]); self.assertEqual(keys[-1]["value"], [0, 0, 0])
+                    self.assertEqual([k["time"] for k in keys], sorted(k["time"] for k in keys))
                     for k in keys:
                         self.assertAlmostEqual(round(k["time"] / 0.05) * 0.05, k["time"], places=6, msg=(plan, a["name"], k))
+
+
+    def test_root_is_empty_and_limbs_are_jointed(self):
+        for plan in rigs.BODY_PLANS:
+            rec = rigs.recipe(plan)
+            self.assertEqual(rec["bones"][0], {"name": "root", "origin": [0, 0, 0]})
+            self.assertFalse([c for c in rec["cubes"] if c["bone"] == "root"], plan)
+        bones = {b["name"]: b for b in rigs.recipe("biped")["bones"]}
+        self.assertEqual(bones["left_arm_forearm"]["parent"], "left_arm"); self.assertEqual(bones["left_leg_shin"]["parent"], "left_leg")
+        b, c = rigs.jointed_limb("left_x", "body", [("", [1, 2, 3], [0, 0, 0], [1, 1, 1]), ("lower", [1, 1, 3], [0, -1, 0], [1, 0, 1])])
+        self.assertEqual([x["name"] for x in b], ["left_x", "left_x_lower"]); self.assertEqual(b[1]["parent"], "left_x"); self.assertEqual(c[1]["bone"], "left_x_lower")
+
+
+    def test_combine_drift_lift_helpers(self):
+        a = rigs.swing("b", 1.0, 20, 1, axis=1); b = rigs.lift("b", 1.0, 10, 1, axis=2)
+        c = rigs.combine(a, b)
+        self.assertEqual([k["time"] for k in c["keyframes"]], [0.0, 0.25, 0.5, 0.75, 1.0])
+        self.assertEqual(c["keyframes"][1]["value"], [0.0, 0.0, 10.0])          # mid-swing: sweep crosses zero, lift at its peak
+        self.assertEqual(c["keyframes"][0]["value"], c["keyframes"][-1]["value"])
+        self.assertEqual(rigs.lift("b", 1.0, 10, -1, axis=2)["keyframes"][3]["value"], [0.0, 0.0, 10.0])
+        d = rigs.drift("h", 2.0, (2, 3, 1), seed=1, spike=(1.3, 0, -8))
+        times = [k["time"] for k in d["keyframes"]]
+        self.assertEqual(times, sorted(times)); self.assertEqual(len(times), len(set(times)))
+        self.assertEqual(d["keyframes"][0]["value"], [0.0, 0.0, 0.0]); self.assertEqual(d["keyframes"][-1]["value"], [0.0, 0.0, 0.0])
+        self.assertTrue(any(k["time"] == 1.35 and k["value"][0] == -8 for k in d["keyframes"]))
+        self.assertTrue(all(abs(v) <= 3 for k in d["keyframes"] for v in k["value"] if k["time"] not in (1.3, 1.35, 1.4)))
+        self.assertNotEqual(rigs.drift("x", 2.0, (2, 2, 2), seed=0)["keyframes"][2]["value"], rigs.drift("x", 2.0, (2, 2, 2), seed=1)["keyframes"][2]["value"])
+
+    def test_rest_rotation_lives_on_bones_and_is_mirrored_in_geo(self):
+        rec = rigs.recipe("insect"); bones = {b["name"]: b for b in rec["bones"]}
+        self.assertEqual(bones["left_front_leg"]["rotation"], [0, -20, 35]); self.assertEqual(bones["right_front_leg"]["rotation"], [0, 20, -35])
+        geo = {b["name"]: b for b in rigs.load_rig("insect", "geo")["minecraft:geometry"][0]["bones"]}
+        self.assertEqual(geo["left_front_leg"]["rotation"], [0, 20, 35])       # export flips X and Y rotation
+        self.assertFalse(any(c.get("rotation") for b in geo.values() for c in b.get("cubes", [])), "shape comes from bone rest pose, not cube rotation")
+
+
+    def test_snap_and_chain_helpers(self):
+        c = rigs.curve("a", "rotation", [(0, [0, 0, 0]), (0.3, [-100, 0, 0]), (0.45, [20, 0, 0]), (1.0, [0, 0, 0])], snap=2)
+        self.assertEqual([k["interpolation"] for k in c["keyframes"]], ["catmullrom", "linear", "linear", "catmullrom"])
+        for plan in rigs.BODY_PLANS:   # every attack has a linear impact pair
+            atk = next(a for a in rigs.recipe(plan)["animations"] if a["name"].endswith(".attack"))
+            self.assertTrue(any([k["interpolation"] for k in ch["keyframes"]].count("linear") >= 2 for ch in atk["channels"]), plan)
+        ch = rigs.chain(["s1", "s2", "s3"], 1.0, 10, axis=1, lag=0.25, grow=2, samples=8)
+        self.assertEqual([c["bone"] for c in ch], ["s1", "s2", "s3"])
+        for c in ch:
+            self.assertEqual(c["keyframes"][0]["value"], c["keyframes"][-1]["value"])
+        peak = lambda c: max(abs(k["value"][1]) for k in c["keyframes"])
+        self.assertLess(peak(ch[0]), peak(ch[1])); self.assertLess(peak(ch[1]), peak(ch[2]))   # amplitude grows to the tip
+        self.assertEqual(ch[0]["keyframes"][2]["value"][1], 10.0); self.assertEqual(ch[1]["keyframes"][4]["value"][1], 20.0)   # lag of a quarter cycle
 
 
 class TestPacker(unittest.TestCase):
@@ -96,9 +150,10 @@ class TestExports(unittest.TestCase):
     def test_animation_export_names_and_renaming(self):
         for plan in rigs.BODY_PLANS:
             anim = rigs.load_rig(plan, "anim")
-            self.assertEqual(set(anim["animations"]), {f"animation.{plan}.idle", f"animation.{plan}.walk"})
+            self.assertEqual(set(anim["animations"]), {f"animation.{plan}.idle", f"animation.{plan}.walk", f"animation.{plan}.attack"})
+            self.assertNotIn("loop", anim["animations"][f"animation.{plan}.attack"])  # one-shot
             renamed = rigs.rig_animation_for(plan, "my_mob")
-            self.assertEqual(set(renamed["animations"]), {"animation.my_mob.idle", "animation.my_mob.walk"})
+            self.assertEqual(set(renamed["animations"]), {"animation.my_mob.idle", "animation.my_mob.walk", "animation.my_mob.attack"})
             self.assertEqual(rigs.rig_geo_for(plan, "my_mob")["minecraft:geometry"][0]["description"]["identifier"], "geometry.my_mob")
             self.assertEqual(rigs.load_rig(plan, "geo")["minecraft:geometry"][0]["description"]["identifier"], f"geometry.{plan}")
 
@@ -149,7 +204,7 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(geo["minecraft:geometry"][0]["description"]["identifier"], "geometry.cave_golem")
         self.assertEqual([b["name"] for b in geo["minecraft:geometry"][0]["bones"]], [b["name"] for b in rigs.recipe("biped")["bones"]])
         anim = json.loads((self.res / "animations/entity/cave_golem.animation.json").read_text())
-        self.assertEqual(set(anim["animations"]), {"animation.cave_golem.idle", "animation.cave_golem.walk"})
+        self.assertEqual(set(anim["animations"]), {"animation.cave_golem.idle", "animation.cave_golem.walk", "animation.cave_golem.attack"})
         png = (self.res / "textures/entity/cave_golem.png").read_bytes()
         self.assertEqual((int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")), (64, 64))  # biped resolution
 
@@ -166,7 +221,7 @@ class TestIntegration(unittest.TestCase):
         src = self.root / MODEL_DIR / "cave_golem.bbmodel"
         m = json.loads(src.read_text())
         self.assertEqual((m["model_identifier"], m["mod_id"], m["meta"]["model_format"]), ("cave_golem", "r_mod", "geckolib_model"))
-        self.assertEqual({a["name"] for a in m["animations"]}, {"animation.cave_golem.idle", "animation.cave_golem.walk"})
+        self.assertEqual({a["name"] for a in m["animations"]}, {"animation.cave_golem.idle", "animation.cave_golem.walk", "animation.cave_golem.attack"})
         src.write_text(src.read_text().replace('"name": "torso"', '"name": "chest"'))  # the designer edited it
         self.assertIn("already present", rig_block(self.store, "r_mod", "cave_golem", self.root))
         self.assertIn('"chest"', src.read_text())  # not overwritten
@@ -186,7 +241,7 @@ class TestIntegration(unittest.TestCase):
         proc = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         out = json.loads(proc.stdout)
-        self.assertEqual(out, {"id": "geometry.cave_golem", "clips": ["animation.cave_golem.idle", "animation.cave_golem.walk"]})
+        self.assertEqual(out, {"id": "geometry.cave_golem", "clips": ["animation.cave_golem.idle", "animation.cave_golem.walk", "animation.cave_golem.attack"]})
 
 
 if __name__ == "__main__":

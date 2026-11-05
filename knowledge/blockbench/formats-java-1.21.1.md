@@ -132,7 +132,7 @@ invisible in hand and GUI.
 - One root bone (`body` for quadrupeds, `root` or `body` for bipeds) so whole-model bob/turn is one channel.
 - Multi-joint limbs nest proximal → distal (`upper_leg → lower_leg → foot`); the pivot of each bone sits at the
   joint it rotates around, set **before** animating. Wrong pivots show as sliding/floating on rotation.
-- Rotation keyframes in degrees, `[-360, 360]` (**enforced**); scale never ≤ 0; looping clips must start and end
+- Rotation keyframes in degrees, `[-360, 360]` (**enforced**); scale never negative (**enforced**; 0 hides the part and only warns); looping clips must start and end
   on the same value per channel (**enforced**: `LOOP_SEAM`). `snapping` is 20/s (**enforced**) so keyframes land
   on ticks: use times that are multiples of 0.05.
 - Bone density: every cube that should move on its own (ears, jaw, tail segments, a hat, a held prop) gets its own bone;
@@ -176,8 +176,79 @@ whether a model is "done", not as something to copy.
 | raccoon merchant (biped) | 29 | 19 | 1.5 | 64² | 13 (idle, sit/beg, eat, walk, run, wash, sneeze, backpack on/off/open/close/idle, happy) |
 | cosmic whale (fish, boss) | 55 | 37 | 1.5 | 256² | 6 (drift, swim, sing, roll, dive, emerge) |
 | crab captain (insect-like) | 72 | 54 | 1.3 | 64² | 8 (idle, walk, dance, drink, salute, snap, tipsy, hat toss) |
-| **base rigs here** | 5–9 | 5–9 | ~1.1 | 64² | 2 (idle, walk) |
+| **base rigs here** | 7–15 | 10–19 | ~0.8 | 64² | 3 (idle, walk, attack) |
 
 What the gap says: (a) legs with 2–3 articulated segments and props on their own bones are where the bone count
 comes from; (b) 64×64 is enough for 30–70 cubes when the UV is packed; (c) a creature with personality has
 6–13 clips, most of them short one-shot actions on top of idle/walk/run.
+
+## 10. Calibration — a boss-scale rig built programmatically (MeherBenSalem/Bosses, Apache-2.0, read 2026-11-04)
+
+`docs/models/hollow_sovereign` in that repository is a GeckoLib boss authored through a Blockbench MCP from Python,
+the same shape as this project's pipeline. Numbers and patterns only; nothing copied.
+
+- 106 cubes, 24 bones, depth 5. Empty `root` at `[0,0,0]` → `body` → `chest` → `head` → `jaw`; `crown` with five shard
+  bones on a pentagon of pivots; arms `arm → forearm → hand` (3 joints), legs `leg → shin` (2); tassets as bones.
+- 64 of 106 cubes carry per-cube rotation (organic silhouette without extra bones); no `inflate`; per-face UV on a
+  512² atlas reusing an existing texture's patches.
+- Naming matches ours: `right_*` at −X, `left_*` at +X.
+- 9 clips: idle 4 s, walk 1.2 s (loops); awaken, roar, claw_combo 1.8 s (impacts 0.55 and 1.15, second arm delayed
+  0.6 s), ground_slam 2.2 s (windup to 0.8, impact 1.05, hold to 1.35), core_blast, enrage (once); death 3.5 s (hold).
+- Authoring: 3–6 points per bone (windup → impact → recovery → rest) in a motion module, then a shape-preserving cubic
+  (Fritsch–Carlson tangents, zero at peaks) sampled at 24 fps into linear keyframes — portable, runtime-independent;
+  7.5k keys. Walk shins use `−28·max(0, sin)`; crown shards bob with a `sin²` envelope on one-shots.
+- Amplitudes: rotation −150…+360 (windups), position ±13 (boss scale), scale 0–1.6 (pulsing core).
+- Its verifier checks: unique bones, one root, acyclic parents, finite keyframe values, keys within clip length, positive
+  cube sizes, every UV rectangle inside the atlas and opaque. `models.validate_model_files` now checks one root, acyclic
+  parents, key timing and box-UV bounds; UV opacity against the PNG is still a backlog item.
+
+## 11. Calibration — a finished community creature file (CC0 crab, read 2026-11-05)
+
+Analysed from a downloaded `.bbmodel` (format 5.0, geckolib_model); numbers and patterns only.
+
+- 72 cubes, 54 bones, depth 4, empty `root` → `body` → all. Eight legs of `leg → low → (tip, ankle)` plus a sibling
+  `knee` cap bone at `low`'s pivot: 40 of the 54 bones. Hat (3 bones) and a held bottle are bones.
+- Shape by **bone rest rotation**: only 2 cubes rotated; femurs fanned on Y (±8…34°) and raised on Z (±30°), tibias at
+  −75…−87°. The opposite technique to the boss in §10 (cube rotation); both read as organic.
+- `inflate` on 34/72 cubes, `mirror_uv` on 27, box UV on 62. Project resolution 64×64 with a **128×128 PNG** (2× skin).
+- Sides named `right_*` at +X: author convention; only mirror pairing matters outside the armor bone names.
+- 8 clips, all `catmullrom`, snapping 24: idle 4 s (19 bones: body drifts <1° on three axes, eyes get a −14° blink for
+  0.1 s at different times, claws ±3°), walk 0.8 s (31 bones: legs sweep on Y ±14, Z lift ±10 only in the swing half,
+  knee cap at half the tibia angle, body rocks ±1.5° at double frequency), tipsy and dance (loops, ~900 keys), drink 3 s,
+  salute 1.7 s, snap 1.0 s and hat_toss 2.2 s (one-shots, up to −87° and a −360° spin).
+- Snap timing: windup 20% (arm back, body +0.8 back), impact 35% (body −1.6 forward, pincer closes then "chatters"
+  −17/−13/−17), hold to 70%, rest at 100%; hat follows 0.05 s later. With §10 that puts one-shots at windup 20–36%,
+  impact 35–50%.
+- What landed from it: `rigs.drift/lift/combine`, rest rotation on recipe bones (insect splay), texture-size rule
+  relaxed to uniform integer multiples, skill rules on joint caps, inflate, mirror_uv and alive idles.
+
+## 12. Calibration — a hand-authored personality creature (CC0 raccoon, read 2026-11-05)
+
+- 29 cubes, 19 bones, depth 4, named root → `body`; head with ears, hat → feather; arms at 38° X rest; three-segment
+  tail; legs → feet; backpack with lid and straps. 0 rotated cubes, `inflate` 9/29, PNG 128² over 64² UV.
+- 13 clips with few keys (idle: 11 bones, 65 keys over 3 s): idle, walk 1.0, run 0.5, sit_beg, eat, wash (loops);
+  happy 1.6, sneeze 3.0 (once); backpack_off 2.4 / on 1.2 / open / close (`hold`), backpack_idle (loop).
+- Walk and run **re-pose** the biped on all fours: `body` −94° X and +3.6 up, head +94, legs scale 1.35 / feet 0.74.
+- `scale` as visibility (straps 1→0 in a 0.05 s linear step) and as squash-and-stretch (head 1.04/0.96 chewing,
+  tail 1.35 puff).
+- Sneeze: 1.2 s catmullrom build-up (head 0→10→16→12→28), **linear** 0.12 s snap (28→−32), aftershock wobble
+  (±6 over 0.8 s), hat launched with linear keys (+9 up, −360° spin), feather follow-through.
+- Idle: head look-around (yaw −8→+6 over 2.4 s), breathing (`body` position y −0.2), ear double-flick (linear, 0.1 s
+  steps at 2.0 s), tail figure-8 with `tail_tip` lagging at 2× amplitude.
+- What landed from it: `curve(snap=)` linear impacts on every attack, `chain()` travelling waves (serpent, fish and
+  quadruped tails), the scale rule corrected, skill rules on re-posing, state clips and props physics.
+
+## 13. Calibration — a boss-size swimmer (CC0 whale, read 2026-11-05)
+
+- 55 cubes, 37 bones, depth 7, 6.9 blocks long; UV 256² with a 512² PNG; `visible_box [10, 3.5, 1.25]`.
+- Empty `root` → `body`; tail chain `tail_a → b → c → d → flukes → fluke_left/right`; three flipper pairs of 3–4
+  segments fanned by rest rotation; three dorsals; jaw with chin fins. 0 rotated cubes, 0 inflate, `mirror_uv` 14.
+- `swim` 4 s: the tail is a travelling X wave, amplitudes 5.0 → 6.9 → 9.0 → 9.9 → 14.0 (grow ≈ 1.3) with each segment
+  0.125 of a cycle behind; flippers are 4-segment Z chains at constant ≈ 8° with the same lag. This is `rigs.chain()`.
+- `drift` 8 s on all 36 bones at 0.5 s steps, amplitudes growing distally (tail 2.2 → 6.2, flippers 4 → 4.5) and
+  `root` itself ±0.6/±0.4.
+- `rift_dive` 4 s and `emerge` 3 s move `root` (pitch −5 → +9, position up to −4/+1.5); `roll` 6 s spins `body` 372°
+  on Z over a slow `root` drift. `sing` 5 s: jaw vibrato −12.4 ↔ −15.2 every 0.13 s with the head raised 7–8°.
+- What landed: `root` drift on the fish idle/swim, skill rules on root-as-vehicle, distal drift, constant-amplitude
+  fin chains, vibrato, bounds and time scale for big creatures.
+
