@@ -158,12 +158,13 @@ def combine(*channels: dict) -> dict:
     return {"bone": bone, "channel": chan, "keyframes": keys}
 
 
-def drift(bone: str, length: float, amplitudes: tuple[float, float, float], seed: int = 0, samples: int = 8,
+def drift(bone: str, length: float, amplitudes: tuple[float, float, float], seed: int = 0, samples: int | None = None,
           spike: tuple[float, float, float] | None = None) -> dict:
     """Idle 'alive' noise: a slow, deterministic wander under the given per-axis amplitudes (degrees), loop-seamed,
     with an optional one-frame spike (time, axis, value) such as a blink or a twitch. Different seeds desynchronise
     paired bones (two eyes, two claws) so the creature never looks symmetric."""
     import math
+    samples = samples or max(4, int(round(length / 0.25)))   # 0.25 s steps keep keys on 20/s ticks
     keys = []
     for i in range(samples + 1):
         t = round(length * i / samples, 2)
@@ -353,16 +354,17 @@ def fish() -> dict:
         {"name": "tail_cube", "bone": "tail", "from": [-1, 3, 3], "to": [1, 7, 6]},
         {"name": "tail_fin_cube", "bone": "tail_fin", "from": [-0.5, 2, 6], "to": [0.5, 8, 9]},
     ]
-    idle = chain(["tail", "tail_fin"], 2.0, 8, axis=1, lag=0.12, grow=1.5) + [bob("body", 2.0, 0.5),
+    idle = chain(["tail", "tail_fin"], 2.0, 8, axis=1, lag=0.12, grow=1.5) + [bob("body", 2.0, 0.5), drift("root", 2.0, (0.6, 0.0, 0.4), seed=6),
             drift("head", 2.0, (1.5, 2.0, 1.0), seed=2), drift("left_fin", 2.0, (0, 6, 3), seed=4), drift("right_fin", 2.0, (0, -6, -3), seed=5)]
     walk = [swing("body", 1.0, 5, -1, axis=1)] + chain(["tail", "tail_fin"], 1.0, 20, axis=1, lag=0.12, grow=1.5) + [
-            swing("left_fin", 1.0, 15, 1, axis=1), swing("right_fin", 1.0, 15, -1, axis=1)]
+            swing("left_fin", 1.0, 15, 1, axis=1), swing("right_fin", 1.0, 15, -1, axis=1), drift("root", 1.0, (0.8, 0.0, 0.0), seed=7)]
     attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-12, 0, 0]), (0.4, [15, 0, 0]), (0.8, [0, 0, 0])], snap=2),
               curve("body", "position", [(0, [0, 0, 0]), (0.2, [0, 0, 1]), (0.4, [0, 0, -2]), (0.8, [0, 0, 0])], snap=2),
               curve("tail", "rotation", [(0, [0, 0, 0]), (0.2, [0, 25, 0]), (0.4, [0, -25, 0]), (0.6, [0, 10, 0]), (0.8, [0, 0, 0])]),
               curve("tail_fin", "rotation", [(0, [0, 0, 0]), (0.2, [0, 35, 0]), (0.4, [0, -35, 0]), (0.6, [0, 15, 0]), (0.8, [0, 0, 0])], delay=0.05)]
     return _recipe("fish", texture=(64, 64), visible_box=[1, 1, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=0.8,
-                   notes="walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. "
+                   notes="walk = swim: a travelling Y wave down tail → tail_fin (the fin whips most); body counter-wags and `root` sways the whole fish. "
+                         "Whole-body moves (dive, surface, roll) go on `root`; pectoral fins with several segments are constant-amplitude chains. "
                          "Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel. Attack: Bite: a hard tail beat throws the body forward (0.4) as the head snaps down.")
 
 
