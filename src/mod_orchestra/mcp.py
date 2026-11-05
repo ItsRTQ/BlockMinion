@@ -41,8 +41,41 @@ TOOLS = [
     {"name": "orchestra_project_plan", "description": "Create task DAG, once per project", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_generate_source", "description": "Generate source only for previously USER-APPROVED, empty project; no overwrite or code execution", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_footprint", "description": "Bounded Markdown project state", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
+    {"name": "orchestra_paint_skin", "description": "Designer: paint models/<mob>.png from the mob's models/<mob>.bbmodel (box-UV cubes): zone colours, face shading, edges, a head face with eyes/brows/nose/mouth of guaranteed contrast, at `scale` pixels per UV unit (default 2 = 128x128 over a 64x64 layout). Returns the face-contrast report. Only writes that PNG.", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}, "palette": {"type": "object", "description": "{base: '#rrggbb', <name>: '#rrggbb', ...}"}, "zones": {"type": "array", "description": "[{bones: ['torso','*_arm*'], color: 'name or #hex', bands: {color, every, thickness}}]; the first matching zone wins, other bones use base", "items": {"type": "object"}}, "face": {"type": "object", "description": "{eyes, pupil, mouth, brow, teeth: '#hex', nose: bool, tusks: bool, style: 'angry'|'calm'}; pass false to leave the head unpainted"}, "scale": {"type": "integer", "minimum": 1, "maximum": 4}, "seed": {"type": "string"}}, "required": ["project", "mob", "palette"], "additionalProperties": False}},
+    {"name": "orchestra_check_skin", "description": "Designer: measure how much the head's front face stands out in models/<mob>.png (works for any PNG, painted by hand or by orchestra_paint_skin)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
     {"name": "orchestra_validate_source", "description": "Static manifest + JSON verification; not a build or runtime check", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
 ]
+
+def _skin_tool(store: Store, name: str, a: dict) -> object:
+    import re
+    from . import skin
+    from .models import MODEL_DIR
+    from .validation import InputError
+    mob = str(a.get("mob", ""))
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", mob):
+        raise InputError("mob must be the mob identifier (snake_case)")
+    models = Path(store.project(a["project"])["root"]) / MODEL_DIR
+    source = models / f"{mob}.bbmodel"
+    if not source.is_file():
+        raise StateError(f"models/{mob}.bbmodel does not exist yet: the MODEL task stages the base rig there")
+    model = json.loads(source.read_text(encoding="utf8"))
+    target = models / f"{mob}.png"
+    if name == "orchestra_check_skin":
+        if not target.is_file():
+            raise StateError(f"models/{mob}.png does not exist yet")
+        report = skin.face_report(model, target.read_bytes())
+        return report or {"face": None, "note": "no `head` bone with a box-UV cube, or the PNG is not the model resolution (or a 2x/4x multiple): nothing to judge"}
+    zones = a.get("zones") or []
+    if len(zones) > 32 or len(json.dumps(a)) > 20000:
+        raise InputError("too many zones or an oversized request")
+    png, report = skin.paint_skin(model, palette=a["palette"], zones=zones, face=a.get("face", {}), scale=int(a.get("scale", 2)), seed=str(a.get("seed") or mob)[:64])
+    tmp = target.with_suffix(".png.tmp")
+    tmp.write_bytes(png)
+    tmp.replace(target)
+    report["file"] = f"{MODEL_DIR}/{mob}.png"
+    report["next"] = f"bbmodel_geckolib_set_texture {{file: \"{mob}.bbmodel\", png_file: \"{mob}.png\", expected_revision}} then bbmodel_render to look at it"
+    return report
+
 
 def invoke(store: Store, name: str, a: dict) -> object:
     if name == "orchestra_doctor":
@@ -67,6 +100,8 @@ def invoke(store: Store, name: str, a: dict) -> object:
         return generate_project(store, a["project"])
     if name == "orchestra_footprint":
         return export_state_markdown(store, a["project"])
+    if name in ("orchestra_paint_skin", "orchestra_check_skin"):
+        return _skin_tool(store, name, a)
     if name == "orchestra_validate_source":
         root = Path(store.project(a["project"])["root"])
         if not (root / ".mod-orchestra" / "generation-manifest.json").is_file():

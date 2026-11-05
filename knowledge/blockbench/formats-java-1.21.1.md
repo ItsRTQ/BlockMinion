@@ -262,3 +262,12 @@ forward): all four quadruped legs, both biped legs and the right side of the ins
 GeckoLib), so the sign of `-amp * max(0, sin)` for a knee on a creature facing -Z was right; only the timing was wrong.
 `src/gait.mjs` implements the check, `bbmodel_quality_gates` raises `GAIT_PHASE` as a warning, `scripts/gait_check.mjs` prints it per leg.
 
+## 15. Box-UV orientation (checked against Blockbench's cube.js, 2026-11-05)
+
+Rectangles `[u1,v1,u2,v2]` for a cube of floored size (w,h,d) at `uv_offset` (u,v): east `[u, v+d, u+d, v+d+h]`, north `[u+d, v+d, u+d+w, v+d+h]`, west `[u+d+w, v+d, u+2d+w, v+d+h]`,
+south `[u+2d+w, v+d, u+2d+2w, v+d+h]`, **up `[u+d+w, v+d, u+d, v]`** and **down `[u+d+2w, v, u+d+w, v+d]`** (both stored reversed: up is turned 180 degrees, down is mirrored horizontally).
+Seen from outside, a side face shows its rectangle upright and unmirrored: the top of the rectangle is the top of the face, so a face painted near the top of the north rectangle is near the top of
+the head. In the vanilla skin the head's front is (8,8)-(16,16) and the eyes are on its upper half. `mirror_uv` flips every face horizontally and swaps the east and west rectangles. A hi-res
+texture keeps the UV layout of the project resolution and has `scale` pixels per unit (`uv_width/uv_height` stay the project's, `width/height` are the PNG's).
+The first preview in this project drew the side faces upside down; skins judged by it can be upside down in game.
+

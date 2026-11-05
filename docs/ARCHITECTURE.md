@@ -167,3 +167,19 @@ Generated projects are never regenerated in place, but content can grow. `conten
 ## GameTests
 
 Every generated project ships `gametest/ModGameTests.java` (registered as the `fabric-gametest` entrypoint) with one check per kind of generated content, and a Loom `gametest` run that boots Fabric's headless test server and writes `build/gametest/junit.xml`. `craftctl request-gametest` / `craftctl gametest` run it through the broker (approval-gated, like the server smoke); the controller parses the JUnit report, records `GAMETEST_PASS` or opens a repair task briefed with the failing tests and the log tail. Autopilot can be allowed to run it after a passing build. The coder's `gametest` skill asks for one `@GameTest` per acceptance criterion of custom features. The test server blocks on an open stdin pipe, so the broker gives it `/dev/null` (CI does the same); with that, the generated tests run headless in CI on every push.
+
+## Skins (hi-res, painted by the controller)
+
+The designer no longer paints pixels by hand. `skin.py` reads the mob's `.bbmodel` (box-UV cubes, the bone each belongs to), locates the six faces of every cube with Blockbench's
+box-UV rectangles, fills each with its zone colour (`zones`: bone globs to palette colours, optional bands), shades by face direction (up lightest, down darkest), darkens the edge
+pixels, adds deterministic noise, and paints a face on the north face of the largest cube of the `head` bone (brows, eyes with pupils, nose, mouth, optional tusks) with colours pushed
+apart from the skin until their lightness differs enough. The PNG is written at `scale` pixels per UV unit (default 2: 128x128 over a 64x64 layout; the server, the preview and
+`validate_model_files` accept any uniform integer multiple). It is exposed to the designer role only, as the MCP tools `orchestra_paint_skin` (writes only `models/<mob>.png`) and
+`orchestra_check_skin`. `face_report` measures any PNG: bright and dark shapes of two or more pixels on the head's front face are the features (two eyes and a mouth make at least three),
+and the spread is the lightness range between the brightest and the darkest real feature. `install_model` records it in the handoff (`model.face`) and the UI shows "face reads well", "weak" or
+"flat"; it never blocks, because a visor or a helmet can be flat on purpose.
+
+The server's preview had the four side faces upside down and the wrong box-UV rectangles for up and down. Since the designers judged textures by those renders, skins authored before this fix may be
+upside down in game. `render.mjs` now builds each face as Blockbench does (three.js BoxGeometry vertex order, `cube.js` rectangles with floored sizes, up and down reversed, east and west swapped by
+`mirror_uv`), and `test/render-orientation.test.mjs` fixes it with a marker cube in every view.
+

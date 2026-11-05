@@ -205,24 +205,28 @@ def face_report(model: dict, png: bytes) -> dict | None:
     if not flat:
         return None
     median = flat[len(flat) // 2]
-    spread = flat[int(len(flat) * 0.95) - 1] - flat[int(len(flat) * 0.05)]
-    feature = [[abs(v - median) >= 0.20 for v in row] for row in lum]
-    fh, fw = len(feature), len(feature[0])
-    seen, clusters = set(), 0
-    for sy in range(fh):
-        for sx in range(fw):
-            if not feature[sy][sx] or (sy, sx) in seen:
-                continue
-            stack, area = [(sy, sx)], 0
-            seen.add((sy, sx))
-            while stack:
-                cy, cx = stack.pop(); area += 1
-                for ny, nx in ((cy + 1, cx), (cy - 1, cx), (cy, cx + 1), (cy, cx - 1)):
-                    if 0 <= ny < fh and 0 <= nx < fw and feature[ny][nx] and (ny, nx) not in seen:
-                        seen.add((ny, nx)); stack.append((ny, nx))
-            if area >= 2:
-                clusters += 1
-    fraction = sum(sum(r) for r in feature) / (fw * fh)
+    fh, fw = len(lum), len(lum[0])
+    seen, clusters, real, marked = set(), 0, [median], 0
+    for polarity in (1, -1):             # bright shapes (eyes, teeth) and dark shapes (sockets, nose, mouth) are separate features even when they touch
+        mask = [[(v - median) * polarity >= 0.20 for v in row] for row in lum]
+        marked += sum(sum(r) for r in mask)
+        seen = set()
+        for sy in range(fh):
+            for sx in range(fw):
+                if not mask[sy][sx] or (sy, sx) in seen:
+                    continue
+                stack, members = [(sy, sx)], []
+                seen.add((sy, sx))
+                while stack:
+                    cy, cx = stack.pop(); members.append(lum[cy][cx])
+                    for ny, nx in ((cy + 1, cx), (cy - 1, cx), (cy, cx + 1), (cy, cx - 1)):
+                        if 0 <= ny < fh and 0 <= nx < fw and mask[ny][nx] and (ny, nx) not in seen:
+                            seen.add((ny, nx)); stack.append((ny, nx))
+                if len(members) >= 2:    # a feature is a shape of 2+ pixels; single specks are noise
+                    clusters += 1
+                    real += members
+    spread = max(real) - min(real)       # brightest to darkest real feature (or the plain skin when there are none)
+    fraction = marked / (fw * fh)
     ok = clusters >= 3 and 0.04 <= fraction <= 0.55 and spread >= 0.45
     flat_face = clusters < 2 or spread < 0.25 or fraction < 0.015
     return {"face_px": [fw, fh], "scale": scale, "spread": round(spread, 2), "feature_fraction": round(fraction, 3), "features": clusters, "ok": ok, "flat": flat_face,
@@ -355,28 +359,29 @@ def _paint_face(canvas: Canvas, head: dict, pal: dict, face: dict, scale: int, z
     style = face.get("style", "angry")
     if style not in ("angry", "calm"):
         raise InputError("face.style must be angry or calm")
-    ew, eh = max(3, round(fw * 0.22)), max(2, round(fh * 0.15))
+    ew, eh = max(3, round(fw * 0.22)), max(2, round(fh * 0.18))
     ey = y0 + round(fh * 0.40) - eh // 2
     for side, cx in (("left", 0.28), ("right", 0.72)):
         ex = x0 + round(fw * cx) - ew // 2
         canvas.rect(ex - 1, ey - 1, ex + ew + 1, ey + eh + 1, scale_color(dark, 0.9))        # socket: a dark ring so the eye pops
         canvas.rect(ex, ey, ex + ew, ey + eh, eyes)
-        px = ex + ew - max(1, scale // 2 + 1) if side == "left" else ex                       # pupils look toward the nose
-        canvas.rect(px, ey, px + max(1, scale // 2 + 1), ey + eh, pupil)
+        pw = max(1, scale // 2)
+        px = ex + ew - pw if side == "left" else ex                                           # pupils look toward the nose
+        canvas.rect(px, ey, px + pw, ey + eh, pupil)
         for i in range(ew + 2):                                                               # brow: one row, one step lower toward the nose when angry
             inner = (i > (ew + 1) // 2) if side == "left" else (i < (ew + 1) // 2)
             drop = 1 if style == "angry" and inner else 0
-            canvas.rect(ex - 1 + i, ey - 2 + drop - (scale // 2 if scale > 1 else 0), ex + i, ey - 1 + drop, brow)
+            canvas.rect(ex - 1 + i, ey - 2 + drop - (1 if scale >= 4 else 0), ex + i, ey - 1 + drop, brow)
     if face.get("nose", True):
         ny, nw = y0 + round(fh * 0.60), max(1, scale // 2 + 1)
         for dx in (-scale, scale - nw + 1):
-            canvas.rect(x0 + fw // 2 + dx - (0 if dx > 0 else nw - 1), ny, x0 + fw // 2 + dx + (nw if dx > 0 else 1), ny + max(2, scale + 1), scale_color(dark, 1.4))
-    mw, mh = max(4, round(fw * 0.52)), max(2, round(fh * 0.10))
-    mx, my = x0 + (fw - mw) // 2, y0 + round(fh * 0.76)
+            canvas.rect(x0 + fw // 2 + dx - (0 if dx > 0 else nw - 1), ny, x0 + fw // 2 + dx + (nw if dx > 0 else 1), ny + max(2, scale), scale_color(dark, 1.4))
+    mw, mh = max(4, round(fw * (0.66 if face.get("tusks") else 0.52))), max(2, round(fh * 0.10))
+    mx, my = x0 + (fw - mw) // 2, y0 + round(fh * 0.80)
     canvas.rect(mx, my, mx + mw, my + mh, dark)
     for i in range(1, mw - 1, max(2, scale + 1)):                                             # teeth along the top edge of the mouth
         canvas.set(mx + i, my, teeth)
     if face.get("tusks"):
         for tx in (mx, mx + mw - max(1, scale // 2 + 1)):
-            canvas.rect(tx, my - max(2, round(fh * 0.12)), tx + max(1, scale // 2 + 1), my + mh, teeth)
+            canvas.rect(tx, my - max(2, round(fh * 0.14)), tx + max(1, scale // 2 + 1), my + mh, teeth)
     return {"face_px": [fw, fh], "eyes": to_hex(eyes), "mouth": to_hex(dark), "style": style, "tusks": bool(face.get("tusks"))}, adjusted
