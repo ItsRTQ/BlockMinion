@@ -187,10 +187,11 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .specedit import add_mob as add_mob_spec
                         from .spec import coerce_spawn
                         m = Mob(identifier=str(payload.get("identifier", "")).strip(), label=str(payload.get("label", "")).strip() or str(payload.get("identifier", "")),
-                                behavior=str(payload.get("behavior", "passive")), drops=tuple(payload.get("drops") or ()), spawn=coerce_spawn(payload.get("spawn")))
+                                behavior=str(payload.get("behavior", "passive")), drops=tuple(payload.get("drops") or ()), spawn=coerce_spawn(payload.get("spawn")),
+                                body_plan=str(payload.get("body_plan", "quadruped")))
                         if store.project(pid)["status"] in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
                             return add_mob_after_generation(store, pid, m)
-                        return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops), spawn=payload.get("spawn"))
+                        return add_mob_spec(store, pid, identifier=m.identifier, label=m.label, behavior=m.behavior, drops=list(m.drops), spawn=payload.get("spawn"), body_plan=m.body_plan)
                     if op == "autopilot":
                         from .dispatch import AUTOPILOT_DEFAULT
                         policy = {k: bool(payload.get(k, False)) for k in AUTOPILOT_DEFAULT}

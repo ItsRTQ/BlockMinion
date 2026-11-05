@@ -1,0 +1,400 @@
+{
+  "plan": "serpent",
+  "name": "serpent",
+  "identifier": "serpent",
+  "modid": "rigs",
+  "model_type": "Entity",
+  "texture_width": 64,
+  "texture_height": 64,
+  "visible_box": [
+    1,
+    0.5,
+    2
+  ],
+  "bones": [
+    {
+      "name": "body",
+      "origin": [
+        0,
+        2,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "body",
+      "origin": [
+        0,
+        2,
+        -4
+      ]
+    },
+    {
+      "name": "segment_2",
+      "parent": "body",
+      "origin": [
+        0,
+        2,
+        0
+      ]
+    },
+    {
+      "name": "segment_3",
+      "parent": "segment_2",
+      "origin": [
+        0,
+        2,
+        4
+      ]
+    },
+    {
+      "name": "tail",
+      "parent": "segment_3",
+      "origin": [
+        0,
+        2,
+        8
+      ]
+    }
+  ],
+  "cubes": [
+    {
+      "name": "segment_1",
+      "bone": "body",
+      "from": [
+        -2,
+        0,
+        -4
+      ],
+      "to": [
+        2,
+        4,
+        0
+      ],
+      "uv_offset": [
+        20,
+        0
+      ]
+    },
+    {
+      "name": "head_cube",
+      "bone": "head",
+      "from": [
+        -2.5,
+        0,
+        -9
+      ],
+      "to": [
+        2.5,
+        4,
+        -4
+      ],
+      "uv_offset": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "segment_2_cube",
+      "bone": "segment_2",
+      "from": [
+        -2,
+        0,
+        0
+      ],
+      "to": [
+        2,
+        4,
+        4
+      ],
+      "uv_offset": [
+        36,
+        0
+      ]
+    },
+    {
+      "name": "segment_3_cube",
+      "bone": "segment_3",
+      "from": [
+        -2,
+        0,
+        4
+      ],
+      "to": [
+        2,
+        4,
+        8
+      ],
+      "uv_offset": [
+        0,
+        9
+      ]
+    },
+    {
+      "name": "tail_cube",
+      "bone": "tail",
+      "from": [
+        -1,
+        0.5,
+        8
+      ],
+      "to": [
+        1,
+        3.5,
+        13
+      ],
+      "uv_offset": [
+        16,
+        9
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "name": "animation.serpent.idle",
+      "length": 2.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                3.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "easeInOutSine"
+            }
+          ]
+        },
+        {
+          "bone": "tail",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                6,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                -6,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                6,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "animation.serpent.walk",
+      "length": 1.0,
+      "loop": "loop",
+      "channels": [
+        {
+          "bone": "body",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                12,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                -12,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                12,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "segment_2",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -20,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                20,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                -20,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "segment_3",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                20,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                -20,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                20,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "tail",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -25,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                25,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                -25,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                -8,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                8,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                -8,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": "Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra."
+}

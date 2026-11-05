@@ -24,7 +24,7 @@ from .armor3d import armor3d_materials, armor_item_java, armor_renderer_java, ar
 from .variants import variant_java, variant_resources, variant_recipes, variant_lang, variant_tag_members, enchantment_json
 from .gear import gear_registrations, gear_item_ids, gear_recipes, tier_java, cls as gear_cls, sound_registrations, sounds_json, ore_worldgen_files, ore_registrations
 from .geckolib import (GECKOLIB_VERSION, gradle_dependency_lines, main_registrations, entity_java, renderer_java,
-                       client_init_java, placeholder_geo, placeholder_animation, entity_loot, class_name)
+                       client_init_java, placeholder_geo, placeholder_animation, placeholder_texture_size, entity_loot, class_name)
 from .validation import InputError, safe_inside, ensure_new_directory
 
 
@@ -465,7 +465,7 @@ Your idea: {spec.idea}
             put(f"{java_dir}/client/{class_name(m)}Renderer.java", renderer_java(spec, m))
             put(f"{res}/geo/entity/{m.identifier}.geo.json", json.dumps(placeholder_geo(m), indent=2) + "\n")
             put(f"{res}/animations/entity/{m.identifier}.animation.json", json.dumps(placeholder_animation(m), indent=2) + "\n")
-            put(f"{res}/textures/entity/{m.identifier}.png", placeholder_png(spec.mod_id + "/entity/" + m.identifier, 64, 32))
+            put(f"{res}/textures/entity/{m.identifier}.png", placeholder_png(spec.mod_id + "/entity/" + m.identifier, *placeholder_texture_size(m)))
             put(f"src/main/resources/data/{spec.mod_id}/loot_table/entities/{m.identifier}.json", json.dumps(entity_loot(spec, m), indent=2) + "\n")
             # vanilla egg model: two tinted layers coloured from the SpawnEggItem constructor
             put(f"{res}/models/item/{m.identifier}_spawn_egg.json", json.dumps({"parent": "minecraft:item/template_spawn_egg"}, indent=2) + "\n")

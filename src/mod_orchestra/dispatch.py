@@ -84,8 +84,9 @@ def build_envelope(store: Store, pid: str, task: dict) -> TaskEnvelope:
     elif ":MODEL:" in task["id"]:
         from .models import MODEL_INSTRUCTIONS, theme_block
         from .feedback import feedback_context
+        from .models import rig_block
         mob = task["id"].split(":MODEL:")[1]
-        extra = MODEL_INSTRUCTIONS.replace("<mob>", mob) + theme_block(store, pid) + feedback_context(store, pid, mob)
+        extra = MODEL_INSTRUCTIONS.replace("<mob>", mob) + rig_block(store, pid, mob, Path(proj["root"])) + theme_block(store, pid) + feedback_context(store, pid, mob)
     specific = store.task_instructions(task["id"])
     if specific:
         extra = extra + "\n\n## Task-specific instructions\n" + specific

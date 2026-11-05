@@ -103,6 +103,7 @@ class Mob:
     drops: tuple = ()                  # MobDrop entries (strings and dicts are coerced on read)
     spawn: object = None               # Spawn or None (egg-only)
     egg_colors: tuple[int, int] = DEFAULT_EGG_COLORS
+    body_plan: str = "quadruped"      # base rig the model starts from: quadruped | biped | bird | fish | serpent | insect
 
 
 TOOL_KINDS = ("sword", "pickaxe", "axe", "shovel", "hoe")
@@ -365,6 +366,9 @@ def validate_mob(spec: "Spec", m: Mob) -> None:
         raise InputError(f"Mob identifier {m.identifier!r} collides with an item/block (its spawn egg is <id>_spawn_egg)")
     if m.behavior not in MOB_BEHAVIORS:
         raise InputError(f"Mob behavior must be one of {MOB_BEHAVIORS}")
+    from .rigs import BODY_PLANS
+    if m.body_plan not in BODY_PLANS:
+        raise InputError(f"Mob body_plan must be one of {BODY_PLANS}")
     if not (1 <= m.health <= 1024) or not (0.05 <= m.speed <= 1.5) or not (0.1 <= m.width <= 4) or not (0.1 <= m.height <= 4):
         raise InputError("Mob health 1-1024, speed 0.05-1.5, width/height 0.1-4")
     if not (0 <= m.attack_damage <= 100):

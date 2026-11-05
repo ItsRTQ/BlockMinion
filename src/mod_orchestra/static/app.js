@@ -227,7 +227,7 @@ function renderGallery(p) {
   if (!p.gallery.length) { g.append(el("p", "This mod has no mobs. Add one with craftctl add-mob before generating, or describe it in the idea.", "muted")); return; }
   for (const m of p.gallery) {
     const card = el("div", null, "mob");
-    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior}`));
+    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`));
     const meta = el("div", null, "mob-meta");
     meta.append(el("span", m.placeholder ? "placeholder model" : "designer model", "pill " + (m.placeholder ? "warn" : "purple")));
     if (m.task_state) meta.append(el("span", "MODEL task " + m.task_state, "pill " + (m.task_state === "DONE" ? "ok" : m.task_state === "FAILED" ? "bad" : "info")));
@@ -331,7 +331,7 @@ qs("addmob-form").onsubmit = async (e) => {
   const drops = addMobDrops;
   try {
     const spawn = qs("am-spawn").checked ? { biomes: qs("am-biomes").value.split(",").map(s => s.trim()).filter(Boolean), weight: Number(qs("am-weight").value), min_group: Number(qs("am-gmin").value), max_group: Number(qs("am-gmax").value) } : null;
-    const out = await api(`/api/project/${selected}/add-mob`, { identifier: qs("am-id").value.trim(), label: qs("am-label").value.trim(), behavior: qs("am-behavior").value, drops, spawn });
+    const out = await api(`/api/project/${selected}/add-mob`, { identifier: qs("am-id").value.trim(), label: qs("am-label").value.trim(), behavior: qs("am-behavior").value, body_plan: qs("am-body-plan").value, drops, spawn });
     const desc = qs("am-desc").value.trim();
     if (desc) await api(`/api/project/${selected}/feedback`, { mob: qs("am-id").value.trim(), text: desc }).catch(() => {});
     qs("addmob-form").reset(); addMobDrops = []; qs("am-drops-summary").textContent = "nothing"; closeModal("modal-mob");
