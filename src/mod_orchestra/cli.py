@@ -93,6 +93,7 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
     a.add_argument("--behavior", choices=["passive", "hostile"], default="passive"); a.add_argument("--health", type=float, default=10.0)
     a.add_argument("--body-plan", choices=["quadruped", "biped", "bird", "fish", "serpent", "insect"], default="quadruped", help="base rig the model starts from")
+    a.add_argument("--held-item", default="", help="what the mob carries in its main hand: an item id, none, or empty = the best tool/weapon among its drops (biped only)")
     a.add_argument("--speed", type=float, default=0.25); a.add_argument("--width", type=float, default=0.8); a.add_argument("--height", type=float, default=0.9)
     a.add_argument("--attack", type=float, default=3.0, help="hostile only"); a.add_argument("--drops", nargs="*", default=None, help="local ids or minecraft:ids dropped on death")
     a.add_argument("--egg-colors", nargs=2, default=None, help="two hex colors, e.g. 8A6DD1 E6D8FF")
@@ -306,9 +307,9 @@ def dispatch(args: argparse.Namespace) -> object:
             from .spec import Mob, coerce_spawn
             return add_mob_after_generation(store, args.project, Mob(identifier=args.id, label=args.label, behavior=args.behavior, health=args.health,
                                                                      speed=args.speed, width=args.width, height=args.height, attack_damage=args.attack,
-                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn), body_plan=args.body_plan))
+                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn), body_plan=args.body_plan, held_item=args.held_item))
         return add_mob(store, args.project, identifier=args.id, label=args.label, behavior=args.behavior, health=args.health, speed=args.speed,
-                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn, body_plan=args.body_plan)
+                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn, body_plan=args.body_plan, held_item=args.held_item)
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)

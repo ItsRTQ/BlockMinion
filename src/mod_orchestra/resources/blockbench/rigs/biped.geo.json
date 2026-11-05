@@ -240,6 +240,15 @@
           ]
         },
         {
+          "name": "held_item",
+          "parent": "right_arm_forearm",
+          "pivot": [
+            6,
+            12,
+            0
+          ]
+        },
+        {
           "name": "right_leg",
           "parent": "body",
           "pivot": [

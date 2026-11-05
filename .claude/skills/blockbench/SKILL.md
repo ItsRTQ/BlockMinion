@@ -48,6 +48,10 @@ fits. Loops keep their seam; one-shots start and end at rest; times on multiples
 | `serpent` | 64x64 | root, body, head, segment_2, segment_3, tail | Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra. Attack: Strike: coil back and rear the head (0.3), lunge forward and down (0.5), recover. |
 | `insect` | 64x64 | root, body, head, abdomen, left_front_leg, left_front_leg_lower, left_mid_leg, left_mid_leg_lower, left_back_leg, left_back_leg_lower, right_front_leg, right_front_leg_lower, right_mid_leg, right_mid_leg_lower, right_back_leg, right_back_leg_lower | Tripod gait: front+back of one side move with the middle leg of the other; *_lower joints bend like knees. Legs are 1x2x1 + 1x2x1 under the thorax; splay the upper bones outward (rotation Z ±30) for a spider, drop two legs for a beetle, lengthen the lower segments for a mantis. Attack: Bite: rear up with the front legs raised (0.2), snap the head down (0.4), settle. |
 
+Held item: a biped has an empty `held_item` bone at the right palm (a child of the forearm). When the mob holds something (the task packet says so; by default the best sword/axe/pickaxe/shovel/hoe
+among its drops) the entity draws it on that bone, so it follows every arm animation. Keep the bone, keep it at the grip when you reshape or move the arm, and tilt it with its own
+rotation if the weapon points the wrong way in the game; `bbmodel_geckolib_validate` passes without cubes there and install fails if the bone is gone.
+
 Pairing rule: a `left_*` bone always has a `right_*` twin with the X of its pivot negated; keep that when adding limbs.
 Target density: the base rig is a 10–19 bone skeleton; a finished creature runs 15–35 bones at ~1.5 cubes per bone
 (every part that moves on its own gets a bone: ears, jaw, tail segments, props). See the calibration table in

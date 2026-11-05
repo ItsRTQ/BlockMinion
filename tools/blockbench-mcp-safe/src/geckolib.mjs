@@ -133,7 +133,7 @@ export function validateGecko(m) {
     const {loose,ordered}=collect(m);
     for (const bone of ordered) {
       const tree=(function find(nodes,id){for(const entry of nodes){if(obj(entry)){if(entry.uuid===id)return entry;const nested=find(entry.children||[],id);if(nested)return nested;}}return null;})(m.outliner,bone.group.uuid);
-      if (tree?.children?.length===0) warnings.push('EMPTY_BONE: '+bone.group.name+' has no cubes or child bones');
+      if (tree?.children?.length===0 && !/^(held_item(_left)?|[a-z0-9_]+_locator)$/.test(bone.group.name)) warnings.push('EMPTY_BONE: '+bone.group.name+' has no cubes or child bones');   // held_item and *_locator are empty on purpose: the game attaches something to them
     }
     if(loose.length) errors.push('UNPARENTED_CUBES: '+loose.length+' cubes must belong to bones');
   } catch(e){errors.push('OUTLINER_INVALID: '+e.message);}

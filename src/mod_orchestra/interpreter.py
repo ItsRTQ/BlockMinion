@@ -43,7 +43,7 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
                "ingredients": ["identifier", "minecraft:id", "#minecraft:tag"], "experience": 0.7, "cooking_time": 200}}],
   "drops": [{{"block": "identifier", "item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "fortune": true, "silk_touch": true}}],
   "mobs": [{{"identifier": "snake_case", "label": "Display Name", "behavior": "passive|neutral|hostile", "health": 10, "speed": 0.25,
-            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831], "body_plan": "quadruped|biped|bird|fish|serpent|insect",
+            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831], "body_plan": "quadruped|biped|bird|fish|serpent|insect", "held_item": "",
             "spawn": {{"biomes": ["overworld" or "#minecraft:is_forest" or "minecraft:plains"], "weight": 10, "min_group": 1, "max_group": 3}} or null for egg-only}}],
   "materials": [{{"identifier": "ruby", "label": "Ruby", "ingredient": "ruby or minecraft:diamond", "tools": ["sword","pickaxe","axe","shovel","hoe"],
                  "armor": ["helmet","chestplate","leggings","boots"], "durability": 1200, "mining_speed": 8.0, "attack_damage_bonus": 3.0,
@@ -75,6 +75,8 @@ Mobs the user describes as living somewhere ("in forests", "at night in caves") 
 Every mob gets a `body_plan`, the base rig its model starts from: humanoids (orcs, goblins, zombies, villagers, golems, knights) biped;
 four-legged animals (wolves, deer, cows, cats) quadruped; birds and bats bird; fish, whales, sharks fish; snakes and worms serpent;
 spiders, beetles, crabs and other many-legged creatures insect. Pick by the creature's body, not its size; omit only when unsure (quadruped).
+A biped carries the best weapon or tool among its drops (sword, axe, pickaxe, shovel, hoe) in its right hand, drawn on the model; leave `held_item` "" for that,
+"none" for empty hands, or an item id to choose which item it holds.
 Also put the questions (if any) under `questions`, as a list of plain sentences addressed to the user.
 Use status WAITING_USER (the user must answer or approve); never DONE. Do not create or edit any files.
 
