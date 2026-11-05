@@ -75,6 +75,12 @@ Mobs the user describes as living somewhere ("in forests", "at night in caves") 
 Every mob gets a `body_plan`, the base rig its model starts from: humanoids (orcs, goblins, zombies, villagers, golems, knights) biped;
 four-legged animals (wolves, deer, cows, cats) quadruped; birds and bats bird; fish, whales, sharks fish; snakes and worms serpent;
 spiders, beetles, crabs and other many-legged creatures insect. Pick by the creature's body, not its size; omit only when unsure (quadruped).
+Art direction (`art`): every feature, tool/armor set (material), food and mob takes an `"art"` object so the designer paints something specific to it, never a stock icon:
+`{{"concept": "one or two sentences: what it is and how it looks, in this mod's world", "tags": ["6-10 concrete visual cues"], "silhouette": "optional shape phrase"}}`.
+A material's `art` also carries `"pieces": {{"sword": "its own sentence", "pickaxe": "...", "helmet": "...", ...}}` with a different shape idea for every piece of the set.
+Draw the cues from the user's idea and from your `theme`: shapes (serrated edge, hooked beak), materials (hammered iron, bone, leather lashing), colours (rust red, ash grey),
+wear (chipped, patched, soot-stained) and symbols; never mood words (epic, cool, powerful) and never generic ones (shiny, nice). Things in one set share palette and motifs but not silhouette.
+Example, tool set of an ork warband: `"art": {{"concept": "crude black-iron weapons beaten out in a hurry, wrapped in leather and decorated with the bones of past victims", "tags": ["serrated edge", "bone teeth", "hammered iron", "leather lashing", "rust red", "chipped"], "pieces": {{"sword": "a notched cleaver with bone teeth lashed along the edge", "axe": "a slab of iron on a gnarled haft with a skull knob", "helmet": "a dented bucket helm with a horn bolted on one side"}}}}`.
 A biped carries the best weapon or tool among its drops (sword, axe, pickaxe, shovel, hoe) in its right hand, drawn on the model; leave `held_item` "" for that,
 "none" for empty hands, or an item id to choose which item it holds.
 Also put the questions (if any) under `questions`, as a list of plain sentences addressed to the user.

@@ -14,6 +14,20 @@ from mod_orchestra.textures import ITEM_MASKS, armor_layer_png, material_colors,
 from mod_orchestra.validation import InputError
 
 
+def original_sprite(seed: int = 1, block: bool = False) -> bytes:
+    """A 16x16 sprite with its own irregular shape and five colours: nothing like the stock masks (what the creative gates ask for)."""
+    from mod_orchestra import skin
+    px = bytearray(16 * 16 * 4)
+    palette = [(40, 20, 20), (150, 30, 25), (210, 70, 40), (230, 200, 150), (90, 80, 70)]
+    for y in range(16):
+        for x in range(16):
+            inside = block or ((x * 7 + y * 3 + seed) % 5 != 0 and 1 <= x <= 13 and 2 <= y <= 14 and (x + 2 * y + seed) % 11 < 9 and abs(x - 7) + abs(y - 8) < 9 + seed % 3)
+            if inside:
+                c = palette[(x * 3 + y * 5 + seed) % 5]
+                px[(y * 16 + x) * 4:(y * 16 + x) * 4 + 4] = bytes(c) + b"\xff"
+    return skin.encode_png(16, 16, bytes(px))
+
+
 def png_size(raw: bytes):
     return struct.unpack(">II", raw[16:24])
 
@@ -87,10 +101,10 @@ class Sprites(Generated):
         with self.assertRaisesRegex(InputError, "Unknown identifiers"):
             request_sprites(self.store, "t_mod", ["dragon"])
         ws = Path(self.store.project("t_mod")["root"]); sp = ws / "models" / "sprites"; sp.mkdir(parents=True)
-        (sp / "gem.png").write_bytes(tinted_item_png("gem", (200, 0, 0), (255, 100, 100)))      # valid
+        (sp / "gem.png").write_bytes(original_sprite(1))                                          # valid: a shape of its own
         (sp / "gemsteel_sword.png").write_bytes(armor_layer_png(1, (1, 1, 1), (2, 2, 2), ("helmet",)))  # 64x32 -> rejected
         (sp / "gem_pie.png").write_bytes(tinted_item_png("block", (5, 5, 5), (6, 6, 6)))         # opaque item -> rejected
-        (sp / "ore.png").write_bytes(tinted_item_png("block", (90, 90, 90), (120, 120, 120)))    # opaque block -> ok
+        (sp / "ore.png").write_bytes(original_sprite(2, block=True))                              # opaque block -> ok
         (sp / "contact_sheet.png").write_bytes(tinted_item_png("gem", (1, 1, 1), (2, 2, 2)))
         h = {"task": "t_mod:SPRITES:1", "status": "DONE", "scope": "s", "changed_files": ["models/sprites/gem.png"], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "models/sprites"}, "risks": [], "unknowns": [], "needs_user": [], "next_agent": "none"}
         res = dispatch(self.store, "t_mod", task_id="t_mod:SPRITES:1", provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
@@ -128,7 +142,7 @@ class ArmorLayers(Generated):
         self.assertEqual(res["installed"], ["src/main/resources/assets/t_mod/textures/models/armor/gemsteel_layer_1.png"])
         self.assertIn("16x16, need 64x32", res["rejected"]["gemsteel_layer_2"])
         from mod_orchestra.content import restore_designer_sprites
-        (sp / "gem.png").write_bytes(tinted_item_png("gem", (200, 0, 0), (255, 100, 100)))
+        (sp / "gem.png").write_bytes(original_sprite(3))
         out = restore_designer_sprites(self.store, "t_mod")
         self.assertIn("src/main/resources/assets/t_mod/textures/item/gem.png", out["installed"])
         self.assertIn("src/main/resources/assets/t_mod/textures/models/armor/gemsteel_layer_1.png", out["installed"])

@@ -58,12 +58,15 @@ def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
     bones = ", ".join(f"{b['name']}" + (f" (child of {b['parent']})" if b.get("parent") else " (root)") for b in rec["bones"])
     state = "placed now" if staged["staged"] else "already present (edited before; keep working on it)"
     from .geckolib import held_item_for
+    from .art import brief as art_brief
+    art_text = ("\n## Art direction for this creature\n" + art_brief(spec, "mob", mob_id) + "\nUse it: reshape and detail the model so it shows these cues (horns, "
+                "armour plates, scars, a hunch), and feed `orchestra_paint_skin` from it: palette colours as `base` and zones, the rest as `face` and bands. Do not paint a generic creature.\n") if mob else ""
     held = held_item_for(spec, mob) if mob else None
     held_text = (f" The entity holds `{held}` in its main hand and draws it on the empty `held_item` bone at the right palm: keep that bone "
                  f"(a child of the forearm), keep it at the grip when you reshape the arm, and give it a rotation if the weapon points the wrong way.") if held else ""
     return (f"\n## Base rig: {plan} — `{staged['path']}` {state}\n"
             f"Bones: {bones}. Texture {rec['texture_width']}x{rec['texture_height']}, box UV already packed without overlaps "
-            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}{held_text}\n")
+            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}{held_text}\n{art_text}")
 
 
 MODEL_INSTRUCTIONS = """
@@ -343,7 +346,13 @@ no PIL) that writes RGBA PNGs; keep the script at `models/sprites/paint.py` so i
 Rules: transparent background (blocks are the exception: fully opaque 16x16 tile); 4–8 colours per sprite; a
 1px darker outline around the shape; a lighter highlight on the top-left; readable silhouette at 1x (a sword
 is a diagonal blade with a guard; a gem is a faceted lozenge; food is a round shape with a stem/leaf).
-Minecraft's own style is 16x16 with soft shading, no anti-aliasing. Then write a contact sheet
+Minecraft's own style is 16x16 with soft shading, no anti-aliasing.
+Art direction: every item comes with a concept, visual cues and sometimes a silhouette. Paint what they describe: invent a shape that carries
+the cues (a serrated bone-toothed cleaver is not a straight sword with a guard; a chipped horned helmet is not a gem), use the palette hues, and
+put at least two of the cues where they can be seen at 1x. Pieces of one set share palette and motifs but each has its own silhouette.
+The controller REJECTS a sprite whose silhouette is 85% or more the stock template of its kind, one that is a copy of another sprite of the batch
+(85% identical pixels), and one with fewer than 4 colours. Before you finish, call `mcp__minecraft-orchestra__orchestra_check_sprites {project}`
+and repaint everything it lists as rejected until it lists none. Then write a contact sheet
 `models/sprites/contact_sheet.png` scaled x8 with every sprite side by side so the user can judge them in the
 UI. Re-read your own PNGs' pixel grids before finishing: a sprite whose silhouette is not readable at 1x
 (blob, no outline, wrong proportions) must be repainted, not reported.
@@ -391,7 +400,19 @@ def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str =
         raise InputError("Pick at least one item or armor set")
     n = sum(1 for t in store.tasks(pid) if ":SPRITES:" in t["id"]) + 1
     task_id = f"{pid}:SPRITES:{n}"
-    lines = ["Sprites to paint (identifier → what it is):"] + [f"- {i}: {catalogue[i]['label']} ({catalogue[i]['kind']}{', ' + catalogue[i]['hint'] if catalogue[i]['hint'] else ''})" for i in identifiers]
+    from .art import brief as art_brief, effective_art
+    from .spritecheck import catalogue as sprite_catalogue
+    art_kinds = {i: v["art_kind"] for i, v in sprite_catalogue(spec).items()}
+    lines = ["Sprites to paint (identifier → what it is, then its art direction; paint THAT, not the stock icon of its kind):"]
+    for i in identifiers:
+        lines.append(f"- {i}: {catalogue[i]['label']} ({catalogue[i]['kind']}{', ' + catalogue[i]['hint'] if catalogue[i]['hint'] else ''})")
+        lines += ["    " + l for l in art_brief(spec, art_kinds[i], i, palette=False).splitlines()]
+    sets = [m for m in spec.materials if any(f"{m.identifier}_{k}" in identifiers for k in tuple(m.tools) + tuple(m.armor))]
+    for m in sets:
+        lines += ["", f"Set {m.identifier} ({m.label}): pieces share this palette and these motifs, and differ in silhouette and details.", *["    " + l for l in art_brief(spec, "set", m.identifier, palette=False).splitlines()]]
+    pal = effective_art(spec, art_kinds[identifiers[0]], identifiers[0])["palette"] if identifiers else []
+    if pal:
+        lines += ["", "Palette from the mod's theme (use these hues, with their light and dark steps): " + "; ".join(f"{p['name']} {p['hex']}" for p in pal)]
     if armor_materials:
         lines += ["", "Worn-armor layers to paint for material(s): " + ", ".join(f"{a} (pieces: {', '.join(mats[a].armor)})" for a in armor_materials), ARMOR_LAYER_GUIDE]
     if notes.strip():
@@ -446,6 +467,7 @@ def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str]
                 rejected[key] = "fully opaque: armor layers need transparent areas"; continue
             rel = f"src/main/resources/assets/{pid}/textures/models/armor/{key}.png"
             (ws / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, ws / rel); installed.append(rel)
+    staged: dict[str, tuple[Path, str]] = {}
     for ident in identifiers:
         src = ws / "models" / "sprites" / f"{ident}.png"
         if not src.is_file():
@@ -460,7 +482,12 @@ def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str]
             rejected[ident] = "flat single colour"; continue
         if ident not in blocks and not alpha_var:
             rejected[ident] = "no transparency (items need a transparent background)"; continue
-        rel = f"src/main/resources/assets/{pid}/textures/{'block' if ident in blocks else 'item'}/{ident}.png"
+        staged[ident] = (src, f"src/main/resources/assets/{pid}/textures/{'block' if ident in blocks else 'item'}/{ident}.png")
+    from .spritecheck import check_sprites
+    creative = check_sprites(spec, {i: s.read_bytes() for i, (s, _) in staged.items()})   # the stock template, a copy of a sibling, too few colours
+    for ident, (src, rel) in staged.items():
+        if ident in creative:
+            rejected[ident] = creative[ident]; continue
         (ws / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, ws / rel); installed.append(rel)
     if not installed:
         raise InputError("no sprite passed validation: " + "; ".join(f"{k}: {v}" for k, v in rejected.items()))
