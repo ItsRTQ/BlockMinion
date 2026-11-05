@@ -176,7 +176,8 @@ select option{background:var(--panel-2);color:var(--text)}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--panel);border:1px solid var(--line-2);border-left:3px solid var(--accent);padding:10px 14px;border-radius:var(--radius-s);max-width:420px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 16px rgba(var(--cyan-rgb),.15)}
 .toast.bad{border-left-color:var(--bad);box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 16px rgba(255,92,122,.2)}.toast.ok{border-left-color:var(--ok);box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 16px rgba(46,242,166,.2)}
 .env-item{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-s);padding:12px 14px;border-top:2px solid rgba(var(--cyan-rgb),.35);box-shadow:0 8px 24px rgba(0,0,0,.3)}.env-item h4{margin:0 0 6px;font-size:13px;letter-spacing:.06em}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px;font-family:var(--mono)}.kv .k{color:var(--dim)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:12px;font-family:var(--mono)}.kv .k{color:var(--dim)}.kv span{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.env-item{min-width:0}
 .codeline{display:flex;gap:8px;align-items:center;margin:3px 0}.codeline code{flex:1;white-space:pre-wrap;word-break:break-all}
 .glossary{margin:4px 0 12px;color:var(--muted)}.glossary summary{cursor:pointer;font-weight:600;color:var(--text)}
 .glossary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:10px}

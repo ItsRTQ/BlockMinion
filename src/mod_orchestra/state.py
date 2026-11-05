@@ -78,6 +78,9 @@ CREATE TABLE IF NOT EXISTS feature_cards (
   owner TEXT NOT NULL, status TEXT NOT NULL, derived_from_json TEXT NOT NULL, produces_json TEXT NOT NULL, files_json TEXT NOT NULL,
   acceptance_json TEXT NOT NULL, history_json TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY (project_id, id));
 """),
+    (8, "global settings (agent runtime chosen from the UI)", """
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+"""),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 
@@ -266,6 +269,19 @@ class Store:
                 raise StateError(f"Project not found: {pid}")
             con.execute("INSERT OR REPLACE INTO project_settings(project_id, key, value_json) VALUES(?,?,?)", (pid, key, json.dumps(value)))
             self.event(con, pid, actor, "SETTING_CHANGED", {"key": key, "value": value})
+
+    def get_global(self, key: str, default=None):
+        with self.tx() as con:
+            row = con.execute("SELECT value_json FROM settings WHERE key=?", (key,)).fetchone()
+        return json.loads(row["value_json"]) if row else default
+
+    def set_global(self, key: str, value) -> None:
+        """USER-ONLY: machine-wide preferences such as the agent runtime (MCP never calls this)."""
+        with self.tx() as con:
+            if value is None:
+                con.execute("DELETE FROM settings WHERE key=?", (key,))
+            else:
+                con.execute("INSERT OR REPLACE INTO settings(key, value_json) VALUES(?,?)", (key, json.dumps(value)))
 
     def task_instructions(self, task_id: str) -> str:
         with self.tx() as con:

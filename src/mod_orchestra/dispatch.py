@@ -259,9 +259,20 @@ def provider_from_env() -> AgentProvider:
     return provider_by_name(os.environ.get("CRAFTCTL_PROVIDER"))
 
 
+def provider_name_for(store: Store | None) -> str:
+    """The runtime name in force: the one saved from the UI, else CRAFTCTL_PROVIDER, else claude-code."""
+    saved = store.get_global("provider") if store is not None else None
+    return str(saved or os.environ.get("CRAFTCTL_PROVIDER") or "claude-code")
+
+
+def provider_for(store: Store | None) -> AgentProvider:
+    saved = store.get_global("provider") if store is not None else None
+    return provider_by_name(saved) if saved else provider_from_env()
+
+
 def dispatch(store: Store, pid: str, *, task_id: str | None = None, provider: AgentProvider | None = None) -> dict:
     proj = store.project(pid)
-    provider = provider or provider_from_env()
+    provider = provider or provider_for(store)
     if not store.tasks(pid):
         from .workflow import plan_project
         plan_project(store, pid)
