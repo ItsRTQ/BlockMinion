@@ -405,6 +405,11 @@ def orchestrate(store: Store, pid: str, *, max_runs: int = 5, max_cost_usd: floa
         from .workflow import plan_project
         plan_project(store, pid)
     stale = reconcile_stale_runs(store, pid)
+    try:
+        from .models import ensure_initial_sprites
+        ensure_initial_sprites(store, pid)   # projects generated before icons were designed automatically
+    except Exception:
+        pass
     policy = autopilot_policy(store, pid)
     runs, cost, gates = [], 0.0, []
     reason = "no READY tasks"
@@ -424,6 +429,10 @@ def orchestrate(store: Store, pid: str, *, max_runs: int = 5, max_cost_usd: floa
         out = dispatch(store, pid, provider=provider)
         runs.append({k: out.get(k) for k in ("run", "task", "role", "task_state", "cost_usd", "duration_s", "error")})
         cost += float(out.get("cost_usd") or 0.0)
+        if ":SPRITES:" in out["task"] and out["task_state"] != "DONE":
+            # Icons are cosmetic: a failed or half-done icon run never stops the build and the game test. It is recorded and the user redesigns from the UI.
+            store.add_event(pid, "controller", "SPRITES_NOT_DONE", {"task": out["task"], "state": out["task_state"], "error": str(out.get("error") or "")[:300]})
+            continue
         if out["task_state"] == "DONE" and ":REPAIR:" in out["task"]:
             if policy["build"]:
                 continue  # Autopilot will run the trusted build itself at the gate

@@ -426,7 +426,7 @@ async function renderFeatures(p) {
     const right = el("div", null, "actions"); right.style.marginTop = "0";
     if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = prompt(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
-    right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
+    right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = prompt("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!confirm(`Remove ${f.identifier} from the spec?`)) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
     row.append(img, mid, right); return row;
@@ -472,24 +472,26 @@ async function renderFeatures(p) {
   };
 }
 let featureCache = [];
-qs("sprites-btn").onclick = () => {
+function openSpritesDialog(preselect = []) {
   if (!selected) return;
+  const pre = new Set(preselect);
   const list = qs("sprites-list"); list.replaceChildren();
-  for (const f of featureCache) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = f.identifier; c.checked = true; l.append(c, document.createTextNode(` ${f.label} (${f.kind})`)); list.append(l); }
+  for (const f of featureCache) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = f.identifier; c.checked = pre.has(f.identifier); l.append(c, document.createTextNode(` ${f.label} (${f.kind})`)); list.append(l); }
   const mats = [...new Set(featureCache.filter(f => f.kind === "armor").map(f => f.material))];
-  if (mats.length) { list.append(el("div", "Worn-armor layers (64×32, what you see on the body):", "muted")); for (const m of mats) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = m; c.dataset.armor = "1"; c.checked = true; l.append(c, document.createTextNode(` ${m} armor set`)); list.append(l); } }
-  qs("sprites-notes").value = ""; qs("modal-sprites").classList.remove("hidden");
-};
+  if (mats.length) { list.append(el("div", "Worn-armor layers (64×32, what you see on the body):", "muted")); for (const m of mats) { const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = m; c.dataset.armor = "1"; c.checked = pre.has("armor:" + m); l.append(c, document.createTextNode(` ${m} armor set`)); list.append(l); } }
+  qs("sprites-notes").value = ""; qs("modal-sprites").classList.remove("hidden"); qs("sprites-notes").focus();
+}
+qs("sprites-btn").onclick = () => openSpritesDialog([]);
 qs("sprites-all").onclick = () => { for (const c of qs("sprites-list").querySelectorAll("input")) c.checked = true; };
 qs("sprites-none").onclick = () => { for (const c of qs("sprites-list").querySelectorAll("input")) c.checked = false; };
 qs("sprites-go").onclick = async () => {
   const identifiers = [...qs("sprites-list").querySelectorAll("input:checked:not([data-armor])")].map(c => c.value);
   const armor = [...qs("sprites-list").querySelectorAll("input:checked[data-armor]")].map(c => c.value);
-  if (!identifiers.length && !armor.length) return toast("Pick at least one item or armor set", "bad");
+  if (!identifiers.length && !armor.length) return toast("Pick at least one icon or armor set to redesign", "bad");
   try {
     const out = await api(`/api/project/${selected}/sprites`, { identifiers, notes: qs("sprites-notes").value, armor });
     closeModal("modal-sprites");
-    if (confirm(`Task ${out.task} created for ${identifiers.length} sprite(s)${armor.length ? " + " + armor.length + " armor set(s)" : ""}. Start the designer now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Designer painting… the contact sheet appears in Items when done.", "ok"); }
+    if (confirm(`Redesign ${out.task} created for ${identifiers.length} icon(s)${armor.length ? " + " + armor.length + " armor set(s)" : ""}. Start the designer now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Designer painting… the contact sheet appears in Items when done.", "ok"); }
     await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };

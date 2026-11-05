@@ -139,8 +139,8 @@ def guidance(store: Store, pid: str) -> dict:
             steps.insert(0, {"label": f"Dispatch the designer to paint worn armor ({t['id'].split(':ARMOR:')[1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Paints both armor layers in the mod's theme, renders them worn on the player template, installs. ~$1."})
         elif ":SPRITES:" in t["id"]:
-            steps.insert(0, {"label": f"Dispatch the designer to paint sprites ({t['id']})", "who": "agent", "action": "dispatch",
-                             "payload": {"task": t["id"]}, "command": None, "detail": "Paints 16×16 icons by script and a contact sheet; the controller validates and installs. ~$0.5–1."})
+            steps.append({"label": f"Dispatch the designer to paint the icons ({t['id']})", "who": "agent", "action": "dispatch",
+                          "payload": {"task": t["id"]}, "command": None, "detail": "Designs every icon from its art direction (and the worn-armor layers) by script; the controller rejects copies of the stock shapes and installs the rest. Autopilot runs it by itself. ~$0.5–1."})   # cosmetic: never ahead of an approval, a build or a model
         elif ":MODEL:" in t["id"] and stage not in ("model",):
             steps.insert(0, {"label": f"Dispatch the designer for {t['id'].split(':MODEL:')[1]}", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Authors the .bbmodel, texture, idle/walk; renders previews. ~$1–2."})

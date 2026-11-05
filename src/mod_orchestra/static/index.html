@@ -288,13 +288,13 @@
                 <div class="actions"><button class="primary" type="submit">Add mob</button><span class="muted" id="am-note"></span></div>
               </form></div></div>
 <div id="modal-sprites" class="lightbox hidden"><div class="modal">
-  <div class="modal-head"><h3>Paint icons with the designer</h3><button type="button" class="secondary mini modal-close">✕</button></div>
-  <p class="muted">A designer agent paints 16×16 pixel-art sprites by script for the items you pick and shows a contact sheet here. The controller only installs sprites that are 16×16, have a transparent background and are not a flat colour. ~$0.5–1 per run. Your own PNG upload always wins if you have art.</p>
+  <div class="modal-head"><h3>Redesign icons</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Icons are designed automatically when the mod is generated (Autopilot or Dispatch runs it). Use this to change them: pick the icons, say what should change, and the designer edits its previous work and repaints only that. ~$0.5–1 per run. Your own PNG upload always wins if you have art.</p>
   <div id="sprites-list" class="checks" style="margin-bottom:10px"></div>
-  <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all placeholders</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
+  <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
   <p class="muted">Each icon is painted from its art direction (the concept, visual cues and palette under every item, editable with its <b>Art</b> button). An icon that copies the stock shape of its kind, or another piece of the batch, is rejected.</p>
-  <label>Style notes (optional) <textarea id="sprites-notes" rows="2" placeholder="e.g. deep red rubies with a pink highlight; chunky outlines like vanilla"></textarea></label>
-  <div class="actions"><button type="button" class="primary" id="sprites-go">Create task and run designer</button></div>
+  <label>What should change? (required for icons already designed) <textarea id="sprites-notes" rows="3" placeholder="e.g. the sword blade is too thin and needs a red wrap on the grip; make the helmets look more battered; keep the rest"></textarea></label>
+  <div class="actions"><button type="button" class="primary" id="sprites-go">Redesign with the designer</button></div>
 </div></div>
 <div id="modal-ench" class="lightbox hidden"><div class="modal">
   <div class="modal-head"><h3>Add an enchantment</h3><button type="button" class="secondary mini modal-close">✕</button></div>

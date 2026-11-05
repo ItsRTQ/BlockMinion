@@ -243,6 +243,99 @@ class TestCli(unittest.TestCase):
             self.assertNotEqual(run("set-art", "g_mod", "--kind", "mob", "--id", "ghost", "--concept", "x y").returncode, 0)
 
 
+class TestAutomaticIcons(Project):
+    def test_generation_plans_the_first_design_of_every_icon(self):
+        tasks = {t["id"]: t for t in self.store.tasks("g_mod")}
+        t = tasks["g_mod:SPRITES:1"]
+        self.assertEqual((t["role"], t["state"]), ("designer", "READY")); self.assertIn("Design", t["title"])
+        text = self.store.task_instructions("g_mod:SPRITES:1")
+        for needle in ("- tooth:", "- groko_sword:", "- groko_axe:", "- groko_helmet:", "- groko_boots:", "- grub_stew:", "Worn-armor layers to paint for material(s): groko",
+                       "First design of every icon", "    concept:", "visual cues"):
+            self.assertIn(needle, text)
+        ev = next(e for e in self.store.events("g_mod", 500) if e["kind"] == "SPRITES_REQUESTED")
+        self.assertEqual((ev["actor"], ev["payload"]["initial"]), ("controller", True))
+
+    def test_it_is_planned_once_and_skips_what_the_user_uploaded(self):
+        from mod_orchestra.models import ensure_initial_sprites
+        self.assertIsNone(ensure_initial_sprites(self.store, "g_mod"))                                   # a SPRITES task exists: never again
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "s.sqlite")
+            with patch.object(workflow, "PROJECTS", Path(tmp) / "p"):
+                (Path(tmp) / "p").mkdir()
+                workflow.new_project(store, name="G", mod_id="h_mod", package="com.x.h", idea="items: tooth, claw")
+                workflow.plan_project(store, "h_mod"); workflow.approve_spec(store, "h_mod")
+                store.add_event("h_mod", "user", "TEXTURE_UPLOADED", {"kind": "item", "identifier": "tooth"})
+                self.assertIsNone(ensure_initial_sprites(store, "h_mod"))                                # not generated yet: nothing to install over
+                out = workflow.generate_project(store, "h_mod")
+                self.assertEqual(out["sprites_task"], "h_mod:SPRITES:1")
+                text = store.task_instructions("h_mod:SPRITES:1")
+                self.assertIn("- claw:", text); self.assertNotIn("- tooth:", text)                       # the user's own icon is left alone
+
+    def test_a_project_with_nothing_to_paint_gets_no_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "s.sqlite")
+            with patch.object(workflow, "PROJECTS", Path(tmp) / "p"):
+                (Path(tmp) / "p").mkdir()
+                workflow.new_project(store, name="G", mod_id="m_mod", package="com.x.m", idea="hostile mobs: brute")
+                workflow.plan_project(store, "m_mod"); workflow.approve_spec(store, "m_mod")
+                self.assertNotIn("sprites_task", workflow.generate_project(store, "m_mod"))              # mobs only: their skins are the MODEL tasks
+
+
+class TestRedesign(Project):
+    def paint_first_version(self):
+        sp = self.root / "models" / "sprites"; sp.mkdir(parents=True, exist_ok=True)
+        (sp / "groko_sword.png").write_bytes(sprite(1)); (sp / "groko_axe.png").write_bytes(sprite(2)); (sp / "paint.py").write_text("# the designer's script")
+
+    def test_redesigning_painted_icons_needs_a_note(self):
+        from mod_orchestra.models import request_sprites
+        self.paint_first_version()
+        with self.assertRaisesRegex(InputError, "say what should change"):
+            request_sprites(self.store, "g_mod", ["groko_sword"])
+        request_sprites(self.store, "g_mod", ["grub_stew"])                                                # never painted by the designer: a plain request is fine
+
+    def test_the_designer_gets_the_note_the_previous_work_and_earlier_notes(self):
+        from mod_orchestra.models import request_sprites
+        self.paint_first_version()
+        first = request_sprites(self.store, "g_mod", ["groko_sword", "groko_axe"], notes="the blade is too thin")
+        second = request_sprites(self.store, "g_mod", ["groko_sword"], notes="add a red wrap on the grip")
+        t1, t2 = self.store.task_instructions(first["task"]), self.store.task_instructions(second["task"])
+        for needle in ("REDESIGN: 2 of these were already painted", "models/sprites/paint.py", "keep every sprite and detail it does not mention", "- the blade is too thin"):
+            self.assertIn(needle, t1)
+        self.assertLess(t2.index("- add a red wrap on the grip"), t2.index("- the blade is too thin"))      # newest first, earlier notes kept
+        self.assertNotIn("the blade is too thin", t1.replace("- the blade is too thin", ""))
+        self.assertTrue(any(t["title"].startswith("Redesign") for t in self.store.tasks("g_mod") if t["id"] == second["task"]))
+
+    def test_the_notes_about_other_icons_do_not_leak(self):
+        from mod_orchestra.models import request_sprites
+        self.paint_first_version()
+        request_sprites(self.store, "g_mod", ["groko_axe"], notes="make the axe heavier")
+        out = request_sprites(self.store, "g_mod", ["groko_sword"], notes="sharper edge")
+        self.assertNotIn("make the axe heavier", self.store.task_instructions(out["task"]))
+
+
+class TestAutopilotAndIcons(Project):
+    def test_a_failed_icon_run_does_not_stop_autopilot(self):
+        from mod_orchestra.dispatch import orchestrate
+        from mod_orchestra.provider import FakeProvider
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "s.sqlite")
+            with patch.object(workflow, "PROJECTS", Path(tmp) / "p"):
+                (Path(tmp) / "p").mkdir()
+                workflow.new_project(store, name="G", mod_id="k_mod", package="com.x.k", idea="items: tooth, claw")
+                workflow.plan_project(store, "k_mod"); workflow.approve_spec(store, "k_mod"); workflow.generate_project(store, "k_mod")
+                self.assertEqual([t["id"] for t in store.tasks("k_mod") if t["state"] == "READY" and t["role"] == "designer"], ["k_mod:SPRITES:1"])
+                result = orchestrate(store, "k_mod", max_runs=3, provider=FakeProvider("no handoff block here"))
+                self.assertTrue(any(r["task"] == "k_mod:SPRITES:1" for r in result["runs"]), result)           # it ran by itself
+                self.assertNotIn("SPRITES", result["stopped_because"])                                           # and its failure did not stop Autopilot
+                self.assertTrue(any(e["kind"] == "SPRITES_NOT_DONE" and e["payload"]["task"] == "k_mod:SPRITES:1" for e in store.events("k_mod", 500)))
+
+    def test_the_guidance_puts_icons_after_the_models(self):
+        from mod_orchestra.guidance import guidance
+        labels = [st["label"] for st in guidance(self.store, "g_mod")["steps"]]
+        model = next(i for i, l in enumerate(labels) if "for brute" in l); icon = next(i for i, l in enumerate(labels) if "icons" in l)
+        self.assertLess(model, icon)
+
+
 class TestSpriteTool(Project):
     def test_designer_checks_before_finishing(self):
         from mod_orchestra.mcp import invoke, TOOLS

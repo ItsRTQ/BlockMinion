@@ -97,7 +97,7 @@ class Sprites(Generated):
         from mod_orchestra.provider import FakeProvider
         import json
         out = request_sprites(self.store, "t_mod", ["gem", "gemsteel_sword", "gem_pie", "ore"], notes="deep red")
-        self.assertEqual(out["task"], "t_mod:SPRITES:1"); self.assertIn("gemsteel_sword", self.store.task_instructions("t_mod:SPRITES:1"))
+        self.assertEqual(out["task"], "t_mod:SPRITES:2")                       # SPRITES:1 is the first design of every icon, planned at generation; self.assertIn("gemsteel_sword", self.store.task_instructions("t_mod:SPRITES:2"))
         with self.assertRaisesRegex(InputError, "Unknown identifiers"):
             request_sprites(self.store, "t_mod", ["dragon"])
         ws = Path(self.store.project("t_mod")["root"]); sp = ws / "models" / "sprites"; sp.mkdir(parents=True)
@@ -106,8 +106,8 @@ class Sprites(Generated):
         (sp / "gem_pie.png").write_bytes(tinted_item_png("block", (5, 5, 5), (6, 6, 6)))         # opaque item -> rejected
         (sp / "ore.png").write_bytes(original_sprite(2, block=True))                              # opaque block -> ok
         (sp / "contact_sheet.png").write_bytes(tinted_item_png("gem", (1, 1, 1), (2, 2, 2)))
-        h = {"task": "t_mod:SPRITES:1", "status": "DONE", "scope": "s", "changed_files": ["models/sprites/gem.png"], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "models/sprites"}, "risks": [], "unknowns": [], "needs_user": [], "next_agent": "none"}
-        res = dispatch(self.store, "t_mod", task_id="t_mod:SPRITES:1", provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
+        h = {"task": "t_mod:SPRITES:2", "status": "DONE", "scope": "s", "changed_files": ["models/sprites/gem.png"], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "models/sprites"}, "risks": [], "unknowns": [], "needs_user": [], "next_agent": "none"}
+        res = dispatch(self.store, "t_mod", task_id="t_mod:SPRITES:2", provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
         self.assertEqual(res["task_state"], "DONE", res.get("error"))
         sp_out = res["handoff"]["sprites"]
         self.assertEqual(sorted(sp_out["installed"]), ["src/main/resources/assets/t_mod/textures/block/ore.png", "src/main/resources/assets/t_mod/textures/item/gem.png"])

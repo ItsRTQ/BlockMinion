@@ -375,7 +375,9 @@ armor looks like the icon's material. Add a slightly darker underside and outlin
 """
 
 
-def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str = "", armor_materials: list[str] | None = None) -> dict:
+def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str = "", armor_materials: list[str] | None = None, *, initial: bool = False) -> dict:
+    """The task that paints icons (and worn-armor layers). `initial` is the controller's own first design of everything; otherwise it is the user's
+    redesign: icons the designer already painted need a note saying what should change, and the designer receives every earlier note (newest first)."""
     proj = store.project(pid)
     if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
         raise StateError("Generate the project first")
@@ -398,6 +400,12 @@ def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str =
         raise InputError(f"Not materials with armor: {bad}")
     if not identifiers and not armor_materials:
         raise InputError("Pick at least one item or armor set")
+    ws = Path(proj["root"])
+    painted = [i for i in identifiers if (ws / "models" / "sprites" / f"{i}.png").is_file()] + \
+              [f"{a}_layer_{n}" for a in armor_materials for n in (1, 2) if (ws / "models" / "sprites" / f"{a}_layer_{n}.png").is_file()]
+    if painted and not initial and not notes.strip():
+        raise InputError("These icons were already designed: say what should change (the designer edits its previous work and repaints only that). "
+                         "Example: 'the sword blade is too thin and the grip needs a red wrap'.")
     n = sum(1 for t in store.tasks(pid) if ":SPRITES:" in t["id"]) + 1
     task_id = f"{pid}:SPRITES:{n}"
     from .art import brief as art_brief, effective_art
@@ -415,12 +423,21 @@ def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str =
         lines += ["", "Palette from the mod's theme (use these hues, with their light and dark steps): " + "; ".join(f"{p['name']} {p['hex']}" for p in pal)]
     if armor_materials:
         lines += ["", "Worn-armor layers to paint for material(s): " + ", ".join(f"{a} (pieces: {', '.join(mats[a].armor)})" for a in armor_materials), ARMOR_LAYER_GUIDE]
-    if notes.strip():
+    if painted and not initial:
+        earlier = [e["payload"]["notes"] for e in store.events(pid, 500) if e["kind"] == "SPRITES_REQUESTED" and e["payload"].get("notes")
+                   and (set(e["payload"].get("items") or []) & set(identifiers) or set(e["payload"].get("armor") or []) & set(armor_materials))]
+        lines += ["", f"REDESIGN: {len(painted)} of these were already painted by you. Their previous versions are in `models/sprites/` and the script is `models/sprites/paint.py`:",
+                  "edit that script and repaint only what the feedback asks for; keep every sprite and detail it does not mention, and keep the art direction above.",
+                  "", "User feedback (newest first):", f"- {notes.strip()[:800]}"] + [f"- {t}" for t in reversed(earlier[-6:])]
+    elif notes.strip():
         lines += ["", "Style notes from the user:", notes.strip()[:800]]
-    store.add_task(pid, task_id, "designer", f"Paint {len(identifiers)} item sprite(s)" + (f" + armor layers for {', '.join(armor_materials)}" if armor_materials else ""))
+    if initial:
+        lines += ["", "First design of every icon in this mod: the placeholders in the game are tinted stock templates, replace them all."]
+    title = ("Redesign" if painted and not initial else "Design" if initial else "Paint")
+    store.add_task(pid, task_id, "designer", f"{title} {len(identifiers)} item sprite(s)" + (f" + armor layers for {', '.join(armor_materials)}" if armor_materials else ""))
     with store.tx() as con:
         con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(lines)))
-    store.add_event(pid, "user", "SPRITES_REQUESTED", {"task": task_id, "items": identifiers, "armor": armor_materials, "notes": notes[:300]})
+    store.add_event(pid, "controller" if initial else "user", "SPRITES_REQUESTED", {"task": task_id, "items": identifiers, "armor": armor_materials, "notes": notes[:600], "initial": initial})
     return {"task": task_id, "items": identifiers, "armor": armor_materials, "next": {"action": "dispatch", "payload": {"task": task_id}}}
 
 
@@ -445,6 +462,26 @@ def _png_info(raw: bytes) -> tuple[int, int, bool]:
             p = row[x * bpp:(x + 1) * bpp]
             colours.add(p[:3]); alphas.add(p[3] if bpp == 4 else 255)
     return w, h, len(alphas) > 1, len(colours)
+
+
+def ensure_initial_sprites(store: Store, pid: str) -> dict | None:
+    """Right after generation (and when Autopilot meets an older project) create the one task that designs every icon and the worn-armor layers of
+    textured sets, so nobody has to ask for it: the placeholders are tinted stock templates. Skips what the user uploaded and does nothing once any
+    SPRITES task exists, so a redesign never triggers it again. Autopilot dispatches the task like a MODEL task."""
+    proj = store.project(pid)
+    if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
+        return None
+    if any(":SPRITES:" in t["id"] for t in store.tasks(pid)):
+        return None
+    from .spritecheck import catalogue
+    spec = read_spec(proj["spec"])
+    uploaded = {e["payload"].get("identifier") for e in store.events(pid, 1000) if e["kind"] == "TEXTURE_UPLOADED" and e["payload"].get("kind") in ("item", "block")}
+    uploaded_layers = {e["payload"].get("identifier") for e in store.events(pid, 1000) if e["kind"] == "TEXTURE_UPLOADED" and str(e["payload"].get("kind", "")).startswith("armor_layer")}
+    identifiers = [i for i in catalogue(spec) if i not in uploaded]
+    armor = [m.identifier for m in spec.materials if m.armor and m.armor_style != "3d" and m.identifier not in uploaded_layers]
+    if not identifiers and not armor:
+        return None
+    return request_sprites(store, pid, identifiers, armor_materials=armor, initial=True)
 
 
 def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str], *, run_id: str, actor: str, armor_materials: list[str] | None = None) -> dict:
