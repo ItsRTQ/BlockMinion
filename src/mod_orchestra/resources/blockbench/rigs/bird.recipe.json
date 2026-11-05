@@ -13,7 +13,16 @@
   ],
   "bones": [
     {
+      "name": "root",
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
       "name": "body",
+      "parent": "root",
       "origin": [
         0,
         6,
@@ -565,7 +574,191 @@
           ]
         }
       ]
+    },
+    {
+      "name": "animation.bird.attack",
+      "length": 0.8,
+      "loop": "once",
+      "channels": [
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.2,
+              "value": [
+                -25,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.4,
+              "value": [
+                40,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.55,
+              "value": [
+                10,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "body",
+          "channel": "position",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.2,
+              "value": [
+                0,
+                0.5,
+                1
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.4,
+              "value": [
+                0,
+                0,
+                -1.5
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "left_wing",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0,
+                0,
+                -20
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.45,
+              "value": [
+                0,
+                0,
+                10
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_wing",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0,
+                0,
+                20
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.45,
+              "value": [
+                0,
+                0,
+                -10
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        }
+      ]
     }
   ],
-  "notes": "Wings pivot at the shoulder on the body's side and flap on Z. Head bobs with each step. For flight, add a fly clip with wings at \u00b140 on Z; for a big bird scale the body and lengthen the legs."
+  "notes": "Wings pivot at the shoulder on the body's side and flap on Z. Head bobs with each step. For flight, add a fly clip with wings at \u00b140 on Z; for a big bird scale the body and lengthen the legs. Attack: Peck: head back 0.2, strike down-forward 0.4 with a wing flick, settle by 0.8."
 }
