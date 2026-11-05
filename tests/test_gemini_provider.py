@@ -16,10 +16,14 @@ prompt = sys.stdin.read()
 cfg = json.loads(Path(__file__).with_name("fake_gemini.config.json").read_text())   # the provider strips the env, so config travels by file
 cap = Path(cfg["capture"])
 settings = Path.cwd() / ".gemini" / "settings.json"
+mcp = Path.cwd() / ".agents" / "mcp_config.json"; task = Path.cwd() / ".agents" / "craftctl_task.md"
 cap.write_text(json.dumps({"argv": sys.argv[1:], "stdin": prompt, "cwd": str(Path.cwd()),
                            "settings": settings.read_text() if settings.is_file() else None,
+                           "mcp_config": mcp.read_text() if mcp.is_file() else None, "task_file": task.read_text() if task.is_file() else None,
                            "env_home": os.environ.get("HOME") or os.environ.get("USERPROFILE")}))
 mode = cfg.get("mode", "ok")
+if mode == "plain":   # agy < 1.1.8 style: no JSON events, just the answer
+    print("Done.\n```handoff\n" + json.dumps(cfg.get("handoff", {})) + "\n```"); sys.exit(0)
 print(json.dumps({"type": "init", "session_id": "sess-1", "model": "gemini-test"}))
 print(json.dumps({"type": "tool_use", "tool_name": "run_shell_command", "tool_id": "t1", "parameters": {"command": "./gradlew build"}}))
 print(json.dumps({"type": "tool_result", "tool_id": "t1", "status": "success", "output": "BUILD SUCCESSFUL"}))
@@ -36,11 +40,13 @@ if mode == "turns":
 '''
 
 
-def make_fake(dirpath: Path) -> Path:
-    script = dirpath / "fake_gemini.py"; script.write_text(FAKE, encoding="utf8")
+def make_fake(dirpath: Path, name: str = "gemini") -> Path:
+    script = dirpath / "fake_gemini.py"
+    if not script.exists():
+        script.write_text(FAKE, encoding="utf8")
     if os.name == "nt":
-        bat = dirpath / "gemini.cmd"; bat.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf8"); return bat
-    sh = dirpath / "gemini"; sh.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf8")
+        bat = dirpath / f"{name}.cmd"; bat.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf8"); return bat
+    sh = dirpath / name; sh.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf8")
     sh.chmod(sh.stat().st_mode | stat.S_IEXEC); return sh
 
 
@@ -136,11 +142,61 @@ class TestRun(unittest.TestCase):
             GeminiCliProvider(binary="", timeout=60).run(self.envelope(), self.log)
 
 
+class TestAntigravityRun(TestRun):
+    """Same fake binary under the agy name: Antigravity flags, .agents/mcp_config.json, task file, plain-text fallback."""
+
+    def setUp(self):
+        super().setUp()
+        self.binary = make_fake(Path(self.tmp.name) / "bin", "agy")
+
+    def provider(self):
+        from mod_orchestra.provider import AntigravityCliProvider
+        return AntigravityCliProvider(binary=str(self.binary), timeout=60)
+
+    def test_runs_headless_with_prompt_on_stdin_and_settings_in_workspace(self):
+        res = self.provider().run(self.envelope(), self.log)
+        self.assertEqual(res.exit_code, 0, res.raw_output); self.assertEqual(res.errors, []); self.assertEqual(res.handoff["status"], "DONE")
+        cap = json.loads(self.capture.read_text())
+        self.assertIn("--dangerously-skip-permissions", cap["argv"]); self.assertNotIn("--approval-mode", cap["argv"]); self.assertNotIn("--skip-trust", cap["argv"])
+        self.assertEqual(cap["argv"][cap["argv"].index("--print-timeout") + 1], "60s")
+        self.assertIn(".agents/craftctl_task.md", cap["argv"][1])
+        self.assertIn("PACKET-TEXT", cap["stdin"]); self.assertEqual(cap["task_file"], cap["stdin"])
+        mcp = json.loads(cap["mcp_config"]); self.assertEqual(set(mcp["mcpServers"]), {"minecraft-orchestra"})
+        self.assertEqual(set(mcp["mcpServers"]["minecraft-orchestra"]), {"command", "args", "env"})   # no Gemini-only keys
+        self.assertIsNone(cap["settings"])
+        self.assertFalse((self.ws / ".agents").exists(), "task file and mcp config are removed afterwards")
+
+    def test_designer_gets_blockbench_and_existing_settings_are_merged_and_restored(self):
+        (self.ws / ".agents").mkdir(); original = json.dumps({"mcpServers": {"mine": {"command": "x"}}})
+        (self.ws / ".agents/mcp_config.json").write_text(original)
+        self.provider().run(self.envelope("designer"), self.log)
+        mcp = json.loads(json.loads(self.capture.read_text())["mcp_config"])
+        self.assertEqual(set(mcp["mcpServers"]), {"mine", "minecraft-orchestra", "blockbench"})
+        self.assertEqual((self.ws / ".agents/mcp_config.json").read_text(), original)
+        self.assertFalse((self.ws / ".agents/craftctl_task.md").exists())
+
+    def test_turn_limit_exit_is_reported(self):
+        self.configure("turns")
+        res = self.provider().run(self.envelope(), self.log)
+        self.assertEqual(res.exit_code, 53); self.assertIsNone(res.handoff); self.assertTrue(any("agy error: turn limit" in e for e in res.errors))
+
+    def test_model_flag_and_missing_binary(self):
+        with self.assertRaises(Exception):
+            from mod_orchestra.provider import AntigravityCliProvider
+            AntigravityCliProvider(binary="", timeout=60).run(self.envelope(), self.log)
+
+    def test_plain_text_output_still_yields_the_handoff(self):
+        self.configure("plain")
+        res = self.provider().run(self.envelope(), self.log)
+        self.assertEqual(res.handoff["status"], "DONE"); self.assertEqual(res.errors, [])
+
+
 class TestSelection(unittest.TestCase):
     def test_provider_by_name(self):
         from mod_orchestra.dispatch import provider_by_name
         self.assertEqual(provider_by_name("gemini-cli").name, "gemini-cli"); self.assertEqual(provider_by_name("gemini").name, "gemini-cli")
         self.assertEqual(provider_by_name(None).name, "claude-code"); self.assertEqual(provider_by_name("fake").name, "fake")
+        self.assertEqual(provider_by_name("agy").name, "antigravity-cli"); self.assertEqual(provider_by_name("antigravity-cli").name, "antigravity-cli")
         with self.assertRaises(Exception):
             provider_by_name("codex")
 
