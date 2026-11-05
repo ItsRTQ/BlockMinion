@@ -85,6 +85,9 @@ class UiApi(unittest.TestCase):
         self.assertEqual(runs[0]["handoff"]["needs_user"], ["craftctl request-build u_mod"])
         detail = self.call("/api/run/" + runs[0]["id"])[1]
         self.assertIn("handoff", detail["log_tail"])
+        for _ in range(40):   # the background thread clears the flag just after the run is recorded
+            if not self.call("/api/project/u_mod")[1]["dispatching"]: break
+            time.sleep(0.1)
         self.assertFalse(self.call("/api/project/u_mod")[1]["dispatching"])
 
     def test_3_requeue_and_evidence_from_ui(self):
