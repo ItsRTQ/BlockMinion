@@ -74,6 +74,29 @@ class TestRecipes(unittest.TestCase):
         self.assertEqual([x["name"] for x in b], ["left_x", "left_x_lower"]); self.assertEqual(b[1]["parent"], "left_x"); self.assertEqual(c[1]["bone"], "left_x_lower")
 
 
+    def test_combine_drift_lift_helpers(self):
+        a = rigs.swing("b", 1.0, 20, 1, axis=1); b = rigs.lift("b", 1.0, 10, 1, axis=2)
+        c = rigs.combine(a, b)
+        self.assertEqual([k["time"] for k in c["keyframes"]], [0.0, 0.25, 0.5, 0.75, 1.0])
+        self.assertEqual(c["keyframes"][1]["value"], [0.0, 0.0, 10.0])          # mid-swing: sweep crosses zero, lift at its peak
+        self.assertEqual(c["keyframes"][0]["value"], c["keyframes"][-1]["value"])
+        self.assertEqual(rigs.lift("b", 1.0, 10, -1, axis=2)["keyframes"][3]["value"], [0.0, 0.0, 10.0])
+        d = rigs.drift("h", 2.0, (2, 3, 1), seed=1, spike=(1.3, 0, -8))
+        times = [k["time"] for k in d["keyframes"]]
+        self.assertEqual(times, sorted(times)); self.assertEqual(len(times), len(set(times)))
+        self.assertEqual(d["keyframes"][0]["value"], [0.0, 0.0, 0.0]); self.assertEqual(d["keyframes"][-1]["value"], [0.0, 0.0, 0.0])
+        self.assertTrue(any(k["time"] == 1.35 and k["value"][0] == -8 for k in d["keyframes"]))
+        self.assertTrue(all(abs(v) <= 3 for k in d["keyframes"] for v in k["value"] if k["time"] not in (1.3, 1.35, 1.4)))
+        self.assertNotEqual(rigs.drift("x", 2.0, (2, 2, 2), seed=0)["keyframes"][2]["value"], rigs.drift("x", 2.0, (2, 2, 2), seed=1)["keyframes"][2]["value"])
+
+    def test_rest_rotation_lives_on_bones_and_is_mirrored_in_geo(self):
+        rec = rigs.recipe("insect"); bones = {b["name"]: b for b in rec["bones"]}
+        self.assertEqual(bones["left_front_leg"]["rotation"], [0, -20, 35]); self.assertEqual(bones["right_front_leg"]["rotation"], [0, 20, -35])
+        geo = {b["name"]: b for b in rigs.load_rig("insect", "geo")["minecraft:geometry"][0]["bones"]}
+        self.assertEqual(geo["left_front_leg"]["rotation"], [0, 20, 35])       # export flips X and Y rotation
+        self.assertFalse(any(c.get("rotation") for b in geo.values() for c in b.get("cubes", [])), "shape comes from bone rest pose, not cube rotation")
+
+
 class TestPacker(unittest.TestCase):
     def test_strips_never_overlap_and_fit(self):
         for plan in rigs.BODY_PLANS:

@@ -83,12 +83,17 @@ def knee(bone: str, length: float, amplitude: float, phase: int = 1, axis: int =
 
 
 def jointed_limb(prefix: str, parent: str, joints: list[tuple[str, list, list, list]]) -> tuple[list[dict], list[dict]]:
-    """Chain bones proximal -> distal. joints = [(suffix, pivot, from, to), ...]; the first bone is `prefix`, the
-    others `prefix_<suffix>` (e.g. left_leg, left_leg_shin). Returns (bones, cubes)."""
+    """Chain bones proximal -> distal. joints = [(suffix, pivot, from, to[, rest_rotation]), ...]; the first bone is
+    `prefix`, the others `prefix_<suffix>` (e.g. left_leg, left_leg_shin). Returns (bones, cubes)."""
     bones, cubes, last = [], [], parent
-    for i, (suffix, pivot, frm, to) in enumerate(joints):
+    for i, joint in enumerate(joints):
+        suffix, pivot, frm, to = joint[:4]
+        rest = joint[4] if len(joint) > 4 else None
         name = prefix if i == 0 else f"{prefix}_{suffix}"
-        bones.append({"name": name, "parent": last, "origin": list(pivot)})
+        bone = {"name": name, "parent": last, "origin": list(pivot)}
+        if rest and any(rest):
+            bone["rotation"] = list(rest)   # rest pose lives on the bone: clips stay relative to it, pivots stay at the joints
+        bones.append(bone)
         cubes.append({"name": f"{name}_cube", "bone": name, "from": list(frm), "to": list(to)})
         last = name
     return bones, cubes
@@ -102,6 +107,65 @@ def curve(bone: str, channel: str, points: list[tuple[float, list]], delay: floa
         tt = t if i in (0, len(points) - 1) else round(t + delay, 2)
         keys.append({"time": round(tt, 2), "value": list(v), "interpolation": interpolation})
     return {"bone": bone, "channel": channel, "keyframes": keys}
+
+
+def lift(bone: str, length: float, amplitude: float, phase: int = 1, axis: int = 2) -> dict:
+    """A limb lift that only happens during its swing half (+amp * max(0, sin)): the foot leaves the ground on the way
+    forward and stays planted on the way back. Same shape as knee() with the opposite sign and a free axis."""
+    return knee(bone, length, -amplitude, phase, axis)
+
+
+def combine(*channels: dict) -> dict:
+    """Merge several channels of the same bone+channel (e.g. a Y sweep and a Z lift) into one, sampling each at the
+    union of their key times (linear between keys) and summing. The server allows one channel per bone per clip."""
+    bone, chan = channels[0]["bone"], channels[0]["channel"]
+    assert all(c["bone"] == bone and c["channel"] == chan for c in channels)
+    times = sorted({round(k["time"], 2) for c in channels for k in c["keyframes"]})
+    def at(c, t):
+        ks = sorted(c["keyframes"], key=lambda k: k["time"])
+        if t <= ks[0]["time"]: return ks[0]["value"]
+        for a, b in zip(ks, ks[1:]):
+            if a["time"] <= t <= b["time"]:
+                u = 0 if b["time"] == a["time"] else (t - a["time"]) / (b["time"] - a["time"])
+                return [a["value"][i] + (b["value"][i] - a["value"][i]) * u for i in range(3)]
+        return ks[-1]["value"]
+    interp = channels[0]["keyframes"][0].get("interpolation", "catmullrom")
+    keys = [{"time": t, "value": [round(sum(at(c, t)[i] for c in channels), 3) for i in range(3)], "interpolation": interp} for t in times]
+    return {"bone": bone, "channel": chan, "keyframes": keys}
+
+
+def drift(bone: str, length: float, amplitudes: tuple[float, float, float], seed: int = 0, samples: int = 8,
+          spike: tuple[float, float, float] | None = None) -> dict:
+    """Idle 'alive' noise: a slow, deterministic wander under the given per-axis amplitudes (degrees), loop-seamed,
+    with an optional one-frame spike (time, axis, value) such as a blink or a twitch. Different seeds desynchronise
+    paired bones (two eyes, two claws) so the creature never looks symmetric."""
+    import math
+    keys = []
+    for i in range(samples + 1):
+        t = round(length * i / samples, 2)
+        if i in (0, samples):
+            v = [0.0, 0.0, 0.0]
+        else:
+            u = i / samples
+            v = [round(amplitudes[a] * math.sin(2 * math.pi * (u * (1 + 0.5 * a) + 0.17 * seed + 0.23 * a)), 2) for a in range(3)]
+        keys.append({"time": t, "value": v, "interpolation": "catmullrom"})
+    if spike:
+        st, ax, val = spike
+        before = [k for k in keys if k["time"] < st]
+        base = list(before[-1]["value"]) if before else [0.0, 0.0, 0.0]
+        up = list(base); up[int(ax)] = val
+        keys += [{"time": round(st, 2), "value": base, "interpolation": "linear"},
+                 {"time": round(st + 0.05, 2), "value": up, "interpolation": "linear"},
+                 {"time": round(st + 0.1, 2), "value": base, "interpolation": "linear"}]
+        keys.sort(key=lambda k: k["time"])
+        dedup = []
+        for k in keys:
+            if dedup and abs(dedup[-1]["time"] - k["time"]) < 1e-9:
+                dedup[-1] = k
+            else:
+                dedup.append(k)
+        keys = dedup
+    return {"bone": bone, "channel": "rotation", "keyframes": keys}
 
 
 def _clips(ident: str, idle: list[dict], walk: list[dict], attack: list[dict] | None = None, attack_length: float = 1.0) -> list[dict]:
@@ -146,7 +210,8 @@ def quadruped() -> dict:
                 ("lower", [x, 3, z], [x - 1, 0, z - 1], [x + 1, 3, z + 1]),      # lower leg, knee/hock pivot
             ])
             bones += b; cubes += c
-    idle = [bob("head", 2.0, 3.0, channel="rotation", axis=0), bob("tail", 2.0, 8.0, channel="rotation", axis=1)]
+    idle = [combine(bob("head", 2.0, 3.0, channel="rotation", axis=0), drift("head", 2.0, (1.0, 2.5, 0.8), seed=1)),
+            bob("tail", 2.0, 8.0, channel="rotation", axis=1), drift("body", 2.0, (0.6, 0.4, 0.5))]
     walk = [swing("left_front_leg", 1.0, 25, 1), swing("right_back_leg", 1.0, 25, 1),
             swing("right_front_leg", 1.0, 25, -1), swing("left_back_leg", 1.0, 25, -1),
             knee("left_front_leg_lower", 1.0, 30, 1), knee("right_back_leg_lower", 1.0, 30, 1),
@@ -188,8 +253,9 @@ def biped() -> dict:
             ("shin", [2 * sx, 6, 0], [lx, 0, -2], [lx + 4, 6, 2]),        # shin, knee pivot
         ])
         bones += b; cubes += c
-    idle = [bob("head", 2.0, 2.0, channel="rotation", axis=0), bob("left_arm", 2.0, 2.5, channel="rotation", axis=2),
-            bob("right_arm", 2.0, -2.5, channel="rotation", axis=2), bob("body", 2.0, 0.3)]
+    idle = [combine(bob("head", 2.0, 2.0, channel="rotation", axis=0), drift("head", 2.0, (0.8, 3.0, 0.5), seed=1)),
+            bob("left_arm", 2.0, 2.5, channel="rotation", axis=2), bob("right_arm", 2.0, -2.5, channel="rotation", axis=2),
+            bob("body", 2.0, 0.3), drift("body", 2.0, (0.5, 0.8, 0.4))]
     walk = [swing("left_leg", 1.0, 30, 1), swing("right_leg", 1.0, 30, -1),
             knee("left_leg_shin", 1.0, 28, 1), knee("right_leg_shin", 1.0, 28, -1),
             swing("left_arm", 1.0, 30, -1), swing("right_arm", 1.0, 30, 1),
@@ -228,7 +294,8 @@ def bird() -> dict:
         {"name": "left_leg_cube", "bone": "left_leg", "from": [1, 0, -1], "to": [2, 4, 0]},
         {"name": "right_leg_cube", "bone": "right_leg", "from": [-2, 0, -1], "to": [-1, 4, 0]},
     ]
-    idle = [bob("head", 2.0, 4.0, channel="rotation", axis=0), bob("left_wing", 2.0, -6.0, channel="rotation", axis=2),
+    idle = [combine(bob("head", 2.0, 4.0, channel="rotation", axis=0), drift("head", 2.0, (2.0, 6.0, 1.5), seed=3, spike=(1.4, 1, 25))),
+            bob("left_wing", 2.0, -6.0, channel="rotation", axis=2),
             bob("right_wing", 2.0, 6.0, channel="rotation", axis=2), bob("tail", 2.0, 5.0, channel="rotation", axis=0)]
     walk = [swing("left_leg", 1.0, 25, 1), swing("right_leg", 1.0, 25, -1), bob("body", 1.0, 0.8),
             swing("head", 1.0, 6, 1), swing("left_wing", 1.0, 8, -1, axis=2), swing("right_wing", 1.0, 8, 1, axis=2)]
@@ -262,7 +329,8 @@ def fish() -> dict:
         {"name": "tail_cube", "bone": "tail", "from": [-1, 3, 3], "to": [1, 7, 6]},
         {"name": "tail_fin_cube", "bone": "tail_fin", "from": [-0.5, 2, 6], "to": [0.5, 8, 9]},
     ]
-    idle = [swing("tail", 2.0, 8, 1, axis=1), swing("tail_fin", 2.0, 12, 1, axis=1), bob("body", 2.0, 0.5)]
+    idle = [swing("tail", 2.0, 8, 1, axis=1), swing("tail_fin", 2.0, 12, 1, axis=1), bob("body", 2.0, 0.5),
+            drift("head", 2.0, (1.5, 2.0, 1.0), seed=2), drift("left_fin", 2.0, (0, 6, 3), seed=4), drift("right_fin", 2.0, (0, -6, -3), seed=5)]
     walk = [swing("body", 1.0, 5, -1, axis=1), swing("tail", 1.0, 20, 1, axis=1), swing("tail_fin", 1.0, 30, 1, axis=1),
             swing("left_fin", 1.0, 15, 1, axis=1), swing("right_fin", 1.0, 15, -1, axis=1)]
     attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-12, 0, 0]), (0.4, [15, 0, 0]), (0.8, [0, 0, 0])]),
@@ -291,7 +359,8 @@ def serpent() -> dict:
         {"name": "segment_3_cube", "bone": "segment_3", "from": [-2, 0, 4], "to": [2, 4, 8]},
         {"name": "tail_cube", "bone": "tail", "from": [-1, 0.5, 8], "to": [1, 3.5, 13]},
     ]
-    idle = [bob("head", 2.0, 3.0, channel="rotation", axis=0), swing("tail", 2.0, 6, 1, axis=1)]
+    idle = [combine(bob("head", 2.0, 3.0, channel="rotation", axis=0), drift("head", 2.0, (1.0, 4.0, 1.0), seed=1, spike=(0.9, 0, -6))),
+            swing("tail", 2.0, 6, 1, axis=1), drift("body", 2.0, (0.4, 1.5, 0.3))]
     walk = [swing("body", 1.0, 12, 1, axis=1), swing("segment_2", 1.0, 20, -1, axis=1),
             swing("segment_3", 1.0, 20, 1, axis=1), swing("tail", 1.0, 25, -1, axis=1), swing("head", 1.0, 8, -1, axis=1)]
     attack = [curve("body", "rotation", [(0, [0, 0, 0]), (0.3, [-25, 0, 0]), (0.5, [10, 0, 0]), (0.7, [2, 0, 0]), (1.0, [0, 0, 0])]),
@@ -319,15 +388,18 @@ def insect() -> dict:
     for side, sx in (("left", 1), ("right", -1)):
         for pos, z in (("front", -3), ("mid", -2), ("back", -1)):
             x0 = 2 if sx > 0 else -3                                        # leg cube x range: 2..3 or -3..-2
+            fan = {"front": -20, "mid": 0, "back": 20}[pos] * sx                      # legs fan out front/back
             b, c = jointed_limb(f"{side}_{pos}_leg", "body", [
-                ("", [2 * sx, 4, z + 0.5], [x0, 2, z], [x0 + 1, 4, z + 1]),          # coxa/femur, hip pivot
-                ("lower", [2 * sx, 2, z + 0.5], [x0, 0, z], [x0 + 1, 2, z + 1]),     # tibia, knee pivot
+                ("", [2 * sx, 4, z + 0.5], [x0, 2, z], [x0 + 1, 4, z + 1], [0, fan, 35 * sx]),   # femur: hip pivot, splayed outward
+                ("lower", [2 * sx, 2, z + 0.5], [x0, 0, z], [x0 + 1, 2, z + 1], [0, 0, -45 * sx]),  # tibia: knee pivot, bent back down
             ])
             bones += b; cubes += c
-    idle = [bob("head", 2.0, 4.0, channel="rotation", axis=1), bob("abdomen", 2.0, 3.0, channel="rotation", axis=0)]
+    idle = [drift("body", 2.0, (1.0, 0.8, 0.8)), drift("head", 2.0, (3.0, 4.0, 1.0), seed=1, spike=(1.3, 0, -8)),
+            drift("abdomen", 2.0, (2.5, 1.0, 0.5), seed=2)]
     gait = (("left", "front", 1), ("left", "mid", -1), ("left", "back", 1), ("right", "front", -1), ("right", "mid", 1), ("right", "back", -1))
-    walk = [swing(f"{s_}_{p}_leg", 1.0, 25, ph) for s_, p, ph in gait] + \
-           [knee(f"{s_}_{p}_leg_lower", 1.0, 25, ph) for s_, p, ph in gait] + [bob("body", 1.0, 0.3)]
+    walk = [combine(swing(f"{s_}_{p}_leg", 1.0, 20, ph, axis=1), lift(f"{s_}_{p}_leg", 1.0, 12 * (1 if s_ == "left" else -1), ph, axis=2))
+            for s_, p, ph in gait] + \
+           [knee(f"{s_}_{p}_leg_lower", 1.0, 15 * (1 if s_ == "left" else -1), ph, axis=2) for s_, p, ph in gait] + [bob("body", 1.0, 0.3)]
     attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-25, 0, 0]), (0.4, [30, 0, 0]), (0.55, [8, 0, 0]), (0.8, [0, 0, 0])]),
               curve("body", "rotation", [(0, [0, 0, 0]), (0.2, [10, 0, 0]), (0.4, [-8, 0, 0]), (0.8, [0, 0, 0])]),
               curve("abdomen", "rotation", [(0, [0, 0, 0]), (0.2, [-8, 0, 0]), (0.4, [6, 0, 0]), (0.8, [0, 0, 0])], delay=0.05),
