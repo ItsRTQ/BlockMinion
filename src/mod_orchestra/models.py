@@ -165,8 +165,9 @@ def validate_model_files(workspace: Path, mob_id: str, behavior: str = "passive"
         raise InputError("texture is not a PNG")
     w, h = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
     tw, th = desc.get("texture_width"), desc.get("texture_height")
-    if (tw, th) != (w, h):
-        raise InputError(f"texture is {w}x{h} but geo declares {tw}x{th}")
+    ok = tw and th and w % int(tw) == 0 and h % int(th) == 0 and w // int(tw) == h // int(th) and w >= int(tw)
+    if not ok:   # the PNG may be the UV resolution or an integer multiple of it (2x/4x hi-res skins)
+        raise InputError(f"texture is {w}x{h} but geo declares {tw}x{th} (the PNG must be that size or a uniform integer multiple of it)")
     cubes = sum(len(b.get("cubes", [])) for b in g["bones"])
     return {"bones": sorted(bones), "cubes": cubes, "animations": sorted(clips), "texture": [w, h],
             "files": {k: str(v.relative_to(workspace)).replace("\\", "/") for k, v in files.items()}}

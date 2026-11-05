@@ -1398,8 +1398,8 @@
       ],
       "rotation": [
         0,
-        0,
-        0
+        -20,
+        35
       ]
     },
     {
@@ -1413,7 +1413,7 @@
       "rotation": [
         0,
         0,
-        0
+        -45
       ]
     },
     {
@@ -1427,7 +1427,7 @@
       "rotation": [
         0,
         0,
-        0
+        35
       ]
     },
     {
@@ -1441,7 +1441,7 @@
       "rotation": [
         0,
         0,
-        0
+        -45
       ]
     },
     {
@@ -1454,8 +1454,8 @@
       ],
       "rotation": [
         0,
-        0,
-        0
+        20,
+        35
       ]
     },
     {
@@ -1469,7 +1469,7 @@
       "rotation": [
         0,
         0,
-        0
+        -45
       ]
     },
     {
@@ -1482,8 +1482,8 @@
       ],
       "rotation": [
         0,
-        0,
-        0
+        20,
+        -35
       ]
     },
     {
@@ -1497,7 +1497,7 @@
       "rotation": [
         0,
         0,
-        0
+        45
       ]
     },
     {
@@ -1511,7 +1511,7 @@
       "rotation": [
         0,
         0,
-        0
+        -35
       ]
     },
     {
@@ -1525,7 +1525,7 @@
       "rotation": [
         0,
         0,
-        0
+        45
       ]
     },
     {
@@ -1538,8 +1538,8 @@
       ],
       "rotation": [
         0,
-        0,
-        0
+        -20,
+        -35
       ]
     },
     {
@@ -1553,7 +1553,7 @@
       "rotation": [
         0,
         0,
-        0
+        45
       ]
     }
   ],
@@ -1687,15 +1687,15 @@
       "length": 2,
       "snapping": 20,
       "animators": {
-        "e0da9299-337f-4637-89ad-4881c34c1639": {
-          "name": "head",
+        "f4d164f3-6c85-4ef0-8b54-ba27beed76d1": {
+          "name": "body",
           "type": "bone",
           "keyframes": [
             {
-              "uuid": "aa5de4a5-1224-4d9f-896b-c5dd2d9324cb",
+              "uuid": "8aa8fa74-72a9-48a4-800f-74644e658d5b",
               "channel": "rotation",
               "time": 0,
-              "interpolation": "easeInOutSine",
+              "interpolation": "catmullrom",
               "data_points": [
                 {
                   "x": 0,
@@ -1705,15 +1705,255 @@
               ]
             },
             {
-              "uuid": "4f9355ff-8f3d-4f99-8325-dfb2b1645744",
+              "uuid": "1226333f-e863-4721-834c-6457954d0992",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0.71,
+                  "y": 0.4,
+                  "z": -0.77
+                }
+              ]
+            },
+            {
+              "uuid": "4345943c-a32b-426a-82e0-e4819c812246",
+              "channel": "rotation",
+              "time": 0.5,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 1,
+                  "y": -0.49,
+                  "z": -0.2
+                }
+              ]
+            },
+            {
+              "uuid": "d897c7e3-3792-46f1-8d68-19c2958b230e",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0.71,
+                  "y": -0.77,
+                  "z": 0.77
+                }
+              ]
+            },
+            {
+              "uuid": "4754ee67-2e37-4527-809b-cd277e60227c",
               "channel": "rotation",
               "time": 1,
-              "interpolation": "easeInOutSine",
+              "interpolation": "catmullrom",
               "data_points": [
                 {
                   "x": 0,
-                  "y": 4,
+                  "y": -0.1,
+                  "z": 0.2
+                }
+              ]
+            },
+            {
+              "uuid": "6f3f68fb-06f1-49ef-860a-2f82d91d683b",
+              "channel": "rotation",
+              "time": 1.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -0.71,
+                  "y": 0.69,
+                  "z": -0.77
+                }
+              ]
+            },
+            {
+              "uuid": "a08decf3-2522-4752-8cd8-2ffd46babd65",
+              "channel": "rotation",
+              "time": 1.5,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -1,
+                  "y": 0.63,
+                  "z": -0.2
+                }
+              ]
+            },
+            {
+              "uuid": "024b4be1-2a81-413a-8285-ac704d35d84b",
+              "channel": "rotation",
+              "time": 1.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -0.71,
+                  "y": -0.21,
+                  "z": 0.77
+                }
+              ]
+            },
+            {
+              "uuid": "4e69623c-b111-4e18-8db1-291bd2cbccbf",
+              "channel": "rotation",
+              "time": 2,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
                   "z": 0
+                }
+              ]
+            }
+          ]
+        },
+        "e0da9299-337f-4637-89ad-4881c34c1639": {
+          "name": "head",
+          "type": "bone",
+          "keyframes": [
+            {
+              "uuid": "aa5de4a5-1224-4d9f-896b-c5dd2d9324cb",
+              "channel": "rotation",
+              "time": 0,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "e915c046-91ea-4aa3-8c60-d99d24a0011b",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 2.88,
+                  "y": -2.09,
+                  "z": -0.68
+                }
+              ]
+            },
+            {
+              "uuid": "36033d18-2556-4de4-8c17-b34521355655",
+              "channel": "rotation",
+              "time": 0.5,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 1.45,
+                  "y": -3.95,
+                  "z": 0.73
+                }
+              ]
+            },
+            {
+              "uuid": "17eb0c73-d0f3-4e82-853e-d0b4d43c14cc",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -0.84,
+                  "y": -0.93,
+                  "z": 0.68
+                }
+              ]
+            },
+            {
+              "uuid": "4f9355ff-8f3d-4f99-8325-dfb2b1645744",
+              "channel": "rotation",
+              "time": 1,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -2.63,
+                  "y": 3.24,
+                  "z": -0.73
+                }
+              ]
+            },
+            {
+              "uuid": "e1bd061f-f9ad-4aa4-829b-457f34cf56e7",
+              "channel": "rotation",
+              "time": 1.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -2.88,
+                  "y": 3.41,
+                  "z": -0.68
+                }
+              ]
+            },
+            {
+              "uuid": "682355ad-d649-41f5-8fa1-0ba0f5dadcfa",
+              "channel": "rotation",
+              "time": 1.3,
+              "interpolation": "linear",
+              "data_points": [
+                {
+                  "x": -2.88,
+                  "y": 3.41,
+                  "z": -0.68
+                }
+              ]
+            },
+            {
+              "uuid": "8794d228-5150-408c-85ce-8af9e98b6c43",
+              "channel": "rotation",
+              "time": 1.35,
+              "interpolation": "linear",
+              "data_points": [
+                {
+                  "x": -8,
+                  "y": 3.41,
+                  "z": -0.68
+                }
+              ]
+            },
+            {
+              "uuid": "734e0c82-5fe1-415a-8366-6500c02c5837",
+              "channel": "rotation",
+              "time": 1.4,
+              "interpolation": "linear",
+              "data_points": [
+                {
+                  "x": -2.88,
+                  "y": 3.41,
+                  "z": -0.68
+                }
+              ]
+            },
+            {
+              "uuid": "dfb9f3ff-92c6-4129-884d-7b84fdf4a4c2",
+              "channel": "rotation",
+              "time": 1.5,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -1.45,
+                  "y": -0.63,
+                  "z": 0.73
+                }
+              ]
+            },
+            {
+              "uuid": "aba66554-e638-482a-8119-07bbefae0ed1",
+              "channel": "rotation",
+              "time": 1.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0.84,
+                  "y": -3.89,
+                  "z": 0.68
                 }
               ]
             },
@@ -1721,7 +1961,7 @@
               "uuid": "fc3e645a-b56c-4d6f-874e-74f1b3621a56",
               "channel": "rotation",
               "time": 2,
-              "interpolation": "easeInOutSine",
+              "interpolation": "catmullrom",
               "data_points": [
                 {
                   "x": 0,
@@ -1740,7 +1980,7 @@
               "uuid": "23ea33bd-dd90-4f3e-8d51-a47b0ded83a8",
               "channel": "rotation",
               "time": 0,
-              "interpolation": "easeInOutSine",
+              "interpolation": "catmullrom",
               "data_points": [
                 {
                   "x": 0,
@@ -1750,15 +1990,93 @@
               ]
             },
             {
+              "uuid": "601f6c7d-b6f4-402f-8514-d9c2e234d347",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0.55,
+                  "y": -1,
+                  "z": 0.15
+                }
+              ]
+            },
+            {
+              "uuid": "8d03ce91-a9f5-4cc4-877b-22faddee352a",
+              "channel": "rotation",
+              "time": 0.5,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -1.34,
+                  "y": -0.34,
+                  "z": 0.48
+                }
+              ]
+            },
+            {
+              "uuid": "2a2e0058-b070-4076-8150-08b7a4659405",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -2.44,
+                  "y": 0.74,
+                  "z": -0.15
+                }
+              ]
+            },
+            {
               "uuid": "d8e6e555-54ac-4731-8042-956ce66620b9",
               "channel": "rotation",
               "time": 1,
-              "interpolation": "easeInOutSine",
+              "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 3,
-                  "y": 0,
-                  "z": 0
+                  "x": -2.11,
+                  "y": 0.9,
+                  "z": -0.48
+                }
+              ]
+            },
+            {
+              "uuid": "9915bbcf-7b51-401c-8a64-1ac3529e3a75",
+              "channel": "rotation",
+              "time": 1.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": -0.55,
+                  "y": -0.05,
+                  "z": 0.15
+                }
+              ]
+            },
+            {
+              "uuid": "49f006b6-df2a-4ee1-849b-bec0c67350f6",
+              "channel": "rotation",
+              "time": 1.5,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 1.34,
+                  "y": -0.94,
+                  "z": 0.48
+                }
+              ]
+            },
+            {
+              "uuid": "13f94443-2f4c-449a-8c53-755d2babc346",
+              "channel": "rotation",
+              "time": 1.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 2.44,
+                  "y": -0.67,
+                  "z": -0.15
                 }
               ]
             },
@@ -1766,7 +2084,7 @@
               "uuid": "cdb5df48-c178-4dc7-859f-95552da51567",
               "channel": "rotation",
               "time": 2,
-              "interpolation": "easeInOutSine",
+              "interpolation": "catmullrom",
               "data_points": [
                 {
                   "x": 0,
@@ -1797,9 +2115,22 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "41a02dc1-8dd2-4498-8a05-b83aabb1fae6",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": 12
                 }
               ]
             },
@@ -1810,7 +2141,20 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
+                  "y": -20,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "67cf3030-bfa6-47f4-8e09-60c828dceadb",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -1823,8 +2167,8 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
                 }
               ]
@@ -1842,7 +2186,20 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
+                  "y": -20,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "422c6bff-25a3-4584-8bbe-ac20e69645c3",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -1855,9 +2212,22 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "5168b6b0-cc45-4c14-8416-dc4e52156bab",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": 12
                 }
               ]
             },
@@ -1868,8 +2238,8 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
-                  "y": 0,
+                  "x": 0,
+                  "y": -20,
                   "z": 0
                 }
               ]
@@ -1887,9 +2257,22 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "f4f37f5c-5fdc-4e0f-8680-fa616f2f1b15",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": 12
                 }
               ]
             },
@@ -1900,7 +2283,20 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
+                  "y": -20,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "132cd09f-762e-4f73-86da-2ef7ea538c01",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -1913,8 +2309,8 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
                 }
               ]
@@ -1932,7 +2328,20 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
+                  "y": -20,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "4fff8670-8689-4e24-845d-404e0d667bfd",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -1945,9 +2354,22 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "6a289e94-e2f0-4344-83df-529a8a1627fb",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": -12
                 }
               ]
             },
@@ -1958,8 +2380,8 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
-                  "y": 0,
+                  "x": 0,
+                  "y": -20,
                   "z": 0
                 }
               ]
@@ -1977,9 +2399,22 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "3ad31f82-e34a-4935-8c9c-6681e0eedebf",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": -12
                 }
               ]
             },
@@ -1990,7 +2425,20 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
+                  "y": -20,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "09582305-49d3-4de2-8212-7f1ce8d30824",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -2003,8 +2451,8 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
                 }
               ]
@@ -2022,7 +2470,20 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
+                  "y": -20,
+                  "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "5af1268b-b2e7-4add-8681-f8ab51c2be20",
+              "channel": "rotation",
+              "time": 0.25,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -2035,9 +2496,22 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 25,
-                  "y": 0,
+                  "x": 0,
+                  "y": 20,
                   "z": 0
+                }
+              ]
+            },
+            {
+              "uuid": "21bf415d-eaca-4262-86c8-e62dd894b528",
+              "channel": "rotation",
+              "time": 0.75,
+              "interpolation": "catmullrom",
+              "data_points": [
+                {
+                  "x": 0,
+                  "y": 0,
+                  "z": -12
                 }
               ]
             },
@@ -2048,8 +2522,8 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
-                  "y": 0,
+                  "x": 0,
+                  "y": -20,
                   "z": 0
                 }
               ]
@@ -2080,9 +2554,9 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
                   "y": 0,
-                  "z": 0
+                  "z": -15
                 }
               ]
             },
@@ -2177,9 +2651,9 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
                   "y": 0,
-                  "z": 0
+                  "z": -15
                 }
               ]
             },
@@ -2222,9 +2696,9 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
                   "y": 0,
-                  "z": 0
+                  "z": -15
                 }
               ]
             },
@@ -2319,9 +2793,9 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
                   "y": 0,
-                  "z": 0
+                  "z": 15
                 }
               ]
             },
@@ -2364,9 +2838,9 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
                   "y": 0,
-                  "z": 0
+                  "z": 15
                 }
               ]
             },
@@ -2461,9 +2935,9 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -25,
+                  "x": 0,
                   "y": 0,
-                  "z": 0
+                  "z": 15
                 }
               ]
             },

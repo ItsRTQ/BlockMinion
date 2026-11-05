@@ -101,6 +101,10 @@ class Deliverables(Base):
         with self.assertRaisesRegex(InputError, "not in geo.json"):
             validate_model_files(self.ws, "sky_critter")
         self.deliver(png=placeholder_png("t", 32, 32))
+        self.deliver(png=placeholder_png("t", 128, 128)); validate_model_files(self.ws, "sky_critter")   # 2x hi-res skin is fine
+        self.deliver(png=placeholder_png("t", 128, 64))
+        with self.assertRaisesRegex(InputError, "uniform integer multiple"):
+            validate_model_files(self.ws, "sky_critter")
         with self.assertRaisesRegex(InputError, "geo declares 64x64"):
             validate_model_files(self.ws, "sky_critter")
         bad = placeholder_animation(Mob(identifier="sky_critter", label="x")); del bad["animations"]["animation.sky_critter.idle"]

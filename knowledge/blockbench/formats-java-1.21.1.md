@@ -202,3 +202,23 @@ the same shape as this project's pipeline. Numbers and patterns only; nothing co
   cube sizes, every UV rectangle inside the atlas and opaque. `models.validate_model_files` now checks one root, acyclic
   parents, key timing and box-UV bounds; UV opacity against the PNG is still a backlog item.
 
+## 11. Calibration — a finished community creature file (CC0 crab, read 2026-11-05)
+
+Analysed from a downloaded `.bbmodel` (format 5.0, geckolib_model); numbers and patterns only.
+
+- 72 cubes, 54 bones, depth 4, empty `root` → `body` → all. Eight legs of `leg → low → (tip, ankle)` plus a sibling
+  `knee` cap bone at `low`'s pivot: 40 of the 54 bones. Hat (3 bones) and a held bottle are bones.
+- Shape by **bone rest rotation**: only 2 cubes rotated; femurs fanned on Y (±8…34°) and raised on Z (±30°), tibias at
+  −75…−87°. The opposite technique to the boss in §10 (cube rotation); both read as organic.
+- `inflate` on 34/72 cubes, `mirror_uv` on 27, box UV on 62. Project resolution 64×64 with a **128×128 PNG** (2× skin).
+- Sides named `right_*` at +X: author convention; only mirror pairing matters outside the armor bone names.
+- 8 clips, all `catmullrom`, snapping 24: idle 4 s (19 bones: body drifts <1° on three axes, eyes get a −14° blink for
+  0.1 s at different times, claws ±3°), walk 0.8 s (31 bones: legs sweep on Y ±14, Z lift ±10 only in the swing half,
+  knee cap at half the tibia angle, body rocks ±1.5° at double frequency), tipsy and dance (loops, ~900 keys), drink 3 s,
+  salute 1.7 s, snap 1.0 s and hat_toss 2.2 s (one-shots, up to −87° and a −360° spin).
+- Snap timing: windup 20% (arm back, body +0.8 back), impact 35% (body −1.6 forward, pincer closes then "chatters"
+  −17/−13/−17), hold to 70%, rest at 100%; hat follows 0.05 s later. With §10 that puts one-shots at windup 20–36%,
+  impact 35–50%.
+- What landed from it: `rigs.drift/lift/combine`, rest rotation on recipe bones (insect splay), texture-size rule
+  relaxed to uniform integer multiples, skill rules on joint caps, inflate, mirror_uv and alive idles.
+

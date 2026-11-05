@@ -250,11 +250,83 @@
               "interpolation": "easeInOutSine"
             },
             {
+              "time": 0.25,
+              "value": [
+                -0.5,
+                -2.64,
+                1.47
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                3.97,
+                0.28
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                1.68,
+                5.68,
+                -1.47
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
               "time": 1.0,
               "value": [
-                4.0,
-                0.0,
-                0.0
+                4.13,
+                0.38,
+                -0.28
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                4.5,
+                -5.39,
+                1.47
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.4,
+              "value": [
+                3.9,
+                -5.39,
+                1.47
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.45,
+              "value": [
+                3.7,
+                25.0,
+                1.47
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.5,
+              "value": [
+                3.5,
+                -5.39,
+                1.47
+              ],
+              "interpolation": "easeInOutSine"
+            },
+            {
+              "time": 1.75,
+              "value": [
+                2.32,
+                1.94,
+                -1.47
               ],
               "interpolation": "easeInOutSine"
             },

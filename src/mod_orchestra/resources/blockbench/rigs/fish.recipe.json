@@ -316,6 +316,267 @@
               "interpolation": "easeInOutSine"
             }
           ]
+        },
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.33,
+                -2.0,
+                0.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -0.8,
+                -0.68,
+                0.95
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                -1.46,
+                1.48,
+                -0.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -1.27,
+                1.81,
+                -0.95
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -0.33,
+                -0.09,
+                0.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.5,
+              "value": [
+                0.8,
+                -1.88,
+                0.95
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.75,
+              "value": [
+                1.46,
+                -1.35,
+                -0.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "left_fin",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                -0.0,
+                3.45,
+                1.91
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -0.0,
+                5.86,
+                -2.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                1.03,
+                -1.91
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                -5.07,
+                2.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                -4.91,
+                1.91
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.5,
+              "value": [
+                0.0,
+                1.31,
+                -2.31
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.75,
+              "value": [
+                -0.0,
+                5.91,
+                -1.91
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "right_fin",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                -0.0,
+                -5.96,
+                1.1
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.0,
+                -1.67,
+                2.79
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.0,
+                4.68,
+                -1.1
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                5.26,
+                -2.79
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                0.0,
+                -0.66,
+                1.1
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.5,
+              "value": [
+                -0.0,
+                -5.76,
+                2.79
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.75,
+              "value": [
+                -0.0,
+                -3.75,
+                -1.1
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
         }
       ]
     },

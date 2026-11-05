@@ -63,6 +63,16 @@ Target density: the base rig is a 10–19 bone skeleton; a finished creature run
 - Loops are subtle: idle ±2–5 on rotation, walk ±25–30 on legs, 0.3–0.8 position bob. Decorative bobs on one-shots fade
   in and out (`sin²(πt/length)` envelope) so the clip starts and ends at rest.
 - `death`-style clips export `loop: "hold"` (`hold_on_last_frame`); only idle/walk loop.
+- Rest pose on bones, not cubes, when the shape is a posed limb: a splayed spider leg or a cocked wing is `rotation` on the
+  bone (pivot at the joint), so every clip stays relative to the pose and the joint still bends where it should. Rotate
+  the cube itself only for static shape (plates, horns, fins) that never animates on its own.
+- Joint caps: at a visible bend, a small cube in its own bone at the joint pivot (`left_leg_knee`), animated at about half
+  the child's angle, hides the gap between segments.
+- Round with `inflate` (shells, bellies, claws, 0.25–1.0) instead of extra cubes; `mirror_uv` on the twin of a paired
+  limb so only one side needs painting; a PNG at 2x or 4x the project resolution is accepted (hi-res skin, same UV).
+- Alive idle: besides one slow bob, give the head/body/props sub-2° multi-axis drift with different phases per bone and
+  an occasional 0.1 s spike (blink, twitch, ear flick); paired parts must not move in sync. Walk limbs lift only during
+  their swing half.
 
 ## Report
 `changed_files`: `models/<mob>.bbmodel`, `models/<mob>.geo.json`, `models/<mob>.animation.json`, `models/<mob>.png`. `checks_run`: the validate call and its result. Evidence level `STATIC` (the controller installs and the user verifies in-game).
