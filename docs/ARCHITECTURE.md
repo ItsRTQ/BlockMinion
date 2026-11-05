@@ -183,3 +183,16 @@ The server's preview had the four side faces upside down and the wrong box-UV re
 upside down in game. `render.mjs` now builds each face as Blockbench does (three.js BoxGeometry vertex order, `cube.js` rectangles with floored sizes, up and down reversed, east and west swapped by
 `mirror_uv`), and `test/render-orientation.test.mjs` fixes it with a marker cube in every view.
 
+## Art direction (every entity has a sheet)
+
+Items, blocks, tool/armor sets, foods and mobs carry an optional `art` object in the spec: `concept` (one or two sentences: what it is and how it looks), `tags` (concrete visual cues: shapes, materials,
+colours, wear), `silhouette` (a shape phrase) and, on a material, `pieces` (its own sentence per tool/armor kind). The interpreter writes them from the idea and the theme (its prompt asks for concrete cues,
+never mood words, a different shape idea per piece of a set); `craftctl set-art` and the **Art** buttons of the UI (item rows, set headers, mob cards) edit them, and editing after generation is cosmetic (it does not
+reset the approval). `art.effective_art` merges what is written with a deterministic derivation from the theme when it is not: the theme's phrases become tags (mood words dropped), its `#rrggbb` colours the
+palette, pieces of one set share three tags and each gets cues of its own, and the kind adds its functional cues (blade, guard, grip). `craftctl show-art` prints every sheet.
+
+The sheets reach the designer in three places: the SPRITES task lists each item's concept, cues and silhouette, the set's shared motifs and the palette; the MODEL task of a mob carries its sheet next to the base
+rig and tells the designer to feed `orchestra_paint_skin` from it; the armor layers follow the set's icons. A sprite is judged by `spritecheck.check_sprites`, the same function behind the designer's
+`orchestra_check_sprites` tool and `install_sprites`: it is rejected when its silhouette overlaps the generator's own template for its kind by 85% or more, when it shares 85% of its pixels with another sprite of the
+batch, or when it has fewer than four colours, and the reason names the art direction it should have shown. The placeholders (tinted templates) remain until a designer paints the set.
+

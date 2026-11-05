@@ -100,6 +100,10 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--spawn", nargs="*", default=None, help="natural spawning: biomes (overworld | minecraft:plains | #minecraft:is_forest ...)")
     a.add_argument("--spawn-weight", type=int, default=10); a.add_argument("--spawn-group", nargs=2, type=int, default=(1, 3), metavar=("MIN", "MAX"))
     a = sub.add_parser("remove-mob", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("set-art", help="USER-ONLY: write the art direction of one entity (what the designer paints it from); empty fields clear it")
+    a.add_argument("project"); a.add_argument("--kind", required=True, choices=["item", "block", "food", "mob", "set", "tool", "armor"]); a.add_argument("--id", required=True)
+    a.add_argument("--concept", default=""); a.add_argument("--tags", nargs="*", default=[]); a.add_argument("--silhouette", default="")
+    a = sub.add_parser("show-art", help="The effective art direction of every entity of a project (written or derived from the theme)"); a.add_argument("project")
     a = sub.add_parser("set-body-plan", help="USER-ONLY (before generate): change the base rig of existing mobs (all when --mobs is omitted); the spec returns to DRAFT")
     a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect"]); a.add_argument("--mobs", nargs="*", default=None)
     a = sub.add_parser("add-material", help="USER-ONLY (before generate): a tier + tool/armor set (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots)")
@@ -310,6 +314,12 @@ def dispatch(args: argparse.Namespace) -> object:
                                                                      drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn), body_plan=args.body_plan, held_item=args.held_item))
         return add_mob(store, args.project, identifier=args.id, label=args.label, behavior=args.behavior, health=args.health, speed=args.speed,
                        width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn, body_plan=args.body_plan, held_item=args.held_item)
+    if args.command == "set-art":
+        from .content import set_art
+        return set_art(store, args.project, args.kind, args.id, concept=args.concept, tags=args.tags, silhouette=args.silhouette)
+    if args.command == "show-art":
+        from .content import list_art
+        return list_art(store, args.project)
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)

@@ -51,8 +51,9 @@ def coerce_art(value) -> "Art | None":
     pieces = value.get("pieces") or {}
     if not isinstance(pieces, dict):
         raise InputError("art.pieces must map a tool/armor kind to a sentence")
-    return Art(concept=str(value.get("concept") or "").strip(), tags=tuple(str(t).strip() for t in tags if str(t).strip()),
-               silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()})
+    art = Art(concept=str(value.get("concept") or "").strip(), tags=tuple(str(t).strip() for t in tags if str(t).strip()),
+              silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()})
+    return art if (art.concept or art.tags or art.silhouette or art.pieces) else None      # all fields empty is no art, not an empty sheet
 
 
 def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None:

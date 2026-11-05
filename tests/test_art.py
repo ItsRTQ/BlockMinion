@@ -175,6 +175,74 @@ class TestBriefs(Project):
             self.assertIn(needle, SPEC_INSTRUCTIONS.replace("6-10 concrete visual cues", "visual cues"))
 
 
+class TestSetArt(Project):
+    def test_list_and_set_every_kind(self):
+        from mod_orchestra.content import list_art, set_art
+        keys = set(list_art(self.store, "g_mod"))
+        self.assertEqual(keys, {"item:tooth", "food:grub_stew", "mob:brute", "set:groko", "tool:groko_sword", "tool:groko_axe", "armor:groko_helmet", "armor:groko_boots"})
+        self.assertTrue(all(v["source"] == "derived" for v in list_art(self.store, "g_mod").values()))
+        out = set_art(self.store, "g_mod", "tool", "groko_sword", concept="a notched cleaver with bone teeth")
+        self.assertEqual((out["art"]["concept"], out["art"]["source"]), ("a notched cleaver with bone teeth", "authored"))
+        set_art(self.store, "g_mod", "set", "groko", concept="crude black iron", tags="serrated edge, bone teeth ; rust red", silhouette="cleaver")
+        a = list_art(self.store, "g_mod")
+        self.assertEqual((a["set:groko"]["tags"], a["set:groko"]["silhouette"]), (["serrated edge", "bone teeth", "rust red"], "cleaver"))
+        self.assertEqual(a["tool:groko_sword"]["concept"], "a notched cleaver with bone teeth")           # the piece text survived the set edit
+        self.assertEqual((a["armor:groko_helmet"]["concept"], a["armor:groko_helmet"]["tags"]), ("crude black iron", ["serrated edge", "bone teeth", "rust red"]))   # no piece text: the set's
+        for kind, ident in (("item", "tooth"), ("food", "grub_stew"), ("mob", "brute")):
+            self.assertEqual(set_art(self.store, "g_mod", kind, ident, concept=f"a {ident}", tags=["x y", "z w"])["art"]["source"], "authored")
+        self.assertEqual(read_spec(self.store.project("g_mod")["spec"]).mobs[0].art.tags, ("x y", "z w"))
+
+    def test_empty_fields_clear_and_bad_input_is_refused(self):
+        from mod_orchestra.content import list_art, set_art
+        set_art(self.store, "g_mod", "tool", "groko_axe", concept="a skull-knobbed slab")
+        set_art(self.store, "g_mod", "tool", "groko_axe", concept="")
+        self.assertEqual(list_art(self.store, "g_mod")["tool:groko_axe"]["source"], "derived")
+        set_art(self.store, "g_mod", "mob", "brute", concept="x y z"); set_art(self.store, "g_mod", "mob", "brute")
+        self.assertIsNone(read_spec(self.store.project("g_mod")["spec"]).mobs[0].art)
+        for args in (("wand", "tooth"), ("item", "nope"), ("mob", "ghost"), ("tool", "groko_wand"), ("set", "nope")):
+            with self.assertRaises(InputError, msg=str(args)):
+                set_art(self.store, "g_mod", *args, concept="a thing")
+        with self.assertRaises(InputError):
+            set_art(self.store, "g_mod", "item", "tooth", concept="<script>")
+        with self.assertRaises(InputError):
+            set_art(self.store, "g_mod", "item", "tooth", concept="ok", tags=["a"] * 20)
+
+    def test_editing_after_generation_is_cosmetic(self):
+        from mod_orchestra.content import set_art
+        before = self.store.project("g_mod")["status"]
+        set_art(self.store, "g_mod", "item", "tooth", concept="a yellowed fang")
+        self.assertEqual((self.store.project("g_mod")["status"], self.store.project("g_mod")["spec_state"]), (before, "APPROVED"))
+
+
+class TestSetArtBeforeGeneration(unittest.TestCase):
+    def test_it_returns_the_spec_to_draft_like_any_spec_edit(self):
+        from mod_orchestra.content import set_art
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "s.sqlite")
+            with patch.object(workflow, "PROJECTS", Path(tmp) / "p"):
+                (Path(tmp) / "p").mkdir()
+                workflow.new_project(store, name="G", mod_id="g_mod", package="com.x.g", idea="items: tooth")
+                workflow.plan_project(store, "g_mod"); workflow.approve_spec(store, "g_mod")
+                self.assertEqual(store.project("g_mod")["spec_state"], "APPROVED")
+                set_art(store, "g_mod", "item", "tooth", concept="a yellowed fang")
+                self.assertEqual(store.project("g_mod")["spec_state"], "DRAFT")
+
+
+class TestCli(unittest.TestCase):
+    def test_set_art_and_show_art_through_the_command_line(self):
+        import os, subprocess, sys
+        with tempfile.TemporaryDirectory() as home:
+            env = {**os.environ, "CRAFTCTL_HOME": home}
+            run = lambda *a: subprocess.run([sys.executable, "-m", "mod_orchestra.cli", *a], env=env, capture_output=True, text=True)
+            self.assertEqual(run("new", "--name", "G", "--id", "g_mod", "--package", "com.x.g", "--idea", "items: tooth; hostile mobs: brute").returncode, 0)
+            r = run("set-art", "g_mod", "--kind", "mob", "--id", "brute", "--concept", "a hulking ork with a broken tusk", "--tags", "scarred hide", "iron pauldron")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            shown = json.loads(run("show-art", "g_mod").stdout)
+            self.assertEqual((shown["mob:brute"]["source"], shown["mob:brute"]["tags"]), ("authored", ["scarred hide", "iron pauldron"]))
+            self.assertEqual(shown["item:tooth"]["source"], "derived")
+            self.assertNotEqual(run("set-art", "g_mod", "--kind", "mob", "--id", "ghost", "--concept", "x y").returncode, 0)
+
+
 class TestSpriteTool(Project):
     def test_designer_checks_before_finishing(self):
         from mod_orchestra.mcp import invoke, TOOLS
