@@ -238,3 +238,17 @@ Analysed from a downloaded `.bbmodel` (format 5.0, geckolib_model); numbers and 
 - What landed from it: `curve(snap=)` linear impacts on every attack, `chain()` travelling waves (serpent, fish and
   quadruped tails), the scale rule corrected, skill rules on re-posing, state clips and props physics.
 
+## 13. Calibration — a boss-size swimmer (CC0 whale, read 2026-11-05)
+
+- 55 cubes, 37 bones, depth 7, 6.9 blocks long; UV 256² with a 512² PNG; `visible_box [10, 3.5, 1.25]`.
+- Empty `root` → `body`; tail chain `tail_a → b → c → d → flukes → fluke_left/right`; three flipper pairs of 3–4
+  segments fanned by rest rotation; three dorsals; jaw with chin fins. 0 rotated cubes, 0 inflate, `mirror_uv` 14.
+- `swim` 4 s: the tail is a travelling X wave, amplitudes 5.0 → 6.9 → 9.0 → 9.9 → 14.0 (grow ≈ 1.3) with each segment
+  0.125 of a cycle behind; flippers are 4-segment Z chains at constant ≈ 8° with the same lag. This is `rigs.chain()`.
+- `drift` 8 s on all 36 bones at 0.5 s steps, amplitudes growing distally (tail 2.2 → 6.2, flippers 4 → 4.5) and
+  `root` itself ±0.6/±0.4.
+- `rift_dive` 4 s and `emerge` 3 s move `root` (pitch −5 → +9, position up to −4/+1.5); `roll` 6 s spins `body` 372°
+  on Z over a slow `root` drift. `sing` 5 s: jaw vibrato −12.4 ↔ −15.2 every 0.13 s with the head raised 7–8°.
+- What landed: `root` drift on the fish idle/swim, skill rules on root-as-vehicle, distal drift, constant-amplitude
+  fin chains, vibrato, bounds and time scale for big creatures.
+

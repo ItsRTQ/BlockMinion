@@ -642,6 +642,93 @@
           ]
         },
         {
+          "bone": "root",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.47,
+                0.0,
+                -0.4
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0.6,
+                -0.0,
+                -0.05
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                0.37,
+                -0.0,
+                0.4
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                -0.08,
+                -0.0,
+                0.05
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.25,
+              "value": [
+                -0.47,
+                0.0,
+                -0.4
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.5,
+              "value": [
+                -0.6,
+                0.0,
+                -0.05
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.75,
+              "value": [
+                -0.37,
+                -0.0,
+                0.4
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 2.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
           "bone": "head",
           "channel": "rotation",
           "keyframes": [
@@ -1217,6 +1304,57 @@
               "interpolation": "catmullrom"
             }
           ]
+        },
+        {
+          "bone": "root",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0.29,
+                -0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                -0.74,
+                0.0,
+                -0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                -0.29,
+                -0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
         }
       ]
     },
@@ -1414,5 +1552,5 @@
       ]
     }
   ],
-  "notes": "walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel. Attack: Bite: a hard tail beat throws the body forward (0.4) as the head snaps down."
+  "notes": "walk = swim: a travelling Y wave down tail \u2192 tail_fin (the fin whips most); body counter-wags and `root` sways the whole fish. Whole-body moves (dive, surface, roll) go on `root`; pectoral fins with several segments are constant-amplitude chains. Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel. Attack: Bite: a hard tail beat throws the body forward (0.4) as the head snaps down."
 }

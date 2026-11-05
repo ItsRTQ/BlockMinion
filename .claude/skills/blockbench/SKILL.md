@@ -75,6 +75,15 @@ Target density: the base rig is a 10–19 bone skeleton; a finished creature run
   (X and Y out of phase) with the tip lagging.
 - State clips: `loop: hold` clips that leave a pose (`backpack_off`) paired with a loop that runs in that state
   (`backpack_idle`) make a state machine out of animations; the entity switches controllers by state.
+- `root` is the vehicle: a dive, a surfacing, a leap, a death collapse are keys on `root` (pitch on X, position on Y/Z);
+  a roll spins `body` under a steady `root`. The rig stays animatable on top.
+- Drift every chain, growing distally: a swimmer or flyer at rest sways on `root` (±0.5°) and every tail or fin segment
+  wobbles a little more than its parent (2° → 6° to the tip); 8 s cycles for a boss, 2–3 s for a small creature.
+  Pectoral fins and wings with several segments are constant-amplitude chains (`grow 1.0`); tails grow 1.3–1.5.
+- Sound or strain is vibrato: a small fast oscillation (±1.5° every 0.13 s on the jaw) while the pose holds reads as
+  singing, growling, chattering claws, a straining lift.
+- Big creatures need big bounds: set `visible_box` to cover the whole model or the renderer culls it when its origin
+  leaves the screen; clip lengths scale with size (a 7-block whale: loops 4–8 s, one-shots 3–6 s).
 - Rest pose on bones, not cubes, when the shape is a posed limb: a splayed spider leg or a cocked wing is `rotation` on the
   bone (pivot at the joint), so every clip stays relative to the pose and the joint still bends where it should. Rotate
   the cube itself only for static shape (plates, horns, fins) that never animates on its own.
