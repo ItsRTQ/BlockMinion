@@ -95,7 +95,7 @@ jobs:
           CRAFTCTL_HOME: ${{ runner.temp }}/craft
         run: |
           set -euo pipefail
-          craftctl new --name "CI Mod" --id ci_mod --package com.example.cimod --idea "items: ci gem, ci dust; blocks: ci ore; mobs: ci critter; tab: CI Mod"
+          craftctl new --name "CI Mod" --id ci_mod --package com.example.cimod --idea "items: ci gem, ci dust; blocks: ci ore; mobs: ci critter; hostile mobs: ci stalker; tab: CI Mod"
           craftctl add-material ci_mod --id ci --label CI --ingredient ci_gem --tools sword pickaxe --armor helmet boots > /dev/null
           craftctl add-food ci_mod --id ci_snack --label "CI Snack" --nutrition 3 --effect minecraft:speed:100:0:1.0 > /dev/null > /dev/null
           craftctl plan ci_mod > /dev/null
