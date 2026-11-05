@@ -13,7 +13,16 @@
   ],
   "bones": [
     {
+      "name": "root",
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
       "name": "body",
+      "parent": "root",
       "origin": [
         0,
         5,
@@ -481,7 +490,200 @@
           ]
         }
       ]
+    },
+    {
+      "name": "animation.fish.attack",
+      "length": 0.8,
+      "loop": "once",
+      "channels": [
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.2,
+              "value": [
+                -12,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.4,
+              "value": [
+                15,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "body",
+          "channel": "position",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.2,
+              "value": [
+                0,
+                0,
+                1
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.4,
+              "value": [
+                0,
+                0,
+                -2
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "tail",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.2,
+              "value": [
+                0,
+                25,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.4,
+              "value": [
+                0,
+                -25,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.6,
+              "value": [
+                0,
+                10,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "tail_fin",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.25,
+              "value": [
+                0,
+                35,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.45,
+              "value": [
+                0,
+                -35,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.65,
+              "value": [
+                0,
+                15,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.8,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        }
+      ]
     }
   ],
-  "notes": "walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel."
+  "notes": "walk = swim: tail and tail_fin wag on Y with the fin leading more than the tail; body counter-wags. Floats at Y 2-11; the entity hitbox height should match (~0.6). Flatten for a ray, lengthen for an eel. Attack: Bite: a hard tail beat throws the body forward (0.4) as the head snaps down."
 }

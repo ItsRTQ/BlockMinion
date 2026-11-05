@@ -46,16 +46,32 @@ class TestRecipes(unittest.TestCase):
     def test_clips_are_idle_and_walk_on_tick_boundaries(self):
         for plan in rigs.BODY_PLANS:
             rec = rigs.recipe(plan)
-            self.assertEqual([a["name"] for a in rec["animations"]], [f"animation.{plan}.idle", f"animation.{plan}.walk"])
+            self.assertEqual([a["name"] for a in rec["animations"]], [f"animation.{plan}.idle", f"animation.{plan}.walk", f"animation.{plan}.attack"])
             bones = {b["name"] for b in rec["bones"]}
             for a in rec["animations"]:
-                self.assertEqual(a["loop"], "loop")
+                self.assertEqual(a["loop"], "once" if a["name"].endswith(".attack") else "loop")
                 for ch in a["channels"]:
                     self.assertIn(ch["bone"], bones, (plan, a["name"]))
                     keys = ch["keyframes"]
-                    self.assertEqual(keys[0]["value"], keys[-1]["value"], f"{plan}/{a['name']}/{ch['bone']}: loop seam")
+                    self.assertEqual(keys[0]["time"], 0.0); self.assertEqual(keys[-1]["time"], a["length"], (plan, a["name"], ch["bone"]))
+                    if a["loop"] == "loop":
+                        self.assertEqual(keys[0]["value"], keys[-1]["value"], f"{plan}/{a['name']}/{ch['bone']}: loop seam")
+                    else:  # one-shot: starts and ends at rest so it blends with idle/walk
+                        self.assertEqual(keys[0]["value"], [0, 0, 0]); self.assertEqual(keys[-1]["value"], [0, 0, 0])
+                    self.assertEqual([k["time"] for k in keys], sorted(k["time"] for k in keys))
                     for k in keys:
                         self.assertAlmostEqual(round(k["time"] / 0.05) * 0.05, k["time"], places=6, msg=(plan, a["name"], k))
+
+
+    def test_root_is_empty_and_limbs_are_jointed(self):
+        for plan in rigs.BODY_PLANS:
+            rec = rigs.recipe(plan)
+            self.assertEqual(rec["bones"][0], {"name": "root", "origin": [0, 0, 0]})
+            self.assertFalse([c for c in rec["cubes"] if c["bone"] == "root"], plan)
+        bones = {b["name"]: b for b in rigs.recipe("biped")["bones"]}
+        self.assertEqual(bones["left_arm_forearm"]["parent"], "left_arm"); self.assertEqual(bones["left_leg_shin"]["parent"], "left_leg")
+        b, c = rigs.jointed_limb("left_x", "body", [("", [1, 2, 3], [0, 0, 0], [1, 1, 1]), ("lower", [1, 1, 3], [0, -1, 0], [1, 0, 1])])
+        self.assertEqual([x["name"] for x in b], ["left_x", "left_x_lower"]); self.assertEqual(b[1]["parent"], "left_x"); self.assertEqual(c[1]["bone"], "left_x_lower")
 
 
 class TestPacker(unittest.TestCase):
@@ -96,9 +112,10 @@ class TestExports(unittest.TestCase):
     def test_animation_export_names_and_renaming(self):
         for plan in rigs.BODY_PLANS:
             anim = rigs.load_rig(plan, "anim")
-            self.assertEqual(set(anim["animations"]), {f"animation.{plan}.idle", f"animation.{plan}.walk"})
+            self.assertEqual(set(anim["animations"]), {f"animation.{plan}.idle", f"animation.{plan}.walk", f"animation.{plan}.attack"})
+            self.assertNotIn("loop", anim["animations"][f"animation.{plan}.attack"])  # one-shot
             renamed = rigs.rig_animation_for(plan, "my_mob")
-            self.assertEqual(set(renamed["animations"]), {"animation.my_mob.idle", "animation.my_mob.walk"})
+            self.assertEqual(set(renamed["animations"]), {"animation.my_mob.idle", "animation.my_mob.walk", "animation.my_mob.attack"})
             self.assertEqual(rigs.rig_geo_for(plan, "my_mob")["minecraft:geometry"][0]["description"]["identifier"], "geometry.my_mob")
             self.assertEqual(rigs.load_rig(plan, "geo")["minecraft:geometry"][0]["description"]["identifier"], f"geometry.{plan}")
 
@@ -149,7 +166,7 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(geo["minecraft:geometry"][0]["description"]["identifier"], "geometry.cave_golem")
         self.assertEqual([b["name"] for b in geo["minecraft:geometry"][0]["bones"]], [b["name"] for b in rigs.recipe("biped")["bones"]])
         anim = json.loads((self.res / "animations/entity/cave_golem.animation.json").read_text())
-        self.assertEqual(set(anim["animations"]), {"animation.cave_golem.idle", "animation.cave_golem.walk"})
+        self.assertEqual(set(anim["animations"]), {"animation.cave_golem.idle", "animation.cave_golem.walk", "animation.cave_golem.attack"})
         png = (self.res / "textures/entity/cave_golem.png").read_bytes()
         self.assertEqual((int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")), (64, 64))  # biped resolution
 
@@ -166,7 +183,7 @@ class TestIntegration(unittest.TestCase):
         src = self.root / MODEL_DIR / "cave_golem.bbmodel"
         m = json.loads(src.read_text())
         self.assertEqual((m["model_identifier"], m["mod_id"], m["meta"]["model_format"]), ("cave_golem", "r_mod", "geckolib_model"))
-        self.assertEqual({a["name"] for a in m["animations"]}, {"animation.cave_golem.idle", "animation.cave_golem.walk"})
+        self.assertEqual({a["name"] for a in m["animations"]}, {"animation.cave_golem.idle", "animation.cave_golem.walk", "animation.cave_golem.attack"})
         src.write_text(src.read_text().replace('"name": "torso"', '"name": "chest"'))  # the designer edited it
         self.assertIn("already present", rig_block(self.store, "r_mod", "cave_golem", self.root))
         self.assertIn('"chest"', src.read_text())  # not overwritten
@@ -186,7 +203,7 @@ class TestIntegration(unittest.TestCase):
         proc = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         out = json.loads(proc.stdout)
-        self.assertEqual(out, {"id": "geometry.cave_golem", "clips": ["animation.cave_golem.idle", "animation.cave_golem.walk"]})
+        self.assertEqual(out, {"id": "geometry.cave_golem", "clips": ["animation.cave_golem.idle", "animation.cave_golem.walk", "animation.cave_golem.attack"]})
 
 
 if __name__ == "__main__":

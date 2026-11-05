@@ -176,8 +176,29 @@ whether a model is "done", not as something to copy.
 | raccoon merchant (biped) | 29 | 19 | 1.5 | 64² | 13 (idle, sit/beg, eat, walk, run, wash, sneeze, backpack on/off/open/close/idle, happy) |
 | cosmic whale (fish, boss) | 55 | 37 | 1.5 | 256² | 6 (drift, swim, sing, roll, dive, emerge) |
 | crab captain (insect-like) | 72 | 54 | 1.3 | 64² | 8 (idle, walk, dance, drink, salute, snap, tipsy, hat toss) |
-| **base rigs here** | 5–9 | 5–9 | ~1.1 | 64² | 2 (idle, walk) |
+| **base rigs here** | 7–15 | 10–19 | ~0.8 | 64² | 3 (idle, walk, attack) |
 
 What the gap says: (a) legs with 2–3 articulated segments and props on their own bones are where the bone count
 comes from; (b) 64×64 is enough for 30–70 cubes when the UV is packed; (c) a creature with personality has
 6–13 clips, most of them short one-shot actions on top of idle/walk/run.
+
+## 10. Calibration — a boss-scale rig built programmatically (MeherBenSalem/Bosses, Apache-2.0, read 2026-11-04)
+
+`docs/models/hollow_sovereign` in that repository is a GeckoLib boss authored through a Blockbench MCP from Python,
+the same shape as this project's pipeline. Numbers and patterns only; nothing copied.
+
+- 106 cubes, 24 bones, depth 5. Empty `root` at `[0,0,0]` → `body` → `chest` → `head` → `jaw`; `crown` with five shard
+  bones on a pentagon of pivots; arms `arm → forearm → hand` (3 joints), legs `leg → shin` (2); tassets as bones.
+- 64 of 106 cubes carry per-cube rotation (organic silhouette without extra bones); no `inflate`; per-face UV on a
+  512² atlas reusing an existing texture's patches.
+- Naming matches ours: `right_*` at −X, `left_*` at +X.
+- 9 clips: idle 4 s, walk 1.2 s (loops); awaken, roar, claw_combo 1.8 s (impacts 0.55 and 1.15, second arm delayed
+  0.6 s), ground_slam 2.2 s (windup to 0.8, impact 1.05, hold to 1.35), core_blast, enrage (once); death 3.5 s (hold).
+- Authoring: 3–6 points per bone (windup → impact → recovery → rest) in a motion module, then a shape-preserving cubic
+  (Fritsch–Carlson tangents, zero at peaks) sampled at 24 fps into linear keyframes — portable, runtime-independent;
+  7.5k keys. Walk shins use `−28·max(0, sin)`; crown shards bob with a `sin²` envelope on one-shots.
+- Amplitudes: rotation −150…+360 (windups), position ±13 (boss scale), scale 0–1.6 (pulsing core).
+- Its verifier checks: unique bones, one root, acyclic parents, finite keyframe values, keys within clip length, positive
+  cube sizes, every UV rectangle inside the atlas and opaque. `models.validate_model_files` now checks one root, acyclic
+  parents, key timing and box-UV bounds; UV opacity against the PNG is still a backlog item.
+

@@ -13,7 +13,16 @@
   ],
   "bones": [
     {
+      "name": "root",
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
       "name": "body",
+      "parent": "root",
       "origin": [
         0,
         2,
@@ -394,7 +403,209 @@
           ]
         }
       ]
+    },
+    {
+      "name": "animation.serpent.attack",
+      "length": 1.0,
+      "loop": "once",
+      "channels": [
+        {
+          "bone": "body",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.3,
+              "value": [
+                -25,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                10,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.7,
+              "value": [
+                2,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "head",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.35,
+              "value": [
+                -30,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.55,
+              "value": [
+                20,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.75,
+              "value": [
+                5,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "body",
+          "channel": "position",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.3,
+              "value": [
+                0,
+                1,
+                2
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0,
+                -4
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.7,
+              "value": [
+                0,
+                0,
+                -2
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        },
+        {
+          "bone": "segment_2",
+          "channel": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.35,
+              "value": [
+                15,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 0.55,
+              "value": [
+                -10,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            },
+            {
+              "time": 1.0,
+              "value": [
+                0,
+                0,
+                0
+              ],
+              "interpolation": "catmullrom"
+            }
+          ]
+        }
+      ]
     }
   ],
-  "notes": "Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra."
+  "notes": "Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra. Attack: Strike: coil back and rear the head (0.3), lunge forward and down (0.5), recover."
 }
