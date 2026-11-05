@@ -74,10 +74,12 @@ def bob(bone: str, length: float, amplitude: float, channel: str = "position", a
 
 def knee(bone: str, length: float, amplitude: float, phase: int = 1, axis: int = 0) -> dict:
     """A joint that bends one way only (knee, elbow, hock): -amp * max(0, sin) over the cycle, 5 samples, loop-seamed.
-    phase=1 bends during the first half, phase=-1 during the second (the opposite leg)."""
+    `phase` is the phase of the swing() on the same leg: swing(phase=1) is forward at t=0 and moves forward during the
+    SECOND half of the cycle, so that is where the knee flexes (the foot lifts while it travels forward and stays
+    planted while it pushes back); phase=-1 swings forward in the first half and flexes there."""
     def v(x):
         out = [0.0, 0.0, 0.0]; out[axis] = -amplitude * x; return out
-    pat = [0, 1, 0, 0, 0] if phase == 1 else [0, 0, 0, 1, 0]
+    pat = [0, 0, 0, 1, 0] if phase == 1 else [0, 1, 0, 0, 0]
     return {"bone": bone, "channel": "rotation", "keyframes": [
         {"time": round(length * i / 4, 2), "value": v(pat[i]), "interpolation": "catmullrom"} for i in range(5)]}
 
@@ -422,9 +424,12 @@ def insect() -> dict:
     idle = [drift("body", 2.0, (1.0, 0.8, 0.8)), drift("head", 2.0, (3.0, 4.0, 1.0), seed=1, spike=(1.3, 0, -8)),
             drift("abdomen", 2.0, (2.5, 1.0, 0.5), seed=2)]
     gait = (("left", "front", 1), ("left", "mid", -1), ("left", "back", 1), ("right", "front", -1), ("right", "mid", 1), ("right", "back", -1))
-    walk = [combine(swing(f"{s_}_{p}_leg", 1.0, 20, ph, axis=1), lift(f"{s_}_{p}_leg", 1.0, 12 * (1 if s_ == "left" else -1), ph, axis=2))
+    # The sweep is a yaw on legs splayed outward, so left and right legs of the same gait phase move forward at opposite times; lift and
+    # knee take the phase that puts the foot's highest point in the forward swing (scripts/gait_check.mjs measures it, tests lock it).
+    eff = lambda s_, ph: -ph if s_ == "left" else ph
+    walk = [combine(swing(f"{s_}_{p}_leg", 1.0, 20, ph, axis=1), lift(f"{s_}_{p}_leg", 1.0, 12 * (1 if s_ == "left" else -1), eff(s_, ph), axis=2))
             for s_, p, ph in gait] + \
-           [knee(f"{s_}_{p}_leg_lower", 1.0, 15 * (1 if s_ == "left" else -1), ph, axis=2) for s_, p, ph in gait] + [bob("body", 1.0, 0.3)]
+           [knee(f"{s_}_{p}_leg_lower", 1.0, 15 * (1 if s_ == "left" else -1), eff(s_, ph), axis=2) for s_, p, ph in gait] + [bob("body", 1.0, 0.3)]
     attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-25, 0, 0]), (0.4, [30, 0, 0]), (0.55, [8, 0, 0]), (0.8, [0, 0, 0])], snap=2),
               curve("body", "rotation", [(0, [0, 0, 0]), (0.2, [10, 0, 0]), (0.4, [-8, 0, 0]), (0.8, [0, 0, 0])]),
               curve("abdomen", "rotation", [(0, [0, 0, 0]), (0.2, [-8, 0, 0]), (0.4, [6, 0, 0]), (0.8, [0, 0, 0])], delay=0.05),

@@ -5,6 +5,7 @@ import threading
 import time
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import webbrowser
@@ -111,7 +112,10 @@ def serve(store: Store, port: int = 8765) -> None:
                 if path == "/api/settings":
                     from .dispatch import provider_name_for, PROVIDER_NAMES
                     from .provider import ClaudeCodeProvider, GeminiCliProvider, AntigravityCliProvider
-                    return {"provider": provider_name_for(store), "saved": store.get_global("provider"), "env": os.environ.get("CRAFTCTL_PROVIDER"),
+                    current = provider_name_for(store)
+                    return {"provider": current, "saved": store.get_global("provider"), "env": os.environ.get("CRAFTCTL_PROVIDER"),
+                            "model": store.get_global("model:" + current),
+                            "model_env": os.environ.get("CRAFTCTL_AGY_MODEL" if current == "antigravity-cli" else "CRAFTCTL_GEMINI_MODEL"),
                             "choices": [n for n in PROVIDER_NAMES if n != "fake"],
                             "available": {"claude-code": ClaudeCodeProvider().available(), "gemini-cli": GeminiCliProvider().available(),
                                           "antigravity-cli": AntigravityCliProvider().available()}}
@@ -158,13 +162,19 @@ def serve(store: Store, port: int = 8765) -> None:
                     raise InputError("Unknown project query")
             else:
                 if path == "/api/settings":
-                    from .dispatch import PROVIDER_NAMES
-                    name = payload.get("provider")
-                    if name not in PROVIDER_NAMES and name is not None:
-                        raise InputError(f"provider must be one of {', '.join(PROVIDER_NAMES)}")
-                    store.set_global("provider", name)   # None clears the saved choice (back to env / default)
-                    from .dispatch import provider_name_for
-                    return {"provider": provider_name_for(store), "saved": name}
+                    from .dispatch import PROVIDER_NAMES, provider_name_for
+                    if "provider" in payload:
+                        name = payload.get("provider")
+                        if name not in PROVIDER_NAMES and name is not None:
+                            raise InputError(f"provider must be one of {', '.join(PROVIDER_NAMES)}")
+                        store.set_global("provider", name)   # None clears the saved choice (back to env / default)
+                    if "model" in payload:   # the model of the runtime now in force; empty clears it (the CLI picks its own default)
+                        model = (payload.get("model") or "").strip() or None
+                        if model is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._()\-]{0,79}", model):
+                            raise InputError("model may only contain letters, digits, spaces and . _ ( ) -  (as printed by `agy models`)")
+                        store.set_global("model:" + provider_name_for(store), model)
+                    current = provider_name_for(store)
+                    return {"provider": current, "saved": store.get_global("provider"), "model": store.get_global("model:" + current)}
                 if path == "/api/projects":
                     return new_project(store, name=payload["name"], mod_id=payload["id"], package=payload["package"], idea=payload["idea"])
                 if path.startswith("/api/project/"):

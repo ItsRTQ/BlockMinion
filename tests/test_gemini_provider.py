@@ -22,6 +22,17 @@ cap.write_text(json.dumps({"argv": sys.argv[1:], "stdin": prompt, "cwd": str(Pat
                            "mcp_config": mcp.read_text() if mcp.is_file() else None, "task_file": task.read_text() if task.is_file() else None,
                            "env_home": os.environ.get("HOME") or os.environ.get("USERPROFILE")}))
 mode = cfg.get("mode", "ok")
+if mode == "agy_events":   # agy 1.5.x: {"event": ...} lines and one result event that carries the whole answer
+    answer = "Proposed the spec.\n\n```handoff\n" + json.dumps(cfg.get("handoff", {})) + "\n```\n"
+    print(json.dumps({"input_tokens": 4058, "output_tokens": 6277, "thinking_tokens": 3991}) + "}}")   # stray tail of a previous record
+    print(json.dumps({"event": "result", "result": {"conversation_id": "conv-1", "status": "SUCCESS", "response": answer,
+                                                    "duration_seconds": 95.1, "num_turns": 1, "usage": {"input_tokens": 18380, "output_tokens": 8215}}}))
+    sys.exit(0)
+if mode == "agy_404":   # what the user hit: work happens, then the backend says the model is not available to the account
+    print(json.dumps({"event": "tool_call", "tool_call": {"name": "bbmodel_render", "status": "ok"}}))
+    print(json.dumps({"event": "result", "result": {"conversation_id": "conv-404", "status": "ERROR", "num_turns": 1,
+                                                    "error": "NOT_FOUND (code 404): Requested entity was not found.", "usage": {"input_tokens": 77089, "output_tokens": 17553}}}))
+    sys.exit(1)
 if mode == "plain":   # agy < 1.1.8 style: no JSON events, just the answer
     print("Done.\n```handoff\n" + json.dumps(cfg.get("handoff", {})) + "\n```"); sys.exit(0)
 print(json.dumps({"type": "init", "session_id": "sess-1", "model": "gemini-test"}))
@@ -68,6 +79,26 @@ class TestParser(unittest.TestCase):
     def test_partial_log_and_errors(self):
         rec = parse_gemini_stream(json.dumps({"type": "error", "message": "boom"}))
         self.assertEqual((rec["text"], rec["result_seen"], rec["errors"]), ("", False, ["boom"]))
+
+    def test_agy_event_format_result_carries_the_answer(self):
+        h = {"task": "p:CODE:x", "status": "DONE"}
+        resp = "Done.\n```handoff\n" + json.dumps(h) + "\n```"
+        raw = "\n".join(['{"input_tokens":1}}', json.dumps({"event": "result", "result": {"conversation_id": "c1", "status": "SUCCESS", "response": resp,
+                                                                                   "num_turns": 2, "usage": {"input_tokens": 5, "output_tokens": 7}}})])
+        rec = parse_gemini_stream(raw)
+        self.assertEqual((rec["session_id"], rec["status"], rec["result_seen"], rec["text"]), ("c1", "success", True, resp))
+        self.assertEqual(rec["stats"], {"input_tokens": 5, "output_tokens": 7, "turns": 2})
+        self.assertEqual(live_summary(raw), ["■ finished: success · 2 turns · 5/7 tokens"])
+        # the Claude Code result shape is untouched (its "result" is a string)
+        self.assertEqual(live_summary(json.dumps({"type": "result", "subtype": "success", "num_turns": 3, "total_cost_usd": 0.5, "result": "x"})),
+                         ["■ finished: success · 3 turns · $0.50"])
+
+    def test_live_summary_shows_unknown_agy_events_and_error_looking_plain_lines(self):
+        raw = "\n".join([json.dumps({"event": "tool_call", "tool_call": {"name": "bbmodel_edit"}}), json.dumps({"event": "thinking"}),
+                         "Not signed in", "just chatter", json.dumps({"type": "system", "subtype": "init"})])
+        lines = live_summary(raw)
+        self.assertEqual(lines[0], "· tool_call name=bbmodel_edit"); self.assertEqual(lines[1], "· thinking {event}")
+        self.assertEqual(lines[2], "! Not signed in"); self.assertEqual(len(lines), 3)      # chatter and Claude Code's own system events stay out
 
     def test_live_summary_reads_gemini_events(self):
         raw = "\n".join([json.dumps({"type": "tool_use", "tool_name": "write_file", "tool_id": "1", "parameters": {"file_path": "a.java"}}),
@@ -185,6 +216,32 @@ class TestAntigravityRun(TestRun):
             from mod_orchestra.provider import AntigravityCliProvider
             AntigravityCliProvider(binary="", timeout=60).run(self.envelope(), self.log)
 
+    def test_agy_1_5_event_stream_yields_the_handoff(self):
+        self.configure("agy_events")
+        res = self.provider().run(self.envelope(), self.log)
+        self.assertEqual(res.errors, []); self.assertEqual(res.handoff["status"], "DONE")
+        self.assertEqual((res.session_id, res.turns), ("conv-1", 1))
+
+    def test_model_is_opt_in_and_agy_specific(self):
+        self.provider().run(self.envelope(), self.log)
+        self.assertNotIn("--model", json.loads(self.capture.read_text())["argv"])           # default: agy chooses
+        from mod_orchestra.provider import AntigravityCliProvider
+        os.environ["CRAFTCTL_GEMINI_MODEL"] = "gemini-only"; os.environ["CRAFTCTL_AGY_MODEL"] = "Gemini 3.1 Pro (High)"
+        self.addCleanup(lambda: [os.environ.pop(k, None) for k in ("CRAFTCTL_GEMINI_MODEL", "CRAFTCTL_AGY_MODEL")])
+        AntigravityCliProvider(binary=str(self.binary), timeout=60).run(self.envelope(), self.log)
+        argv = json.loads(self.capture.read_text())["argv"]
+        self.assertEqual(argv[argv.index("--model") + 1], "Gemini 3.1 Pro (High)")          # one argv element, display string intact; the Gemini env var is not used
+
+    def test_404_not_found_explains_what_to_do_and_the_log_shows_the_work(self):
+        self.configure("agy_404")
+        res = self.provider().run(self.envelope(), self.log)
+        text = " ".join(res.errors)
+        self.assertIn("NOT_FOUND (code 404)", text); self.assertIn("agy models", text); self.assertIn("Environment", text)
+        self.assertEqual((res.session_id, res.exit_code), ("conv-404", 1))
+        lines = live_summary(res.raw_output)
+        self.assertTrue(any(l.startswith("· tool_call") for l in lines), lines)   # unknown events are no longer hidden
+        self.assertTrue(lines[-1].startswith("■ finished: error"), lines)
+
     def test_plain_text_output_still_yields_the_handoff(self):
         self.configure("plain")
         res = self.provider().run(self.envelope(), self.log)
@@ -225,6 +282,14 @@ class TestRuntimeSetting(unittest.TestCase):
         self.store.set_global("provider", None)
         self.assertEqual(provider_name_for(self.store), "gemini-cli")
         self.assertEqual(provider_name_for(None), "gemini-cli")
+
+    def test_saved_model_is_per_runtime_and_applied_by_provider_for(self):
+        from mod_orchestra.dispatch import provider_for
+        self.store.set_global("provider", "antigravity-cli"); self.store.set_global("model:antigravity-cli", "Gemini 3.1 Pro (High)")
+        self.store.set_global("model:gemini-cli", "gemini-other")
+        self.assertEqual(provider_for(self.store).model, "Gemini 3.1 Pro (High)")
+        self.store.set_global("provider", "gemini-cli"); self.assertEqual(provider_for(self.store).model, "gemini-other")
+        self.store.set_global("provider", "claude-code"); self.assertFalse(hasattr(provider_for(self.store), "model") and provider_for(self.store).model == "gemini-other")
 
     def test_global_settings_roundtrip(self):
         self.assertIsNone(self.store.get_global("provider"))

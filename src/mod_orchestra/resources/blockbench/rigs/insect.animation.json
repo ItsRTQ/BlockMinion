@@ -406,7 +406,7 @@
               "vector": [
                 0,
                 0,
-                0
+                -12
               ],
               "lerp_mode": "catmullrom"
             },
@@ -422,7 +422,7 @@
               "vector": [
                 0,
                 0,
-                -12
+                0
               ],
               "lerp_mode": "catmullrom"
             },
@@ -450,7 +450,7 @@
               "vector": [
                 0,
                 0,
-                -12
+                0
               ],
               "lerp_mode": "catmullrom"
             },
@@ -466,7 +466,7 @@
               "vector": [
                 0,
                 0,
-                0
+                -12
               ],
               "lerp_mode": "catmullrom"
             },
@@ -494,7 +494,7 @@
               "vector": [
                 0,
                 0,
-                0
+                -12
               ],
               "lerp_mode": "catmullrom"
             },
@@ -510,7 +510,7 @@
               "vector": [
                 0,
                 0,
-                -12
+                0
               ],
               "lerp_mode": "catmullrom"
             },
@@ -670,7 +670,7 @@
               "vector": [
                 0,
                 0,
-                0
+                15
               ],
               "lerp_mode": "catmullrom"
             },
@@ -686,7 +686,7 @@
               "vector": [
                 0,
                 0,
-                15
+                0
               ],
               "lerp_mode": "catmullrom"
             },
@@ -714,7 +714,7 @@
               "vector": [
                 0,
                 0,
-                15
+                0
               ],
               "lerp_mode": "catmullrom"
             },
@@ -730,7 +730,7 @@
               "vector": [
                 0,
                 0,
-                0
+                15
               ],
               "lerp_mode": "catmullrom"
             },
@@ -758,7 +758,7 @@
               "vector": [
                 0,
                 0,
-                0
+                15
               ],
               "lerp_mode": "catmullrom"
             },
@@ -774,7 +774,7 @@
               "vector": [
                 0,
                 0,
-                15
+                0
               ],
               "lerp_mode": "catmullrom"
             },

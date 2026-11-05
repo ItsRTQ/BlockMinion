@@ -1640,7 +1640,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -28,
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -1666,7 +1666,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 0,
+                  "x": -28,
                   "y": 0,
                   "z": 0
                 }
@@ -1711,7 +1711,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 0,
+                  "x": -28,
                   "y": 0,
                   "z": 0
                 }
@@ -1737,7 +1737,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -28,
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }

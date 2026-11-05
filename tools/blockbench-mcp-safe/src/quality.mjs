@@ -1,6 +1,7 @@
 import {inspect} from './model.mjs';
 import {validateGecko} from './geckolib.mjs';
 const isNum=x=>typeof x==='number'&&Number.isFinite(x);
+import {gaitWarnings} from './gait.mjs';
 export function validateQuality(model,opts={}){
   const defaults={max_span:48,max_axis_ratio:12,max_cubes:256,max_bones:96,min_thickness:0.1,max_bone_depth:16,fail_on_warnings:false};
   for(const [k,v] of Object.entries(opts)){
@@ -28,5 +29,6 @@ export function validateQuality(model,opts={}){
   const groups=new Set((model.groups||[]).map(x=>x.uuid));
   const walk=(nodes,depth)=>{for(const n of nodes){if(typeof n==='string')continue;if(groups.has(n.uuid)&&depth>p.max_bone_depth)errors.push(`RIG_TOO_DEEP: ${n.uuid} depth ${depth}`);if(depth<=32&&Array.isArray(n.children))walk(n.children,depth+1);}};
   walk(model.outliner,1);
+  if(model.meta?.model_format==='geckolib_model'){try{warnings.push(...gaitWarnings(model));}catch(e){/* gait is advisory; a malformed clip is reported by the other gates */}}
   return {valid:errors.length===0&&(!p.fail_on_warnings||warnings.length===0),errors:errors.slice(0,100),warnings:warnings.slice(0,100),metrics:{cubes:cubes.length,bones:model.groups?.length||0,span:spans},gates:p};
 }

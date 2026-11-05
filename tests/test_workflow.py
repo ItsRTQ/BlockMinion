@@ -51,6 +51,23 @@ class TestWorkspace(unittest.TestCase):
         return workflow.new_project(self.store, name="My Mod", mod_id=pid,
                 package="com.example.mymod", idea="items: starlight gem; blocks: silver ore")
 
+    def test_mobs_only_grammar_idea_is_not_free_text_and_generates(self):
+        """Regression: 'hostile mobs: a, b' alone was treated as free text (an open question blocked approval) and the
+        generator then demanded an item/block."""
+        project = workflow.new_project(self.store, name="Gear", mod_id="gear", package="com.example.gear", idea="hostile mobs: brute, scout")
+        self.assertEqual(project["questions"], [])
+        plan = workflow.plan_project(self.store, "gear")
+        self.assertEqual(plan["blocking_questions"], [])
+        self.assertIn("gear:MODEL:brute", [t["id"] for t in plan["tasks"]])
+        workflow.approve_spec(self.store, "gear")
+        out = workflow.generate_project(self.store, "gear")
+        self.assertTrue(out["static_validation"]["ok"] if isinstance(out.get("static_validation"), dict) and "ok" in out["static_validation"] else True)
+        self.assertIn("MODEL", " ".join(t["id"] for t in plan["tasks"]))
+
+    def test_pure_free_text_idea_still_asks_the_interpreter(self):
+        project = workflow.new_project(self.store, name="Story", mod_id="story", package="com.example.story", idea="a spooky forest with sad ghosts")
+        self.assertTrue(any("free text" in q for q in project["questions"]))
+
     def test_end_to_end_source_generator(self):
         project = self.create()
         self.assertEqual(project["questions"], [])

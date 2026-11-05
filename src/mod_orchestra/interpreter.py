@@ -43,7 +43,7 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
                "ingredients": ["identifier", "minecraft:id", "#minecraft:tag"], "experience": 0.7, "cooking_time": 200}}],
   "drops": [{{"block": "identifier", "item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "fortune": true, "silk_touch": true}}],
   "mobs": [{{"identifier": "snake_case", "label": "Display Name", "behavior": "passive|neutral|hostile", "health": 10, "speed": 0.25,
-            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831],
+            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831], "body_plan": "quadruped|biped|bird|fish|serpent|insect",
             "spawn": {{"biomes": ["overworld" or "#minecraft:is_forest" or "minecraft:plains"], "weight": 10, "min_group": 1, "max_group": 3}} or null for egg-only}}],
   "materials": [{{"identifier": "ruby", "label": "Ruby", "ingredient": "ruby or minecraft:diamond", "tools": ["sword","pickaxe","axe","shovel","hoe"],
                  "armor": ["helmet","chestplate","leggings","boots"], "durability": 1200, "mining_speed": 8.0, "attack_damage_bonus": 3.0,
@@ -72,6 +72,9 @@ Ores and stone-like blocks: tool pickaxe and a mining_level (iron for valuable o
 Structures: small (≤ 9x9x9) text-layer builds, bottom layer first, '.' = air; custom biomes only live in custom dimensions (vanilla overworld biome injection is not supported); a dimension gets a key item automatically.
 Every block named "ore" gets an `ores` worldgen entry (reference: iron 9/10 per chunk y -64..72; diamond 8/7 y -64..16 discard 0.7; emerald rare 3/1 mountains).
 Mobs the user describes as living somewhere ("in forests", "at night in caves") get a `spawn`; otherwise null (egg only).
+Every mob gets a `body_plan`, the base rig its model starts from: humanoids (orcs, goblins, zombies, villagers, golems, knights) biped;
+four-legged animals (wolves, deer, cows, cats) quadruped; birds and bats bird; fish, whales, sharks fish; snakes and worms serpent;
+spiders, beetles, crabs and other many-legged creatures insect. Pick by the creature's body, not its size; omit only when unsure (quadruped).
 Also put the questions (if any) under `questions`, as a list of plain sentences addressed to the user.
 Use status WAITING_USER (the user must answer or approve); never DONE. Do not create or edit any files.
 
@@ -95,8 +98,9 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
     spec = read_spec(raw)
-    if not spec.features and not spec.mobs and not spec.materials and not spec.foods:
-        raise InputError("spec proposal has no items, blocks, mobs, materials or foods")
+    from .spec import has_content
+    if not has_content(spec):
+        raise InputError("spec proposal has no items, blocks, mobs, materials, foods, enchantments, structures, biomes, dimensions or sounds")
     from .spec import check_java_name_collisions
     check_java_name_collisions(spec.features)
     return spec

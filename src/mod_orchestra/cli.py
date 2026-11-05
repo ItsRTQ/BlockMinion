@@ -99,6 +99,8 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--spawn", nargs="*", default=None, help="natural spawning: biomes (overworld | minecraft:plains | #minecraft:is_forest ...)")
     a.add_argument("--spawn-weight", type=int, default=10); a.add_argument("--spawn-group", nargs=2, type=int, default=(1, 3), metavar=("MIN", "MAX"))
     a = sub.add_parser("remove-mob", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("set-body-plan", help="USER-ONLY (before generate): change the base rig of existing mobs (all when --mobs is omitted); the spec returns to DRAFT")
+    a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect"]); a.add_argument("--mobs", nargs="*", default=None)
     a = sub.add_parser("add-material", help="USER-ONLY (before generate): a tier + tool/armor set (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
     a.add_argument("--ingredient", required=True, help="local item id or minecraft:id used for repair and recipes")
@@ -310,6 +312,9 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)
+    if args.command == "set-body-plan":
+        from .specedit import set_body_plan
+        return set_body_plan(store, args.project, args.plan, args.mobs)
     if args.command == "add-material":
         from .specedit import add_material
         return add_material(store, args.project, identifier=args.id, label=args.label, ingredient=args.ingredient, tools=args.tools, armor=args.armor,
