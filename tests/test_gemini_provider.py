@@ -22,6 +22,12 @@ cap.write_text(json.dumps({"argv": sys.argv[1:], "stdin": prompt, "cwd": str(Pat
                            "mcp_config": mcp.read_text() if mcp.is_file() else None, "task_file": task.read_text() if task.is_file() else None,
                            "env_home": os.environ.get("HOME") or os.environ.get("USERPROFILE")}))
 mode = cfg.get("mode", "ok")
+if mode == "agy_events":   # agy 1.5.x: {"event": ...} lines and one result event that carries the whole answer
+    answer = "Proposed the spec.\n\n```handoff\n" + json.dumps(cfg.get("handoff", {})) + "\n```\n"
+    print(json.dumps({"input_tokens": 4058, "output_tokens": 6277, "thinking_tokens": 3991}) + "}}")   # stray tail of a previous record
+    print(json.dumps({"event": "result", "result": {"conversation_id": "conv-1", "status": "SUCCESS", "response": answer,
+                                                    "duration_seconds": 95.1, "num_turns": 1, "usage": {"input_tokens": 18380, "output_tokens": 8215}}}))
+    sys.exit(0)
 if mode == "plain":   # agy < 1.1.8 style: no JSON events, just the answer
     print("Done.\n```handoff\n" + json.dumps(cfg.get("handoff", {})) + "\n```"); sys.exit(0)
 print(json.dumps({"type": "init", "session_id": "sess-1", "model": "gemini-test"}))
@@ -68,6 +74,19 @@ class TestParser(unittest.TestCase):
     def test_partial_log_and_errors(self):
         rec = parse_gemini_stream(json.dumps({"type": "error", "message": "boom"}))
         self.assertEqual((rec["text"], rec["result_seen"], rec["errors"]), ("", False, ["boom"]))
+
+    def test_agy_event_format_result_carries_the_answer(self):
+        h = {"task": "p:CODE:x", "status": "DONE"}
+        resp = "Done.\n```handoff\n" + json.dumps(h) + "\n```"
+        raw = "\n".join(['{"input_tokens":1}}', json.dumps({"event": "result", "result": {"conversation_id": "c1", "status": "SUCCESS", "response": resp,
+                                                                                   "num_turns": 2, "usage": {"input_tokens": 5, "output_tokens": 7}}})])
+        rec = parse_gemini_stream(raw)
+        self.assertEqual((rec["session_id"], rec["status"], rec["result_seen"], rec["text"]), ("c1", "success", True, resp))
+        self.assertEqual(rec["stats"], {"input_tokens": 5, "output_tokens": 7, "turns": 2})
+        self.assertEqual(live_summary(raw), ["■ finished: success · 2 turns · 5/7 tokens"])
+        # the Claude Code result shape is untouched (its "result" is a string)
+        self.assertEqual(live_summary(json.dumps({"type": "result", "subtype": "success", "num_turns": 3, "total_cost_usd": 0.5, "result": "x"})),
+                         ["■ finished: success · 3 turns · $0.50"])
 
     def test_live_summary_reads_gemini_events(self):
         raw = "\n".join([json.dumps({"type": "tool_use", "tool_name": "write_file", "tool_id": "1", "parameters": {"file_path": "a.java"}}),
@@ -184,6 +203,12 @@ class TestAntigravityRun(TestRun):
         with self.assertRaises(Exception):
             from mod_orchestra.provider import AntigravityCliProvider
             AntigravityCliProvider(binary="", timeout=60).run(self.envelope(), self.log)
+
+    def test_agy_1_5_event_stream_yields_the_handoff(self):
+        self.configure("agy_events")
+        res = self.provider().run(self.envelope(), self.log)
+        self.assertEqual(res.errors, []); self.assertEqual(res.handoff["status"], "DONE")
+        self.assertEqual((res.session_id, res.turns), ("conv-1", 1))
 
     def test_plain_text_output_still_yields_the_handoff(self):
         self.configure("plain")

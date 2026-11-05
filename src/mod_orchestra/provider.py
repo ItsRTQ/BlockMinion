@@ -165,8 +165,11 @@ def live_summary(raw: str, limit: int = 60) -> list[str]:
             obj = json.loads(line)
         except json.JSONDecodeError:
             continue
-        t = obj.get("type")
-        if t == "assistant":
+        t = obj.get("type") or obj.get("event")
+        if t == "result" and isinstance(obj.get("result"), dict):   # Antigravity (agy)
+            r = obj["result"]; u = r.get("usage") or {}
+            out.append(f"■ finished: {str(r.get('status', '?')).lower()} · {r.get('num_turns', '?')} turns · {u.get('input_tokens', '?')}/{u.get('output_tokens', '?')} tokens")
+        elif t == "assistant":
             for block in (obj.get("message") or {}).get("content") or []:
                 if block.get("type") == "tool_use":
                     inp = block.get("input") or {}
@@ -203,6 +206,7 @@ def parse_gemini_stream(raw: str) -> dict:
     the assistant text in order (message events, deltas or whole), session id and model from `init`, the `result`
     event's status/stats, and any `error` events. Works on a partial log too (the run may have been killed)."""
     text_parts: list[str] = []
+    result_text = None
     rec = {"text": "", "session_id": None, "model": None, "status": None, "stats": None, "errors": [], "result_seen": False}
     for line in raw.splitlines():
         line = line.strip()
@@ -212,7 +216,18 @@ def parse_gemini_stream(raw: str) -> dict:
             obj = json.loads(line)
         except json.JSONDecodeError:
             continue
-        t = obj.get("type")
+        t = obj.get("type") or obj.get("event")   # Gemini CLI says "type", Antigravity (agy) says "event"
+        if t == "result" and isinstance(obj.get("result"), dict):   # agy: {"event":"result","result":{"response": "...", "conversation_id": ...}}
+            r = obj["result"]
+            rec["result_seen"] = True
+            rec["session_id"] = r.get("conversation_id") or rec["session_id"]
+            rec["status"] = str(r.get("status") or "").lower() or rec["status"]
+            rec["stats"] = {**(r.get("usage") or {}), **({"turns": r["num_turns"]} if isinstance(r.get("num_turns"), int) else {})}
+            if isinstance(r.get("response"), str) and r["response"].strip():
+                result_text = r["response"]   # authoritative: the final answer, handoff block included
+            if r.get("error"):
+                rec["errors"].append(str(r["error"])[:300])
+            continue
         if t == "init":
             rec["session_id"] = obj.get("session_id") or rec["session_id"]; rec["model"] = obj.get("model") or rec["model"]
         elif t == "message" and obj.get("role") == "assistant":
@@ -231,8 +246,8 @@ def parse_gemini_stream(raw: str) -> dict:
                 rec["errors"].append(str(obj["error"])[:300])
             if isinstance(obj.get("response"), str) and obj["response"].strip() and not text_parts:
                 text_parts.append(obj["response"])
-    rec["text"] = "".join(text_parts)
-    if not text_parts and not rec["result_seen"] and "```handoff" in raw:
+    rec["text"] = result_text if result_text is not None else "".join(text_parts)
+    if not rec["text"] and not rec["result_seen"] and "```handoff" in raw:
         rec["text"] = raw   # plain-text headless output (no JSON events): the handoff block is still in there
     return rec
 
@@ -529,5 +544,6 @@ class AntigravityCliProvider(GeminiCliProvider):
         errors = errors_prefix + errors
         if record["killed"]:
             errors.append(f"worker killed after {self.timeout}s timeout")
-        turns = rec["stats"].get("tool_calls") if isinstance(rec["stats"], dict) and isinstance(rec["stats"].get("tool_calls"), int) else None
+        st = rec["stats"] if isinstance(rec["stats"], dict) else {}
+        turns = st.get("turns") if isinstance(st.get("turns"), int) else st.get("tool_calls") if isinstance(st.get("tool_calls"), int) else None
         return RunResult(record["exit_code"], record["duration_s"], log_path, raw, handoff, errors, rec["session_id"], None, turns, record["killed"])
