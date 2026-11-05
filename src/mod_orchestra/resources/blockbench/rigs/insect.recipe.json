@@ -960,7 +960,7 @@
               "value": [
                 0.0,
                 0.0,
-                0.0
+                -12.0
               ],
               "interpolation": "catmullrom"
             },
@@ -978,7 +978,7 @@
               "value": [
                 0.0,
                 0.0,
-                -12.0
+                0.0
               ],
               "interpolation": "catmullrom"
             },
@@ -1011,7 +1011,7 @@
               "value": [
                 0.0,
                 0.0,
-                -12.0
+                0.0
               ],
               "interpolation": "catmullrom"
             },
@@ -1029,7 +1029,7 @@
               "value": [
                 0.0,
                 0.0,
-                0.0
+                -12.0
               ],
               "interpolation": "catmullrom"
             },
@@ -1062,7 +1062,7 @@
               "value": [
                 0.0,
                 0.0,
-                0.0
+                -12.0
               ],
               "interpolation": "catmullrom"
             },
@@ -1080,7 +1080,7 @@
               "value": [
                 0.0,
                 0.0,
-                -12.0
+                0.0
               ],
               "interpolation": "catmullrom"
             },
@@ -1266,7 +1266,7 @@
               "value": [
                 0.0,
                 0.0,
-                0
+                15
               ],
               "interpolation": "catmullrom"
             },
@@ -1284,7 +1284,7 @@
               "value": [
                 0.0,
                 0.0,
-                15
+                0
               ],
               "interpolation": "catmullrom"
             },
@@ -1317,7 +1317,7 @@
               "value": [
                 0.0,
                 0.0,
-                15
+                0
               ],
               "interpolation": "catmullrom"
             },
@@ -1335,7 +1335,7 @@
               "value": [
                 0.0,
                 0.0,
-                0
+                15
               ],
               "interpolation": "catmullrom"
             },
@@ -1368,7 +1368,7 @@
               "value": [
                 0.0,
                 0.0,
-                0
+                15
               ],
               "interpolation": "catmullrom"
             },
@@ -1386,7 +1386,7 @@
               "value": [
                 0.0,
                 0.0,
-                15
+                0
               ],
               "interpolation": "catmullrom"
             },

@@ -252,3 +252,13 @@ Analysed from a downloaded `.bbmodel` (format 5.0, geckolib_model); numbers and 
 - What landed: `root` drift on the fish idle/swim, skill rules on root-as-vehicle, distal drift, constant-amplitude
   fin chains, vibrato, bounds and time scale for big creatures.
 
+## 14. Gait timing (found in game, 2026-11-05)
+
+A walk cycle lifts the foot only while it travels forward (swing) and keeps it planted while it pushes back (stance). The first base
+rigs flexed every knee half a cycle early, so each foot rose during push-off: in game the leg looked kicked up behind, "inverted knees".
+Measured with forward kinematics on the committed rigs (foot height at the sample where it is highest, and whether the foot is then moving
+forward): all four quadruped legs, both biped legs and the right side of the insect failed; all twelve pass now. Preview and runtime agree
+(Blockbench adds keyframe degrees to the bone rotation with the same sign as static rotation, and the exporter's X/Y flip is undone by
+GeckoLib), so the sign of `-amp * max(0, sin)` for a knee on a creature facing -Z was right; only the timing was wrong.
+`src/gait.mjs` implements the check, `bbmodel_quality_gates` raises `GAIT_PHASE` as a warning, `scripts/gait_check.mjs` prints it per leg.
+
