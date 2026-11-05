@@ -109,6 +109,13 @@ def generate_project(store: Store, pid: str) -> dict:
     store.refresh_ready(pid)
     store.update_project(pid, status="SOURCE_GENERATED_UNVERIFIED")
     store.add_event(pid, "generator", "SOURCE_GENERATED", output)
+    try:   # the first design of every icon is planned here, not left to a button: Autopilot dispatches it like a MODEL task
+        from .models import ensure_initial_sprites
+        planned = ensure_initial_sprites(store, pid)
+        if planned:
+            output = {**output, "sprites_task": planned["task"]}
+    except Exception as exc:   # icon planning must never fail a generation
+        store.add_event(pid, "controller", "SPRITES_NOT_PLANNED", {"error": str(exc)[:300]})
     return output
 
 

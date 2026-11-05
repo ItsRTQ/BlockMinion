@@ -146,6 +146,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "map":
                         from .modmap import mod_map
                         return mod_map(store, pid)
+                    if op == "art":
+                        from .content import list_art
+                        return list_art(store, pid)
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
@@ -310,6 +313,10 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
+                    if op == "set-art":
+                        from .content import set_art
+                        return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),
+                                       tags=payload.get("tags") or [], silhouette=str(payload.get("silhouette", "")))
                     if op == "rename-feature":
                         from .content import rename_feature
                         return rename_feature(store, pid, str(payload.get("identifier", "")), str(payload.get("label", "")))

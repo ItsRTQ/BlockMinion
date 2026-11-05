@@ -43,6 +43,7 @@ TOOLS = [
     {"name": "orchestra_footprint", "description": "Bounded Markdown project state", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_paint_skin", "description": "Designer: paint models/<mob>.png from the mob's models/<mob>.bbmodel (box-UV cubes): zone colours, face shading, edges, a head face with eyes/brows/nose/mouth of guaranteed contrast, at `scale` pixels per UV unit (default 2 = 128x128 over a 64x64 layout). Returns the face-contrast report. Only writes that PNG.", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}, "palette": {"type": "object", "description": "{base: '#rrggbb', <name>: '#rrggbb', ...}"}, "zones": {"type": "array", "description": "[{bones: ['torso','*_arm*'], color: 'name or #hex', bands: {color, every, thickness}}]; the first matching zone wins, other bones use base", "items": {"type": "object"}}, "face": {"type": "object", "description": "{eyes, pupil, mouth, brow, teeth: '#hex', nose: bool, tusks: bool, style: 'angry'|'calm'}; pass false to leave the head unpainted"}, "scale": {"type": "integer", "minimum": 1, "maximum": 4}, "seed": {"type": "string"}}, "required": ["project", "mob", "palette"], "additionalProperties": False}},
     {"name": "orchestra_check_skin", "description": "Designer: measure how much the head's front face stands out in models/<mob>.png (works for any PNG, painted by hand or by orchestra_paint_skin)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
+    {"name": "orchestra_check_sprites", "description": "Designer: run the creative gates on models/sprites/*.png (not the stock template of its kind, not a copy of another sprite of the set, 4+ colours) and list what would be rejected and why; repaint those and call again", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_validate_source", "description": "Static manifest + JSON verification; not a build or runtime check", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
 ]
 
@@ -102,6 +103,16 @@ def invoke(store: Store, name: str, a: dict) -> object:
         return export_state_markdown(store, a["project"])
     if name in ("orchestra_paint_skin", "orchestra_check_skin"):
         return _skin_tool(store, name, a)
+    if name == "orchestra_check_sprites":
+        from .spec import read_spec
+        from .spritecheck import catalogue, check_sprites
+        proj = store.project(a["project"])
+        spec, folder = read_spec(proj["spec"]), Path(proj["root"]) / "models" / "sprites"
+        known = catalogue(spec)
+        files = {p.stem: p.read_bytes() for p in sorted(folder.glob("*.png")) if p.stem in known} if folder.is_dir() else {}
+        rejected = check_sprites(spec, files)
+        return {"checked": sorted(files), "ok": [i for i in sorted(files) if i not in rejected], "rejected": rejected,
+                "missing": sorted(set(known) - set(files)), "rule": "repaint every rejected sprite with a new silhouette and call this again; the install rejects them otherwise"}
     if name == "orchestra_validate_source":
         root = Path(store.project(a["project"])["root"])
         if not (root / ".mod-orchestra" / "generation-manifest.json").is_file():

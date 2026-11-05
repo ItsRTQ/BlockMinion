@@ -107,6 +107,15 @@ class UiApi(unittest.TestCase):
         code, out = self.call("/api/settings", {"provider": None})
         self.assertEqual((code, out["saved"]), (200, None))
 
+    def test_2c_art_direction_routes(self):
+        code, art = self.call("/api/project/u_mod/art")
+        self.assertEqual(code, 200); self.assertIn("item:gem", art); self.assertEqual(art["item:gem"]["source"], "derived")
+        code, out = self.call("/api/project/u_mod/set-art", {"kind": "item", "identifier": "gem", "concept": "a cut crimson gem with a chipped corner", "tags": ["faceted", "chipped corner", "crimson"]})
+        self.assertEqual((code, out["art"]["source"], out["art"]["tags"]), (200, "authored", ["faceted", "chipped corner", "crimson"]))
+        self.assertEqual(self.call("/api/project/u_mod/art")[1]["item:gem"]["concept"], "a cut crimson gem with a chipped corner")
+        self.assertEqual(self.call("/api/project/u_mod/set-art", {"kind": "wand", "identifier": "gem", "concept": "x y"})[0], 400)
+        self.call("/api/project/u_mod/set-art", {"kind": "item", "identifier": "gem", "concept": "", "tags": []})
+
     def test_3_requeue_and_evidence_from_ui(self):
         code, out = self.call("/api/task/u_mod:WORK/requeue", {})
         self.assertEqual((code, out["state"]), (200, "READY"))

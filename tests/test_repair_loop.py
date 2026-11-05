@@ -25,6 +25,8 @@ def reply(obj):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        # These tests are about the controller pipeline (build, repair, gates); the automatic first design of the icons is covered in test_art.py.
+        no_icons = patch("mod_orchestra.models.ensure_initial_sprites", lambda *a, **k: None); no_icons.start(); self.addCleanup(no_icons.stop)
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         base = Path(self.tmp.name); self.store = Store(base / "state.sqlite")
         p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop)

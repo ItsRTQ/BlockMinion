@@ -23,6 +23,56 @@ def default_egg_colors(identifier: str, behavior: str = "passive") -> tuple[int,
     return pack(base), pack(spot)
 
 @dataclass(frozen=True)
+class Art:
+    """Art direction for one entity (item, block, tool/armor set, food, mob): what it looks like and why, as concrete visual cues the designer
+    paints from. Written by the interpreter from the idea and the theme, editable in the UI; a deterministic derivation fills the gaps (art.py)."""
+    concept: str = ""            # one or two sentences: what it is and how it looks
+    tags: tuple = ()             # concrete cues: shapes, materials, colours, wear ("serrated edge", "bone teeth", "rust red"), not "cool" or "epic"
+    silhouette: str = ""         # optional: the shape in a phrase ("cleaver", "crescent blade", "spiked club")
+    pieces: dict = field(default_factory=dict)   # material sets only: tool/armor kind -> its own concept ({"sword": "...", "helmet": "..."})
+
+
+ART_TEXT = re.compile(r"^[^\x00-\x1f<>{}\[\]\\]+$")
+
+
+def coerce_art(value) -> "Art | None":
+    """None, "", {} -> None; a string is a concept; a dict is read field by field; an Art passes through."""
+    if value is None or value == "" or value == {} or value == []:
+        return None
+    if isinstance(value, Art):
+        return value
+    if isinstance(value, str):
+        return Art(concept=value.strip())
+    if not isinstance(value, dict):
+        raise InputError(f"Bad art: {value!r}")
+    tags = value.get("tags") or ()
+    if isinstance(tags, str):
+        tags = [t for t in re.split(r"[,;\n]", tags)]
+    pieces = value.get("pieces") or {}
+    if not isinstance(pieces, dict):
+        raise InputError("art.pieces must map a tool/armor kind to a sentence")
+    art = Art(concept=str(value.get("concept") or "").strip(), tags=tuple(str(t).strip() for t in tags if str(t).strip()),
+              silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()})
+    return art if (art.concept or art.tags or art.silhouette or art.pieces) else None      # all fields empty is no art, not an empty sheet
+
+
+def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None:
+    if art is None:
+        return
+    if len(art.concept) > 320 or (art.concept and not ART_TEXT.match(art.concept)):
+        raise InputError(f"{label}: art.concept must be plain text up to 320 characters")
+    if len(art.tags) > 16 or any(not (2 <= len(t) <= 48) or not ART_TEXT.match(t) for t in art.tags):
+        raise InputError(f"{label}: art.tags are at most 16 phrases of 2-48 characters")
+    if len(art.silhouette) > 60 or (art.silhouette and not ART_TEXT.match(art.silhouette)):
+        raise InputError(f"{label}: art.silhouette is a short phrase (up to 60 characters)")
+    for kind, text in art.pieces.items():
+        if kind not in piece_kinds:
+            raise InputError(f"{label}: art.pieces has {kind!r}, which is not one of this set's pieces {list(piece_kinds)}")
+        if len(text) > 320 or not ART_TEXT.match(text):
+            raise InputError(f"{label}: art.pieces.{kind} must be plain text up to 320 characters")
+
+
+@dataclass(frozen=True)
 class Feature:
     kind: str
     identifier: str
@@ -32,6 +82,7 @@ class Feature:
     tool: str = ""         # blocks: pickaxe | axe | shovel | hoe | none (default pickaxe); "none" = breaks by hand
     mining_level: str = "" # blocks: wood | stone | iron | diamond | netherite (default wood = any pickaxe)
     variants: tuple = ()   # blocks: subset of stairs | slab | fence | wall — generated as <id>_stairs etc. with recipes
+    art: object = None     # Art direction (concept, tags, silhouette) the sprite designer paints from
 
 @dataclass(frozen=True)
 class Recipe:
@@ -104,6 +155,7 @@ class Mob:
     spawn: object = None               # Spawn or None (egg-only)
     egg_colors: tuple[int, int] = DEFAULT_EGG_COLORS
     body_plan: str = "quadruped"      # base rig the model starts from: quadruped | biped | bird | fish | serpent | insect
+    art: object = None                # Art direction: concept, tags and silhouette; feeds the skin's palette, zones and face
     held_item: str = ""               # what the mob carries in its main hand and draws on the model's `held_item` bone: "" = the best tool/weapon in
                                       # its drops (biped plan only), "none" = empty-handed, or an item id (local or minecraft:...)
 
@@ -134,6 +186,7 @@ class Material:
     color: str = ""                       # optional hex tint for tool/armor textures (default: stable hue from identifier)
     accent: str = ""                      # optional hex highlight
     armor_style: str = "textured"         # textured (vanilla layers) | 3d (GeckoLib armor model designed in Blockbench)
+    art: object = None                    # Art direction of the whole set; art.pieces gives a piece its own concept
 
     def item_ids(self) -> list[str]:
         return [f"{self.identifier}_{k}" for k in self.tools] + [f"{self.identifier}_{k}" for k in self.armor]
@@ -149,6 +202,7 @@ class Food:
     always_edible: bool = False
     fast: bool = False
     color: str = ""
+    art: object = None
 
 
 BLOCK_VARIANTS = ("stairs", "slab", "fence", "wall")
@@ -362,6 +416,7 @@ def coerce_spawn(value):
 
 
 def validate_mob(spec: "Spec", m: Mob) -> None:
+    validate_art(m.art, f"mob {m.identifier}")
     if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", m.identifier):
         raise InputError(f"Mob identifier must be snake_case (2-50 chars): {m.identifier!r}")
     if m.identifier in spec.local_ids() or f"{m.identifier}_spawn_egg" in spec.local_ids():
@@ -445,7 +500,12 @@ def validate_spec_content(spec: "Spec") -> None:
                 raise InputError(f"Block {f.identifier}: tool must be one of {TOOLS_FOR_BLOCKS}")
             if f.mining_level and f.mining_level not in MINING_LEVELS:
                 raise InputError(f"Block {f.identifier}: mining_level must be one of {MINING_LEVELS}")
+    for f in spec.features:
+        validate_art(f.art, f"{f.kind} {f.identifier}")
+    for fd in spec.foods:
+        validate_art(fd.art, f"food {fd.identifier}")
     for mat in spec.materials:
+        validate_art(mat.art, f"material {mat.identifier}", tuple(mat.tools) + tuple(mat.armor))
         validate_material(spec, mat)
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
@@ -655,13 +715,13 @@ def read_spec(raw: dict) -> Spec:
         schema_version=SCHEMA_VERSION, name=str(raw["name"]), mod_id=normalize_id(raw["mod_id"]),
         package=validate_package(raw["package"]), idea=str(raw["idea"]),
         profile=str(raw["profile"]),
-        features=[Feature(**{**f, "variants": tuple(f.get("variants", ()))}) for f in raw.get("features", [])],
+        features=[Feature(**{**f, "variants": tuple(f.get("variants", ())), "art": coerce_art(f.get("art"))}) for f in raw.get("features", [])],
         questions=list(raw.get("questions", [])), assumptions=list(raw.get("assumptions", [])),
         recipes=[Recipe(**{**r, "pattern": tuple(r.get("pattern", ())), "ingredients": tuple(r.get("ingredients", ()))}) for r in raw.get("recipes", [])],
         drops=[Drop(**d) for d in raw.get("drops", [])],
         tab=raw.get("tab"), tab_icon=raw.get("tab_icon"),
-        materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2)))}) for m in raw.get("materials", [])],
-        foods=[Food(**{**f, "effects": tuple(f.get("effects", ()))}) for f in raw.get("foods", [])],
+        materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2))), "art": coerce_art(m.get("art"))}) for m in raw.get("materials", [])],
+        foods=[Food(**{**f, "effects": tuple(f.get("effects", ())), "art": coerce_art(f.get("art"))}) for f in raw.get("foods", [])],
         theme=str(raw.get("theme") or "")[:600],
         sounds=[Sound(**x) for x in raw.get("sounds", [])],
         ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
@@ -669,7 +729,7 @@ def read_spec(raw: dict) -> Spec:
         structures=[Structure(**{**x, "layers": tuple(tuple(l) for l in x.get("layers", ())), "biomes": tuple(x.get("biomes", ("overworld",)))}) for x in raw.get("structures", [])],
         biomes=[Biome(**{**b, "mobs": tuple(b.get("mobs", ()))}) for b in raw.get("biomes", [])],
         dimensions=[Dimension(**{**d, "biomes": tuple(d.get("biomes", ()))}) for d in raw.get("dimensions", [])],
-        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
+        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")), "art": coerce_art(m.get("art")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],
     )

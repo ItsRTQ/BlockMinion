@@ -58,12 +58,15 @@ def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
     bones = ", ".join(f"{b['name']}" + (f" (child of {b['parent']})" if b.get("parent") else " (root)") for b in rec["bones"])
     state = "placed now" if staged["staged"] else "already present (edited before; keep working on it)"
     from .geckolib import held_item_for
+    from .art import brief as art_brief
+    art_text = ("\n## Art direction for this creature\n" + art_brief(spec, "mob", mob_id) + "\nUse it: reshape and detail the model so it shows these cues (horns, "
+                "armour plates, scars, a hunch), and feed `orchestra_paint_skin` from it: palette colours as `base` and zones, the rest as `face` and bands. Do not paint a generic creature.\n") if mob else ""
     held = held_item_for(spec, mob) if mob else None
     held_text = (f" The entity holds `{held}` in its main hand and draws it on the empty `held_item` bone at the right palm: keep that bone "
                  f"(a child of the forearm), keep it at the grip when you reshape the arm, and give it a rotation if the weapon points the wrong way.") if held else ""
     return (f"\n## Base rig: {plan} — `{staged['path']}` {state}\n"
             f"Bones: {bones}. Texture {rec['texture_width']}x{rec['texture_height']}, box UV already packed without overlaps "
-            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}{held_text}\n")
+            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}{held_text}\n{art_text}")
 
 
 MODEL_INSTRUCTIONS = """
@@ -343,7 +346,13 @@ no PIL) that writes RGBA PNGs; keep the script at `models/sprites/paint.py` so i
 Rules: transparent background (blocks are the exception: fully opaque 16x16 tile); 4–8 colours per sprite; a
 1px darker outline around the shape; a lighter highlight on the top-left; readable silhouette at 1x (a sword
 is a diagonal blade with a guard; a gem is a faceted lozenge; food is a round shape with a stem/leaf).
-Minecraft's own style is 16x16 with soft shading, no anti-aliasing. Then write a contact sheet
+Minecraft's own style is 16x16 with soft shading, no anti-aliasing.
+Art direction: every item comes with a concept, visual cues and sometimes a silhouette. Paint what they describe: invent a shape that carries
+the cues (a serrated bone-toothed cleaver is not a straight sword with a guard; a chipped horned helmet is not a gem), use the palette hues, and
+put at least two of the cues where they can be seen at 1x. Pieces of one set share palette and motifs but each has its own silhouette.
+The controller REJECTS a sprite whose silhouette is 85% or more the stock template of its kind, one that is a copy of another sprite of the batch
+(85% identical pixels), and one with fewer than 4 colours. Before you finish, call `mcp__minecraft-orchestra__orchestra_check_sprites {project}`
+and repaint everything it lists as rejected until it lists none. Then write a contact sheet
 `models/sprites/contact_sheet.png` scaled x8 with every sprite side by side so the user can judge them in the
 UI. Re-read your own PNGs' pixel grids before finishing: a sprite whose silhouette is not readable at 1x
 (blob, no outline, wrong proportions) must be repainted, not reported.
@@ -366,7 +375,9 @@ armor looks like the icon's material. Add a slightly darker underside and outlin
 """
 
 
-def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str = "", armor_materials: list[str] | None = None) -> dict:
+def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str = "", armor_materials: list[str] | None = None, *, initial: bool = False) -> dict:
+    """The task that paints icons (and worn-armor layers). `initial` is the controller's own first design of everything; otherwise it is the user's
+    redesign: icons the designer already painted need a note saying what should change, and the designer receives every earlier note (newest first)."""
     proj = store.project(pid)
     if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
         raise StateError("Generate the project first")
@@ -389,17 +400,44 @@ def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str =
         raise InputError(f"Not materials with armor: {bad}")
     if not identifiers and not armor_materials:
         raise InputError("Pick at least one item or armor set")
+    ws = Path(proj["root"])
+    painted = [i for i in identifiers if (ws / "models" / "sprites" / f"{i}.png").is_file()] + \
+              [f"{a}_layer_{n}" for a in armor_materials for n in (1, 2) if (ws / "models" / "sprites" / f"{a}_layer_{n}.png").is_file()]
+    if painted and not initial and not notes.strip():
+        raise InputError("These icons were already designed: say what should change (the designer edits its previous work and repaints only that). "
+                         "Example: 'the sword blade is too thin and the grip needs a red wrap'.")
     n = sum(1 for t in store.tasks(pid) if ":SPRITES:" in t["id"]) + 1
     task_id = f"{pid}:SPRITES:{n}"
-    lines = ["Sprites to paint (identifier → what it is):"] + [f"- {i}: {catalogue[i]['label']} ({catalogue[i]['kind']}{', ' + catalogue[i]['hint'] if catalogue[i]['hint'] else ''})" for i in identifiers]
+    from .art import brief as art_brief, effective_art
+    from .spritecheck import catalogue as sprite_catalogue
+    art_kinds = {i: v["art_kind"] for i, v in sprite_catalogue(spec).items()}
+    lines = ["Sprites to paint (identifier → what it is, then its art direction; paint THAT, not the stock icon of its kind):"]
+    for i in identifiers:
+        lines.append(f"- {i}: {catalogue[i]['label']} ({catalogue[i]['kind']}{', ' + catalogue[i]['hint'] if catalogue[i]['hint'] else ''})")
+        lines += ["    " + l for l in art_brief(spec, art_kinds[i], i, palette=False).splitlines()]
+    sets = [m for m in spec.materials if any(f"{m.identifier}_{k}" in identifiers for k in tuple(m.tools) + tuple(m.armor))]
+    for m in sets:
+        lines += ["", f"Set {m.identifier} ({m.label}): pieces share this palette and these motifs, and differ in silhouette and details.", *["    " + l for l in art_brief(spec, "set", m.identifier, palette=False).splitlines()]]
+    pal = effective_art(spec, art_kinds[identifiers[0]], identifiers[0])["palette"] if identifiers else []
+    if pal:
+        lines += ["", "Palette from the mod's theme (use these hues, with their light and dark steps): " + "; ".join(f"{p['name']} {p['hex']}" for p in pal)]
     if armor_materials:
         lines += ["", "Worn-armor layers to paint for material(s): " + ", ".join(f"{a} (pieces: {', '.join(mats[a].armor)})" for a in armor_materials), ARMOR_LAYER_GUIDE]
-    if notes.strip():
+    if painted and not initial:
+        earlier = [e["payload"]["notes"] for e in store.events(pid, 500) if e["kind"] == "SPRITES_REQUESTED" and e["payload"].get("notes")
+                   and (set(e["payload"].get("items") or []) & set(identifiers) or set(e["payload"].get("armor") or []) & set(armor_materials))]
+        lines += ["", f"REDESIGN: {len(painted)} of these were already painted by you. Their previous versions are in `models/sprites/` and the script is `models/sprites/paint.py`:",
+                  "edit that script and repaint only what the feedback asks for; keep every sprite and detail it does not mention, and keep the art direction above.",
+                  "", "User feedback (newest first):", f"- {notes.strip()[:800]}"] + [f"- {t}" for t in reversed(earlier[-6:])]
+    elif notes.strip():
         lines += ["", "Style notes from the user:", notes.strip()[:800]]
-    store.add_task(pid, task_id, "designer", f"Paint {len(identifiers)} item sprite(s)" + (f" + armor layers for {', '.join(armor_materials)}" if armor_materials else ""))
+    if initial:
+        lines += ["", "First design of every icon in this mod: the placeholders in the game are tinted stock templates, replace them all."]
+    title = ("Redesign" if painted and not initial else "Design" if initial else "Paint")
+    store.add_task(pid, task_id, "designer", f"{title} {len(identifiers)} item sprite(s)" + (f" + armor layers for {', '.join(armor_materials)}" if armor_materials else ""))
     with store.tx() as con:
         con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(lines)))
-    store.add_event(pid, "user", "SPRITES_REQUESTED", {"task": task_id, "items": identifiers, "armor": armor_materials, "notes": notes[:300]})
+    store.add_event(pid, "controller" if initial else "user", "SPRITES_REQUESTED", {"task": task_id, "items": identifiers, "armor": armor_materials, "notes": notes[:600], "initial": initial})
     return {"task": task_id, "items": identifiers, "armor": armor_materials, "next": {"action": "dispatch", "payload": {"task": task_id}}}
 
 
@@ -426,6 +464,26 @@ def _png_info(raw: bytes) -> tuple[int, int, bool]:
     return w, h, len(alphas) > 1, len(colours)
 
 
+def ensure_initial_sprites(store: Store, pid: str) -> dict | None:
+    """Right after generation (and when Autopilot meets an older project) create the one task that designs every icon and the worn-armor layers of
+    textured sets, so nobody has to ask for it: the placeholders are tinted stock templates. Skips what the user uploaded and does nothing once any
+    SPRITES task exists, so a redesign never triggers it again. Autopilot dispatches the task like a MODEL task."""
+    proj = store.project(pid)
+    if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
+        return None
+    if any(":SPRITES:" in t["id"] for t in store.tasks(pid)):
+        return None
+    from .spritecheck import catalogue
+    spec = read_spec(proj["spec"])
+    uploaded = {e["payload"].get("identifier") for e in store.events(pid, 1000) if e["kind"] == "TEXTURE_UPLOADED" and e["payload"].get("kind") in ("item", "block")}
+    uploaded_layers = {e["payload"].get("identifier") for e in store.events(pid, 1000) if e["kind"] == "TEXTURE_UPLOADED" and str(e["payload"].get("kind", "")).startswith("armor_layer")}
+    identifiers = [i for i in catalogue(spec) if i not in uploaded]
+    armor = [m.identifier for m in spec.materials if m.armor and m.armor_style != "3d" and m.identifier not in uploaded_layers]
+    if not identifiers and not armor:
+        return None
+    return request_sprites(store, pid, identifiers, armor_materials=armor, initial=True)
+
+
 def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str], *, run_id: str, actor: str, armor_materials: list[str] | None = None) -> dict:
     proj = store.project(pid); ws = Path(proj["root"]); spec = read_spec(proj["spec"])
     blocks = {f.identifier for f in spec.features if f.kind == "block"}
@@ -446,6 +504,7 @@ def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str]
                 rejected[key] = "fully opaque: armor layers need transparent areas"; continue
             rel = f"src/main/resources/assets/{pid}/textures/models/armor/{key}.png"
             (ws / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, ws / rel); installed.append(rel)
+    staged: dict[str, tuple[Path, str]] = {}
     for ident in identifiers:
         src = ws / "models" / "sprites" / f"{ident}.png"
         if not src.is_file():
@@ -460,7 +519,12 @@ def install_sprites(store: Store, pid: str, task_id: str, identifiers: list[str]
             rejected[ident] = "flat single colour"; continue
         if ident not in blocks and not alpha_var:
             rejected[ident] = "no transparency (items need a transparent background)"; continue
-        rel = f"src/main/resources/assets/{pid}/textures/{'block' if ident in blocks else 'item'}/{ident}.png"
+        staged[ident] = (src, f"src/main/resources/assets/{pid}/textures/{'block' if ident in blocks else 'item'}/{ident}.png")
+    from .spritecheck import check_sprites
+    creative = check_sprites(spec, {i: s.read_bytes() for i, (s, _) in staged.items()})   # the stock template, a copy of a sibling, too few colours
+    for ident, (src, rel) in staged.items():
+        if ident in creative:
+            rejected[ident] = creative[ident]; continue
         (ws / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, ws / rel); installed.append(rel)
     if not installed:
         raise InputError("no sprite passed validation: " + "; ".join(f"{k}: {v}" for k, v in rejected.items()))

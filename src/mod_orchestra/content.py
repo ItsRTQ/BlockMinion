@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .fabric import accept_changes, loot_table_json, placeholder_png, feature_texture
 from .textures import tinted_item_png, armor_layer_png, material_colors, palette_from_png
-from .spec import Feature, check_java_name_collisions, read_spec, validate_spec_content
+from .spec import Feature, TOOL_KINDS, check_java_name_collisions, read_spec, validate_spec_content
 from .state import Store, StateError
 from .validation import InputError, normalize_id
 
@@ -65,6 +65,69 @@ def list_features(store: Store, pid: str) -> list[dict]:
         out.append({"kind": "food", "identifier": f["identifier"], "label": f["label"], "texture": tex if (ws / tex).is_file() else None,
                     "food": {"nutrition": f["nutrition"], "saturation": f["saturation"], "effects": f.get("effects", [])}, "recipes": [], "drop": None})
     return out
+
+
+def list_art(store: Store, pid: str) -> dict:
+    """Every entity's effective art direction, keyed "kind:identifier" (item, block, tool, armor, food, set, mob): concept, tags, silhouette, source."""
+    from .art import effective_art
+    spec = read_spec(store.project(pid)["spec"])
+    keys = [(f.kind, f.identifier, f.label) for f in spec.features] + [("food", f.identifier, f.label) for f in spec.foods] + [("mob", m.identifier, m.label) for m in spec.mobs]
+    for m in spec.materials:
+        keys.append(("set", m.identifier, m.label))
+        keys += [("tool" if k in TOOL_KINDS else "armor", f"{m.identifier}_{k}", f"{m.label} {k}") for k in tuple(m.tools) + tuple(m.armor)]
+    out = {}
+    for kind, ident, label in keys:
+        a = effective_art(spec, kind, ident)
+        out[f"{kind}:{ident}"] = {"label": label, "kind": kind, "identifier": ident, "concept": a["concept"], "tags": a["tags"], "silhouette": a["silhouette"], "source": a["source"]}
+    return out
+
+
+def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "") -> dict:
+    """Write the art direction of one entity. kind: item | block | food | mob | set (a whole tool/armor set: concept, tags, silhouette) | tool | armor (one piece of a set:
+    its own concept sentence only). Empty fields clear it. Before generation this resets the spec approval like any spec edit; afterwards it is cosmetic."""
+    from .spec import Art, coerce_art
+    proj = store.project(pid); spec = read_spec(proj["spec"])
+    tags = [t.strip() for t in (tags if isinstance(tags, (list, tuple)) else re.split(r"[,;\n]", str(tags or ""))) if t.strip()]
+    new_art = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette})
+    if kind in ("item", "block"):
+        if not any(f.identifier == identifier and f.kind == kind for f in spec.features):
+            raise InputError(f"Unknown {kind} {identifier!r}")
+        new_spec = replace(spec, features=[replace(f, art=new_art) if f.identifier == identifier else f for f in spec.features])
+    elif kind == "food":
+        if not any(f.identifier == identifier for f in spec.foods):
+            raise InputError(f"Unknown food {identifier!r}")
+        new_spec = replace(spec, foods=[replace(f, art=new_art) if f.identifier == identifier else f for f in spec.foods])
+    elif kind == "mob":
+        if not any(m.identifier == identifier for m in spec.mobs):
+            raise InputError(f"Unknown mob {identifier!r}")
+        new_spec = replace(spec, mobs=[replace(m, art=new_art) if m.identifier == identifier else m for m in spec.mobs])
+    elif kind == "set":
+        mat = next((m for m in spec.materials if m.identifier == identifier), None)
+        if mat is None:
+            raise InputError(f"Unknown material {identifier!r}")
+        keep = mat.art.pieces if mat.art else {}
+        merged = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette, "pieces": keep})
+        new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == identifier else m for m in spec.materials])
+    elif kind in ("tool", "armor"):
+        mat = next((m for m in spec.materials if identifier.startswith(m.identifier + "_") and identifier[len(m.identifier) + 1:] in tuple(m.tools) + tuple(m.armor)), None)
+        if mat is None:
+            raise InputError(f"Unknown {kind} {identifier!r}")
+        piece = identifier[len(mat.identifier) + 1:]
+        base = mat.art or Art()
+        pieces = {k: v for k, v in base.pieces.items() if k != piece}
+        if concept.strip():
+            pieces[piece] = concept.strip()
+        merged = replace(base, pieces=pieces)
+        merged = None if not (merged.concept or merged.tags or merged.silhouette or merged.pieces) else merged
+        new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == mat.identifier else m for m in spec.materials])
+    else:
+        raise InputError("kind must be item, block, food, mob, set, tool or armor")
+    if proj["status"] in GENERATED_STATUSES:
+        _save_spec(store, pid, new_spec, f"art {kind}:{identifier}")
+    else:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"art {kind}:{identifier}")
+    return {"kind": kind, "identifier": identifier, "art": list_art(store, pid)[f"{kind}:{identifier}"]}
 
 
 def _save_spec(store: Store, pid: str, spec, reason: str) -> None:
