@@ -571,7 +571,7 @@ function renderRuns(p) {
       }
       if (h.risks?.length) card.append(el("div", "risks: " + h.risks.join(" · "), "risk"));
       if (h.sprites) { const sp = h.sprites; const d = el("div", null, "needs"); d.append(el("b", `Sprites installed: ${sp.installed.length}` + (Object.keys(sp.rejected || {}).length ? ` · rejected: ${Object.keys(sp.rejected).length}` : ""))); for (const rel of sp.installed) d.append(el("code", rel.split("/").pop())); for (const [k, why] of Object.entries(sp.rejected || {})) d.append(el("code", `✗ ${k}: ${why}`)); card.append(d); }
-      if (h.model) card.append(el("div", `model installed: ${h.model.bones.length} bones, ${h.model.cubes} cubes, ${h.model.animations.length} animations`, "risk"));
+      if (h.model) card.append(el("div", `model installed: ${h.model.bones.length} bones, ${h.model.cubes} cubes, ${h.model.animations.length} animations` + (h.model.texture ? `, ${h.model.texture[0]}×${h.model.texture[1]} skin` : "") + (h.model.face ? (h.model.face.ok ? ", face reads well" : h.model.face.flat ? ", ⚠ face is flat (eyes and mouth do not stand out)" : ", face is weak") : ""), "risk"));
       if (h.questions?.length) card.append(el("div", "questions: " + h.questions.join(" · "), "risk"));
     }
     if (r.error) card.append(el("div", "⚠ " + r.error, "needs"));

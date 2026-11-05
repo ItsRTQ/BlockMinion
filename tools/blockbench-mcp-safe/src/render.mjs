@@ -6,10 +6,18 @@ import {samplePose} from './pose.mjs';
 import {textureFromModel} from './texture-render.mjs';
 
 const angles={front:[0,0],back:[180,0],left:[-90,0],right:[90,0],top:[0,90],iso:[45,27]};
-const SIDE_FACES={
-  north:[1,0,3,2], south:[4,5,6,7], east:[5,1,2,6],
-  west:[0,4,7,3], up:[7,6,2,3], down:[0,1,5,4]
-};
+// Cube faces as Blockbench builds them (the vertex order of three.js BoxGeometry): top-left, top-right, bottom-right, bottom-left as seen from OUTSIDE
+// the face. For up the top edge is the north side; for down it is the south side. `lo` and `hi` are the min and max corners.
+export function cubeQuads(lo,hi){
+  return {
+    north:[[hi[0],hi[1],lo[2]],[lo[0],hi[1],lo[2]],[lo[0],lo[1],lo[2]],[hi[0],lo[1],lo[2]]],
+    south:[[lo[0],hi[1],hi[2]],[hi[0],hi[1],hi[2]],[hi[0],lo[1],hi[2]],[lo[0],lo[1],hi[2]]],
+    east:[[hi[0],hi[1],hi[2]],[hi[0],hi[1],lo[2]],[hi[0],lo[1],lo[2]],[hi[0],lo[1],hi[2]]],
+    west:[[lo[0],hi[1],lo[2]],[lo[0],hi[1],hi[2]],[lo[0],lo[1],hi[2]],[lo[0],lo[1],lo[2]]],
+    up:[[lo[0],hi[1],lo[2]],[hi[0],hi[1],lo[2]],[hi[0],hi[1],hi[2]],[lo[0],hi[1],hi[2]]],
+    down:[[lo[0],lo[1],hi[2]],[hi[0],lo[1],hi[2]],[hi[0],lo[1],lo[2]],[lo[0],lo[1],lo[2]]]
+  };
+}
 const finite=x=>typeof x==='number'&&Number.isFinite(x)&&Math.abs(x)<=1000000;
 const vec3=x=>Array.isArray(x)&&x.length===3&&x.every(finite);
 const sub=(a,b)=>a.map((v,i)=>v-b[i]);
@@ -32,13 +40,15 @@ function viewRotate(v,yaw,pitch){
   const q=[v[0]*Math.cos(y)+v[2]*Math.sin(y),v[1],-v[0]*Math.sin(y)+v[2]*Math.cos(y)];
   return [q[0],q[1]*Math.cos(p)-q[2]*Math.sin(p),q[1]*Math.sin(p)+q[2]*Math.cos(p)];
 }
-function boxUvs(c,side){
+export function boxUvs(c,side){
   const [u,v]=Array.isArray(c.uv_offset)?c.uv_offset:[0,0];
-  const w=c.to[0]-c.from[0],h=c.to[1]-c.from[1],d=c.to[2]-c.from[2];
+  const fl=n=>Math.floor(n+1e-6);
+  const w=fl(c.to[0]-c.from[0]),h=fl(c.to[1]-c.from[1]),d=fl(c.to[2]-c.from[2]);
+  // [u1,v1,u2,v2] with (u1,v1) at the top-left of the face seen from outside; Blockbench stores up as [d+w,d,d,0] and down as [d+2w,0,d+w,d] (reversed).
   const rectangles={
     east:[u,v+d,u+d,v+d+h],north:[u+d,v+d,u+d+w,v+d+h],
     west:[u+d+w,v+d,u+2*d+w,v+d+h],south:[u+2*d+w,v+d,u+2*d+2*w,v+d+h],
-    up:[u+d,v,u+d+w,v+d],down:[u+d+w,v,u+2*d+w,v+d]
+    up:[u+d+w,v+d,u+d,v],down:[u+d+2*w,v,u+d+w,v+d]
   };
   return rectangles[side];
 }
@@ -111,17 +121,14 @@ function buildTriangles(model,pose){
       const inflate=finite(e.inflate??0)?e.inflate??0:0;
       const x=a.map(v=>v-inflate),z=b.map(v=>v+inflate);
       if(x.some((v,i)=>v>=z[i]))throw Error('Cube inflation inverts geometry');
-      const vertices=[
-        [x[0],x[1],x[2]],[z[0],x[1],x[2]],[z[0],z[1],x[2]],[x[0],z[1],x[2]],
-        [x[0],x[1],z[2]],[z[0],x[1],z[2]],[z[0],z[1],z[2]],[x[0],z[1],z[2]]
-      ];
-      for(const [side,ids] of Object.entries(SIDE_FACES)){
+      for(const [side,quad] of Object.entries(cubeQuads(x,z))){
         const face=e.faces?.[side];
         // Untextured cubes default to six visible gray faces. Per-face null texture means disabled.
         if(e.box_uv===false&&(!face||face.texture===null))continue;
-        const rect=e.box_uv===false?face?.uv:boxUvs(e,side);
+        const uvSide=(e.box_uv!==false&&e.mirror_uv===true)?({east:'west',west:'east'}[side]??side):side;   // mirror_uv swaps the east and west rectangles
+        const rect=e.box_uv===false?face?.uv:boxUvs(e,uvSide);
         const uvs=rect?uvPoints(rect,face?.rotation??0,e.mirror_uv===true):null;
-        emit(ids.map(i=>vertices[i]),uvs,true);
+        emit(quad,uvs,true);
       }
     }
   }
@@ -187,8 +194,9 @@ function draw(tris,view,size,texture){
       if(texture&&tri.textured&&tri.uvs.every(uv=>uv!==null)){
         const u=wa*tri.uvs[0][0]+wb*tri.uvs[1][0]+wc*tri.uvs[2][0];
         const v=wa*tri.uvs[0][1]+wb*tri.uvs[1][1]+wc*tri.uvs[2][1];
-        if(u<0||u>=texture.width||v<0||v>=texture.height)continue;
-        const si=(Math.floor(v)*texture.width+Math.floor(u))*4;
+        const tu=u*(texture.scale||1),tv=v*(texture.scale||1);
+        if(tu<0||tu>=texture.width||tv<0||tv>=texture.height)continue;
+        const si=(Math.floor(tv)*texture.width+Math.floor(tu))*4;
         r=texture.pixels[si];g=texture.pixels[si+1];bl=texture.pixels[si+2];alpha=texture.pixels[si+3];
       }
       if(alpha===0)continue;

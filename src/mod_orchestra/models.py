@@ -71,7 +71,7 @@ MODEL_INSTRUCTIONS = """
 Author the Blockbench/GeckoLib model for the mob named in the task using the `blockbench` MCP server (tools
 prefixed `mcp__blockbench__bbmodel_*`). Its root is `models/` inside this workspace; only top-level files there.
 Deliver, in `models/`: `<mob>.bbmodel` (format geckolib_model, identifier = the mob id, mod id = this mod),
-`<mob>.geo.json`, `<mob>.animation.json` and `<mob>.png` (the texture, matching the model resolution).
+`<mob>.geo.json`, `<mob>.animation.json` and `<mob>.png` (the texture: the model resolution or a 2x/4x multiple of it).
 Start from `models/<mob>.bbmodel`: the controller places the base rig of the mob's body plan there (see the
 "Base rig" section below) with bones, pivots, box-UV layout and idle/walk clips already valid. Edit it with
 `bbmodel_edit` (move/resize cubes, add detail cubes to existing bones, add child bones for horns/ears/tails) and
@@ -82,8 +82,12 @@ Required: a readable rig (body/head/limbs as bones with sensible pivots), animat
 windup → impact → recovery → rest) for hostile and neutral mobs, which the entity triggers on every hit; the staged rig
 already carries all three, retune rather than drop them — `bbmodel_geckolib_validate` with
 `require_idle_walk: true` passing, `bbmodel_render` used at least once to look at the result (rest + a walk frame),
-and both exports written with `overwrite: true` when re-exporting. Keep the texture simple but not noise:
-flat colours per body part on the UV layout is enough for v1. Report the four file paths in `changed_files`
+and both exports written with `overwrite: true` when re-exporting.
+Texture: do not paint pixels by hand. Call `mcp__minecraft-orchestra__orchestra_paint_skin {project, mob, palette:{base,...}, zones:[...], face:{...}}`
+once the geometry is final: it paints `models/<mob>.png` at 2x (128x128 over a 64x64 layout) with a colour per zone, face shading, edges and a head
+face (brows, eyes with pupils, nose, mouth, optional tusks) whose colours are pushed apart until they stand out, and returns the contrast report
+(`face_check.ok` must be true; `orchestra_check_skin` measures any PNG). Pick colours that fit the theme in the task packet, then
+`bbmodel_geckolib_set_texture` and `bbmodel_render` to look at it: eyes and mouth must be readable at a glance. Report the four file paths in `changed_files`
 (relative to the workspace, e.g. `models/<mob>.geo.json`) and the validator result under `checks_run`.
 Never touch `src/` or `assets/` yourself: the controller installs the exports over the placeholders.
 """
@@ -176,7 +180,13 @@ def validate_model_files(workspace: Path, mob_id: str, behavior: str = "passive"
     if not ok:   # the PNG may be the UV resolution or an integer multiple of it (2x/4x hi-res skins)
         raise InputError(f"texture is {w}x{h} but geo declares {tw}x{th} (the PNG must be that size or a uniform integer multiple of it)")
     cubes = sum(len(b.get("cubes", [])) for b in g["bones"])
-    return {"bones": sorted(bones), "cubes": cubes, "animations": sorted(clips), "texture": [w, h],
+    face = None
+    try:   # informational: how much the head's front face stands out (a visor or helmet may be flat on purpose, so this never blocks the install)
+        from .skin import face_report
+        face = face_report(json.loads(files["bbmodel"].read_text(encoding="utf8")), png)
+    except (OSError, ValueError, KeyError, TypeError):
+        face = None
+    return {"bones": sorted(bones), "cubes": cubes, "animations": sorted(clips), "texture": [w, h], "face": face,
             "files": {k: str(v.relative_to(workspace)).replace("\\", "/") for k, v in files.items()}}
 
 

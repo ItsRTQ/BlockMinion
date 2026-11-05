@@ -66,6 +66,7 @@ export function textureFromModel(model){
   const encoded=texture.source.slice('data:image/png;base64,'.length);
   if(encoded.length>3*1024*1024)throw Error('Embedded PNG exceeds preview size limit');
   const decoded=decodePngRGBA(Buffer.from(encoded,'base64'));
-  if(decoded.width!==model.resolution?.width||decoded.height!==model.resolution?.height)throw Error('Embedded texture does not match model resolution');
-  return {...decoded,uuid:texture.uuid};
+  const scale=decoded.width/(model.resolution?.width||1);
+  if(!Number.isInteger(scale)||scale<1||decoded.height!==model.resolution?.height*scale)throw Error('Embedded texture is not the model resolution or a uniform integer multiple of it');
+  return {...decoded,scale,uuid:texture.uuid};
 }
