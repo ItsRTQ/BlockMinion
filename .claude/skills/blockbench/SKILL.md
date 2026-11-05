@@ -56,7 +56,10 @@ Target density: the base rig is a 10–19 bone skeleton; a finished creature run
 ## Shape and motion rules (from finished boss-scale rigs, §10 of the formats note)
 - Rotate cubes for shape, bones for motion: angled shoulder plates, horns, spines and fins are rotated cubes
   (`rotation` on the cube, pivot at its base); only what animates gets a bone. Half the cubes of a good model are rotated.
-- A joint bends one way: knees/elbows/hocks use `-amp * max(0, sin)`, never a symmetric swing.
+- A joint bends one way: knees/elbows/hocks use `-amp * max(0, sin)`, never a symmetric swing. Time it with the leg: the knee flexes during the
+  forward swing, so the foot leaves the ground only while it travels forward and stays planted while it pushes back (the foot's highest
+  point is in the swing). Flexing the knee in the push-off half reads as a leg kicked up behind, i.e. an inverted knee in game.
+  `bbmodel_quality_gates` reports `GAIT_PHASE` for any `*_shin` / `*_lower` bone of a walk or run clip that does this.
 - One-shot anatomy (attack, eat, roar): windup 25–30% of the clip, impact at 45–55%, a short hold, recovery to rest at
   the end. Windups are big (arms to -110…-150 on X, torso twist 10–20 on Y); impacts carry a body `position` dip of
   1–3 units; child bones (forearm, hand, head) get the same curve 0.05–0.1 s later (follow-through).

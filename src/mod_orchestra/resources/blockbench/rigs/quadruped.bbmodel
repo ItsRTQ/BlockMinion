@@ -1922,7 +1922,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -30,
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -1948,7 +1948,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 0,
+                  "x": -30,
                   "y": 0,
                   "z": 0
                 }
@@ -1993,7 +1993,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -30,
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -2019,7 +2019,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 0,
+                  "x": -30,
                   "y": 0,
                   "z": 0
                 }
@@ -2064,7 +2064,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 0,
+                  "x": -30,
                   "y": 0,
                   "z": 0
                 }
@@ -2090,7 +2090,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -30,
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }
@@ -2135,7 +2135,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": 0,
+                  "x": -30,
                   "y": 0,
                   "z": 0
                 }
@@ -2161,7 +2161,7 @@
               "interpolation": "catmullrom",
               "data_points": [
                 {
-                  "x": -30,
+                  "x": 0,
                   "y": 0,
                   "z": 0
                 }

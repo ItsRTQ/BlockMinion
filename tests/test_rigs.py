@@ -78,9 +78,10 @@ class TestRecipes(unittest.TestCase):
         a = rigs.swing("b", 1.0, 20, 1, axis=1); b = rigs.lift("b", 1.0, 10, 1, axis=2)
         c = rigs.combine(a, b)
         self.assertEqual([k["time"] for k in c["keyframes"]], [0.0, 0.25, 0.5, 0.75, 1.0])
-        self.assertEqual(c["keyframes"][1]["value"], [0.0, 0.0, 10.0])          # mid-swing: sweep crosses zero, lift at its peak
+        self.assertEqual(c["keyframes"][3]["value"], [0.0, 0.0, 10.0])          # phase 1 moves forward in the second half: sweep crosses zero at 0.75, lift at its peak
+        self.assertEqual(c["keyframes"][1]["value"], [0.0, 0.0, 0.0])           # ... and the foot stays planted while it pushes back
         self.assertEqual(c["keyframes"][0]["value"], c["keyframes"][-1]["value"])
-        self.assertEqual(rigs.lift("b", 1.0, 10, -1, axis=2)["keyframes"][3]["value"], [0.0, 0.0, 10.0])
+        self.assertEqual(rigs.lift("b", 1.0, 10, -1, axis=2)["keyframes"][1]["value"], [0.0, 0.0, 10.0])   # phase -1 swings forward in the first half
         d = rigs.drift("h", 2.0, (2, 3, 1), seed=1, spike=(1.3, 0, -8))
         times = [k["time"] for k in d["keyframes"]]
         self.assertEqual(times, sorted(times)); self.assertEqual(len(times), len(set(times)))
@@ -110,6 +111,17 @@ class TestRecipes(unittest.TestCase):
         peak = lambda c: max(abs(k["value"][1]) for k in c["keyframes"])
         self.assertLess(peak(ch[0]), peak(ch[1])); self.assertLess(peak(ch[1]), peak(ch[2]))   # amplitude grows to the tip
         self.assertEqual(ch[0]["keyframes"][2]["value"][1], 10.0); self.assertEqual(ch[1]["keyframes"][4]["value"][1], 20.0)   # lag of a quarter cycle
+
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_every_foot_lifts_in_the_forward_swing(self):
+        """Regression: knees flexed in the push-off half of the cycle (foot raised while it travels backward) on every walking rig."""
+        for plan in ("quadruped", "biped", "insect"):
+            proc = subprocess.run(["node", str(ROOT / "scripts/gait_check.mjs"), str(rigs.rig_path(plan, "bbmodel")), f"animation.{plan}.walk"], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            legs = json.loads(proc.stdout)["legs"]
+            self.assertGreaterEqual(len(legs), 2, plan)
+            self.assertEqual([l["bone"] for l in legs if not l["ok"]], [], f"{plan}: feet raised while pushing back")
 
 
 class TestPacker(unittest.TestCase):
