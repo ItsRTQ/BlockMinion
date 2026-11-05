@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .capabilities import CAPABILITIES, handoff
 from .fabric import accept_changes
-from .provider import AgentProvider, ClaudeCodeProvider, GeminiCliProvider, FakeProvider, TaskEnvelope, RunResult
+from .provider import AgentProvider, ClaudeCodeProvider, GeminiCliProvider, AntigravityCliProvider, FakeProvider, TaskEnvelope, RunResult
 from .redact import redact_obj
 from .state import Store, StateError
 from .validation import InputError
@@ -238,7 +238,7 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
     return outcome
 
 
-PROVIDER_NAMES = ("claude-code", "gemini-cli", "fake")
+PROVIDER_NAMES = ("claude-code", "gemini-cli", "antigravity-cli", "fake")
 
 
 def provider_by_name(name: str | None) -> AgentProvider:
@@ -249,6 +249,8 @@ def provider_by_name(name: str | None) -> AgentProvider:
         return FakeProvider(Path(path).read_text(encoding="utf8") if path and Path(path).is_file() else "")
     if name in ("gemini-cli", "gemini"):
         return GeminiCliProvider()
+    if name in ("antigravity-cli", "antigravity", "agy"):
+        return AntigravityCliProvider()
     if name in ("claude-code", "claude"):
         return ClaudeCodeProvider()
     raise StateError(f"unknown provider {name!r}; use one of {', '.join(PROVIDER_NAMES)}")
