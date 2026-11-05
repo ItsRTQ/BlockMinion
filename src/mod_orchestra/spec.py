@@ -635,6 +635,14 @@ def interpret(*, name: str, mod_id: str, package: str, idea: str, profile: str) 
     validate_spec_content(spec)
     return spec
 
+def has_content(spec: "Spec") -> bool:
+    """True when the spec describes something the generator can emit: items/blocks, but also mobs, material sets (tools and
+    armor), foods, enchantments, structures, biomes, dimensions or sounds on their own. One definition for the interpreter
+    and the generator, so a mobs-only or gear-only mod is not rejected by one of them."""
+    return bool(spec.features or spec.mobs or spec.materials or spec.foods or spec.enchantments
+                or spec.structures or spec.biomes or spec.dimensions or spec.sounds)
+
+
 def read_spec(raw: dict) -> Spec:
     """Reads schema 1 (items/blocks only) and 2 (recipes, drops, tab). Older specs upgrade in memory."""
     if raw.get("schema_version") not in (1, 2):

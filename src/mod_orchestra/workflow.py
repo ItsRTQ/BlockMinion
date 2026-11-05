@@ -15,7 +15,8 @@ from .validation import InputError, project_id
 def new_project(store: Store, *, name: str, mod_id: str, package: str, idea: str, profile: str | None = None) -> dict:
     pid = project_id(mod_id)
     spec = interpret(name=name, mod_id=pid, package=package, idea=idea, profile=profile or PROFILE["id"])
-    if not spec.features:   # free-text idea: nothing the regex grammar could extract; the interpreter agent fills the spec
+    from .spec import has_content
+    if not has_content(spec):   # free-text idea: nothing the regex grammar could extract (no items, blocks or mobs); the interpreter agent fills the spec
         spec = spec.__class__(**{**spec.__dict__, "questions": [
             "Idea recorded as free text. Run `craftctl dispatch <id> --task <id>:SPEC` (or `craftctl orchestrate <id>`) so the interpreter proposes a spec, "
             "or rewrite the idea as 'items: a, b; blocks: c; tab: Label'."]})

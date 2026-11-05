@@ -57,6 +57,20 @@ def add_mob(store: Store, pid: str, *, identifier: str, label: str, behavior: st
     return _save(store, pid, replace(spec, mobs=mobs), f"add mob {identifier}")
 
 
+def set_body_plan(store: Store, pid: str, plan: str, mob_ids: list[str] | None = None) -> dict:
+    """Change the base rig of existing mobs (all of them when none are named). Like every spec edit it returns the spec to DRAFT."""
+    from .rigs import BODY_PLANS
+    if plan not in BODY_PLANS:
+        raise InputError(f"body plan must be one of {BODY_PLANS}")
+    spec = _load(store, pid)
+    known = {m.identifier for m in spec.mobs}
+    wanted = set(mob_ids or known)
+    if wanted - known:
+        raise InputError(f"unknown mob(s): {sorted(wanted - known)}; the project has {sorted(known)}")
+    mobs = [replace(m, body_plan=plan) if m.identifier in wanted else m for m in spec.mobs]
+    return _save(store, pid, replace(spec, mobs=mobs), f"body plan {plan} for {', '.join(sorted(wanted))}")
+
+
 def remove_mob(store: Store, pid: str, identifier: str) -> dict:
     spec = _load(store, pid)
     return _save(store, pid, replace(spec, mobs=[m for m in spec.mobs if m.identifier != identifier]), f"remove mob {identifier}")

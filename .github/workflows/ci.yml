@@ -106,15 +106,29 @@ jobs:
           craftctl build ci_mod --approval-id "$APPROVAL" | tee build.json
           python -c "import json; r=json.load(open('build.json')); assert r['status']=='BUILD_PASS', r; print('BUILD_PASS sha256', r['evidence']['artifact_sha256'])"
           craftctl status ci_mod | python -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='BUILD_PASSED_GAME_UNTESTED', d['status']; print('evidence:', [(e['level'], e['actor']) for e in d['evidence']])"
+      - name: Mobs-and-gear-only mod (no free items or blocks, like an ork tribe with its weapons)
+        env:
+          CRAFTCTL_HOME: ${{ runner.temp }}/craft
+        run: |
+          set -euo pipefail
+          craftctl new --name "CI Gear" --id ci_gear --package com.example.cigear --idea "hostile mobs: ci brute, ci scout"
+          craftctl add-material ci_gear --id ci_tribe --label "CI Tribe" --ingredient minecraft:iron_ingot --tools sword axe --armor helmet boots --no-recipes > /dev/null
+          craftctl plan ci_gear > /dev/null
+          craftctl approve-spec ci_gear > /dev/null
+          craftctl generate ci_gear > /dev/null
+          APPROVAL=$(craftctl request-build ci_gear | python -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          craftctl decide "$APPROVAL" grant > /dev/null
+          craftctl build ci_gear --approval-id "$APPROVAL" | tee build_gear.json
+          python -c "import json; r=json.load(open('build_gear.json')); assert r['status']=='BUILD_PASS', r; print('gear-only BUILD_PASS')"
       - name: Show build log tail on failure
         if: failure()
         env:
           CRAFTCTL_HOME: ${{ runner.temp }}/craft
         shell: bash
         run: |
-          craftctl logs ci_mod --lines 200 > build_tail.txt || true
-          grep -nE "error:|Caused by|What went wrong" build_tail.txt | head -40 | while IFS= read -r line; do echo "::error title=craftctl build::${line:0:400}"; done
-          cat build_tail.txt
+          for p in ci_mod ci_gear; do craftctl logs $p --lines 200 > build_tail_$p.txt 2>/dev/null || true; done
+          { cat build_tail_*.txt 2>/dev/null | grep -nE "error:|Caused by|What went wrong" | head -40 | while IFS= read -r line; do echo "::error title=craftctl build::${line:0:400}"; done; } || true
+          cat build_tail_*.txt 2>/dev/null || true
 
   kitchen-sink:
     name: Build examples/kitchen_sink (every knowledge skill's code, compiled)
