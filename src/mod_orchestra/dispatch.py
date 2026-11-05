@@ -269,7 +269,11 @@ def provider_name_for(store: Store | None) -> str:
 
 def provider_for(store: Store | None) -> AgentProvider:
     saved = store.get_global("provider") if store is not None else None
-    return provider_by_name(saved) if saved else provider_from_env()
+    provider = provider_by_name(saved) if saved else provider_from_env()
+    model = store.get_global("model:" + provider.name) if store is not None else None   # chosen in the UI, per runtime
+    if model and isinstance(provider, GeminiCliProvider):   # also covers AntigravityCliProvider
+        provider.model = str(model)
+    return provider
 
 
 def dispatch(store: Store, pid: str, *, task_id: str | None = None, provider: AgentProvider | None = None) -> dict:

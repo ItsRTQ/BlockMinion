@@ -97,6 +97,13 @@ class UiApi(unittest.TestCase):
         self.assertEqual((code, out["provider"], out["saved"]), (200, "gemini-cli", "gemini-cli"))
         self.assertEqual(self.call("/api/settings")[1]["provider"], "gemini-cli")
         self.assertEqual(self.call("/api/settings", {"provider": "codex"})[0], 400)
+        # the model belongs to the runtime in force and is saved without touching the runtime choice
+        self.call("/api/settings", {"provider": "antigravity-cli"})
+        code, out = self.call("/api/settings", {"model": "Gemini 3.1 Pro (High)"})
+        self.assertEqual((code, out["provider"], out["saved"], out["model"]), (200, "antigravity-cli", "antigravity-cli", "Gemini 3.1 Pro (High)"))
+        self.assertEqual(self.call("/api/settings")[1]["model"], "Gemini 3.1 Pro (High)")
+        self.assertEqual(self.call("/api/settings", {"model": "bad; rm -rf /"})[0], 400)
+        self.assertIsNone(self.call("/api/settings", {"model": ""})[1]["model"])
         code, out = self.call("/api/settings", {"provider": None})
         self.assertEqual((code, out["saved"]), (200, None))
 

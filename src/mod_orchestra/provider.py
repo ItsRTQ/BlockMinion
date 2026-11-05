@@ -154,12 +154,32 @@ def parse_claude_json(raw: str) -> dict | None:
     return fallback
 
 
+_ERRORISH = re.compile(r"error|failed|not found|denied|unauthori[sz]ed|quota|exhausted|not signed in|timed out|traceback", re.I)
+
+
+def _generic_event_line(obj: dict) -> str:
+    """One compact line for an event the summary does not know (Antigravity nests its payload under the event name):
+    the event name plus the first descriptive field, so progress is visible instead of hidden."""
+    name = str(obj.get("event"))
+    payload = obj.get(name) if isinstance(obj.get(name), dict) else obj
+    detail = ""
+    for key in ("tool_name", "tool", "name", "command", "message", "text", "content", "status", "error", "path", "file_path"):
+        v = payload.get(key)
+        if isinstance(v, (str, int, float)) and str(v).strip():
+            detail = f"{key}={str(v).strip()}"; break
+    if not detail:
+        detail = "{" + ", ".join(list(payload)[:6]) + "}"
+    return f"· {name} {detail}".replace("\n", " ")[:170]
+
+
 def live_summary(raw: str, limit: int = 60) -> list[str]:
     """Human-readable lines from a stream-json worker log while it runs: tool calls and text snippets."""
     out: list[str] = []
     for line in raw.splitlines():
         line = line.strip()
         if not line.startswith("{"):
+            if line and _ERRORISH.search(line):   # plain stderr-style lines such as "Not signed in" or a stack trace headline
+                out.append("! " + line[:200])
             continue
         try:
             obj = json.loads(line)
@@ -198,6 +218,8 @@ def live_summary(raw: str, limit: int = 60) -> list[str]:
         elif t == "tool_result" and obj.get("status") == "error":   # Gemini CLI
             err = obj.get("error") or {}
             out.append("   ✗ " + str(err.get("message") or obj.get("output") or "").strip().replace("\n", " ")[:160])
+        elif "event" in obj and "type" not in obj:   # any other Antigravity event
+            out.append(_generic_event_line(obj))
     return out[-limit:]
 
 
@@ -478,7 +500,7 @@ class AntigravityCliProvider(GeminiCliProvider):
     """Runs one bounded worker with Google's Antigravity CLI (`agy`), the successor of Gemini CLI for personal
     accounts (June 2026). Same shape as the Gemini adapter with the differences Antigravity introduced:
     `--dangerously-skip-permissions` instead of `--approval-mode`, `--print-timeout` (default 5 min, raised to
-    ours), no `--skip-trust`/`--model` in headless mode, MCP servers in the workspace's `.agents/mcp_config.json`,
+    ours), no `--skip-trust`, `--model` only when one is chosen (UI or CRAFTCTL_AGY_MODEL), MCP servers in the workspace's `.agents/mcp_config.json`,
     and `--output-format stream-json` only from agy 1.1.8. The full prompt is also written to
     `.agents/craftctl_task.md` and the short `--prompt` points at it, so the task survives a CLI that does not
     append stdin to the prompt."""
@@ -488,6 +510,7 @@ class AntigravityCliProvider(GeminiCliProvider):
 
     def __init__(self, binary: str | None = None, timeout: int = AGENT_TIMEOUT, model: str | None = None, approval_mode: str | None = None):
         super().__init__(binary or os.environ.get("CRAFTCTL_AGY_BIN") or shutil.which("agy"), timeout, model, approval_mode)
+        self.model = model or os.environ.get("CRAFTCTL_AGY_MODEL") or None   # agy model ids differ from Gemini CLI's; `agy models` lists them
 
     def _servers(self, envelope: TaskEnvelope) -> dict:
         out = {}
@@ -518,6 +541,8 @@ class AntigravityCliProvider(GeminiCliProvider):
             cmd = [self.binary, "--prompt",
                    f"Read {self.TASK_REL.as_posix()} in this workspace (the same text may also arrive on stdin) and carry out the task it describes. Finish with the handoff block.",
                    "--output-format", "stream-json", "--dangerously-skip-permissions", "--print-timeout", f"{self.timeout}s"]
+            if self.model:   # opt-in: without it agy picks its own default, which some accounts cannot use for every call
+                cmd += ["--model", self.model]
             env = controlled_env({"CRAFTCTL_HOME": str(HOME)})
             for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY",
                                 "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "NO_BROWSER"):
@@ -540,6 +565,9 @@ class AntigravityCliProvider(GeminiCliProvider):
         if not rec["result_seen"] and not rec["text"]:
             errors_prefix.append("agy printed no result (headless stream-json needs Antigravity CLI 1.1.8+; run `agy --version` and `agy update`)")
         errors_prefix += [f"agy error: {e}" for e in rec["errors"]]
+        if any("NOT_FOUND" in e or "404" in e for e in rec["errors"]):
+            errors_prefix.append("Google says this account cannot use the model agy asked for: run `agy models`, then pick one you have under "
+                                 "Environment → Agent runtime → Model (or set CRAFTCTL_AGY_MODEL)")
         handoff, errors = extract_handoff(rec["text"])
         errors = errors_prefix + errors
         if record["killed"]:

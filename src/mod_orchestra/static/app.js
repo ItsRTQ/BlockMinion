@@ -105,9 +105,20 @@ async function renderRuntime() {
   sel.value = s.provider;
   const describe = () => { note.textContent = s.saved ? "saved on this machine" : s.env ? "from CRAFTCTL_PROVIDER in this terminal (choose one here to save it)" : "default; choose one here to save it"; };
   describe();
+  const modelRow = qs("env-model-row"), modelInput = qs("env-model"), modelSave = qs("env-model-save");
+  const syncModel = () => {
+    modelRow.classList.toggle("hidden", s.provider === "claude-code");   // Claude Code uses your account's own default
+    modelInput.value = s.model || "";
+    modelInput.placeholder = s.model_env ? `Model (optional) — ${s.model_env} is set in this terminal; save one here to override it` : "Model (optional) — leave empty to let the CLI choose; list yours with: agy models";
+  };
+  syncModel();
   sel.onchange = async () => {
-    try { s = { ...s, ...(await api("/api/settings", { provider: sel.value })) }; toast("Agent runtime: " + (labels[s.provider] || s.provider), "ok"); describe(); }
+    try { s = { ...s, ...(await api("/api/settings", { provider: sel.value })) }; toast("Agent runtime: " + (labels[s.provider] || s.provider), "ok"); describe(); s = { ...s, ...(await api("/api/settings")) }; syncModel(); }
     catch (e) { toast(e.message, "bad"); sel.value = s.provider; }
+  };
+  modelSave.onclick = async () => {
+    try { s = { ...s, ...(await api("/api/settings", { model: modelInput.value })) }; toast(s.model ? "Model saved: " + s.model : "Model cleared (the CLI picks its own)", "ok"); syncModel(); }
+    catch (e) { toast(e.message, "bad"); }
   };
 }
 
@@ -567,7 +578,7 @@ function renderRuns(p) {
     const render = (d) => (d.live && d.live.length) ? d.live.join("\n") + (d.state === "RUNNING" ? "\n…" : "") : (d.log_tail || (r.state === "RUNNING" ? "(waiting for the worker's first output…)" : "(empty)"));
     const showLog = async (raw) => { const d = await api("/api/run/" + r.id); let box = card.querySelector(".log"); if (!box) { box = el("pre", null, "log"); card.append(box); } box.classList.remove("hidden"); box.textContent = raw ? (d.log_tail || "(empty)") : render(d); lb.textContent = "Hide log"; if (!raw) { const atBottom = true; if (atBottom) box.scrollTop = box.scrollHeight; } };
     const lb = btn(openLogs.has(r.id) ? "Hide log" : "Worker log", async () => { if (openLogs.has(r.id)) { openLogs.delete(r.id); const box = card.querySelector(".log"); if (box) box.classList.add("hidden"); lb.textContent = "Worker log"; return; } openLogs.add(r.id); await showLog(false); }, "mini secondary"); card.append(lb);
-    if (r.state === "RUNNING") card.append(btn("Raw log", () => { openLogs.add(r.id); return showLog(true); }, "mini secondary"));
+    card.append(btn("Raw log", () => { openLogs.add(r.id); return showLog(true); }, "mini secondary"));
     if (openLogs.has(r.id)) showLog(false);
     list.append(card);
   }
