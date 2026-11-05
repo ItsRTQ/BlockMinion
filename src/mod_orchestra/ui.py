@@ -110,10 +110,11 @@ def serve(store: Store, port: int = 8765) -> None:
                 if path == "/api/doctor": return inspect()
                 if path == "/api/settings":
                     from .dispatch import provider_name_for, PROVIDER_NAMES
-                    from .provider import ClaudeCodeProvider, GeminiCliProvider
+                    from .provider import ClaudeCodeProvider, GeminiCliProvider, AntigravityCliProvider
                     return {"provider": provider_name_for(store), "saved": store.get_global("provider"), "env": os.environ.get("CRAFTCTL_PROVIDER"),
                             "choices": [n for n in PROVIDER_NAMES if n != "fake"],
-                            "available": {"claude-code": ClaudeCodeProvider().available(), "gemini-cli": GeminiCliProvider().available()}}
+                            "available": {"claude-code": ClaudeCodeProvider().available(), "gemini-cli": GeminiCliProvider().available(),
+                                          "antigravity-cli": AntigravityCliProvider().available()}}
                 if path == "/api/projects": return store.projects()
                 if path.startswith("/api/run/"):
                     run_id = path.removeprefix("/api/run/")

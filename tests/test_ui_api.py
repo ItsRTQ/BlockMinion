@@ -92,7 +92,7 @@ class UiApi(unittest.TestCase):
 
     def test_2b_agent_runtime_setting(self):
         code, out = self.call("/api/settings")
-        self.assertEqual(code, 200); self.assertEqual(out["choices"], ["claude-code", "gemini-cli"]); self.assertIn("available", out)
+        self.assertEqual(code, 200); self.assertEqual(out["choices"], ["claude-code", "gemini-cli", "antigravity-cli"]); self.assertIn("available", out)
         code, out = self.call("/api/settings", {"provider": "gemini-cli"})
         self.assertEqual((code, out["provider"], out["saved"]), (200, "gemini-cli", "gemini-cli"))
         self.assertEqual(self.call("/api/settings")[1]["provider"], "gemini-cli")

@@ -232,6 +232,8 @@ def parse_gemini_stream(raw: str) -> dict:
             if isinstance(obj.get("response"), str) and obj["response"].strip() and not text_parts:
                 text_parts.append(obj["response"])
     rec["text"] = "".join(text_parts)
+    if not text_parts and not rec["result_seen"] and "```handoff" in raw:
+        rec["text"] = raw   # plain-text headless output (no JSON events): the handoff block is still in there
     return rec
 
 
@@ -454,4 +456,78 @@ class GeminiCliProvider(AgentProvider):
         turns = None
         if isinstance(rec["stats"], dict) and isinstance(rec["stats"].get("tool_calls"), int):
             turns = rec["stats"]["tool_calls"]
+        return RunResult(record["exit_code"], record["duration_s"], log_path, raw, handoff, errors, rec["session_id"], None, turns, record["killed"])
+
+
+class AntigravityCliProvider(GeminiCliProvider):
+    """Runs one bounded worker with Google's Antigravity CLI (`agy`), the successor of Gemini CLI for personal
+    accounts (June 2026). Same shape as the Gemini adapter with the differences Antigravity introduced:
+    `--dangerously-skip-permissions` instead of `--approval-mode`, `--print-timeout` (default 5 min, raised to
+    ours), no `--skip-trust`/`--model` in headless mode, MCP servers in the workspace's `.agents/mcp_config.json`,
+    and `--output-format stream-json` only from agy 1.1.8. The full prompt is also written to
+    `.agents/craftctl_task.md` and the short `--prompt` points at it, so the task survives a CLI that does not
+    append stdin to the prompt."""
+    name = "antigravity-cli"
+    SETTINGS_REL = Path(".agents") / "mcp_config.json"
+    TASK_REL = Path(".agents") / "craftctl_task.md"
+
+    def __init__(self, binary: str | None = None, timeout: int = AGENT_TIMEOUT, model: str | None = None, approval_mode: str | None = None):
+        super().__init__(binary or os.environ.get("CRAFTCTL_AGY_BIN") or shutil.which("agy"), timeout, model, approval_mode)
+
+    def _servers(self, envelope: TaskEnvelope) -> dict:
+        out = {}
+        for name, cfg in super()._servers(envelope).items():
+            out[name] = {k: v for k, v in cfg.items() if k in ("command", "args", "env", "cwd")}   # agy's mcp_config keys
+        return out
+
+    def _settings(self, envelope: TaskEnvelope, existing: dict | None) -> dict:
+        base = dict(existing or {})
+        base["mcpServers"] = {**(base.get("mcpServers") or {}), **self._servers(envelope)}
+        return base
+
+    def run(self, envelope: TaskEnvelope, log_path: Path) -> RunResult:
+        if not self.binary:
+            raise StateError("Antigravity CLI (`agy`) not found on PATH. Install it from antigravity.google or set CRAFTCTL_AGY_BIN.")
+        prompt = _role_prompt(envelope.role) + "\n\n" + envelope.packet + "\n" + envelope.extra_instructions + HANDOFF_INSTRUCTIONS
+        settings_path = envelope.workspace / self.SETTINGS_REL
+        task_path = envelope.workspace / self.TASK_REL
+        previous = settings_path.read_text(encoding="utf8") if settings_path.is_file() else None
+        try:
+            existing = json.loads(previous) if previous else None
+        except json.JSONDecodeError:
+            existing = None
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(self._settings(envelope, existing), indent=1), encoding="utf8")
+        task_path.write_text(prompt, encoding="utf8")
+        try:
+            cmd = [self.binary, "--prompt",
+                   f"Read {self.TASK_REL.as_posix()} in this workspace (the same text may also arrive on stdin) and carry out the task it describes. Finish with the handoff block.",
+                   "--output-format", "stream-json", "--dangerously-skip-permissions", "--print-timeout", f"{self.timeout}s"]
+            env = controlled_env({"CRAFTCTL_HOME": str(HOME)})
+            for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+                                "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "NO_BROWSER"):
+                if passthrough in os.environ:
+                    env[passthrough] = os.environ[passthrough]   # the Google login lives under ~/.gemini/antigravity-cli
+            record = run_logged(cmd, cwd=envelope.workspace, log=log_path, timeout=self.timeout, env=env, stdin_text=prompt)
+        finally:
+            task_path.unlink(missing_ok=True)
+            if previous is None:
+                settings_path.unlink(missing_ok=True)
+                try:
+                    settings_path.parent.rmdir()
+                except OSError:
+                    pass
+            else:
+                settings_path.write_text(previous, encoding="utf8")
+        raw = log_path.read_text(encoding="utf8", errors="replace")
+        rec = parse_gemini_stream(raw)
+        errors_prefix: list[str] = []
+        if not rec["result_seen"] and not rec["text"]:
+            errors_prefix.append("agy printed no result (headless stream-json needs Antigravity CLI 1.1.8+; run `agy --version` and `agy update`)")
+        errors_prefix += [f"agy error: {e}" for e in rec["errors"]]
+        handoff, errors = extract_handoff(rec["text"])
+        errors = errors_prefix + errors
+        if record["killed"]:
+            errors.append(f"worker killed after {self.timeout}s timeout")
+        turns = rec["stats"].get("tool_calls") if isinstance(rec["stats"], dict) and isinstance(rec["stats"].get("tool_calls"), int) else None
         return RunResult(record["exit_code"], record["duration_s"], log_path, raw, handoff, errors, rec["session_id"], None, turns, record["killed"])

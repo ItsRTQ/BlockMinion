@@ -91,6 +91,7 @@ async function renderEnv() {
   grid.append(item("Blockbench (optional)", [["executable", d.blockbench?.executable || "not found — .bbmodel files open with the system association if any"], ["note", d.blockbench?.note]]));
   grid.append(item("Claude Code (agent runtime)", [["executable", d.claude_code?.executable || "NOT FOUND — install Claude Code or set CRAFTCTL_CLAUDE_BIN"], ["note", d.claude_code?.note]]));
   grid.append(item("Gemini CLI (agent runtime)", [["executable", d.gemini_cli?.executable || "not found — install Gemini CLI or set CRAFTCTL_GEMINI_BIN"], ["note", d.gemini_cli?.note]]));
+  grid.append(item("Antigravity CLI (agent runtime)", [["executable", d.antigravity_cli?.executable || "not found — install agy from antigravity.google or set CRAFTCTL_AGY_BIN"], ["version", d.antigravity_cli?.version], ["note", d.antigravity_cli?.note]]));
   grid.append(item("Git", [["executable", d.git?.executable || "—"], ["version", d.git?.version]]));
   await renderRuntime();
 }
@@ -98,7 +99,7 @@ async function renderEnv() {
 async function renderRuntime() {
   const sel = qs("env-provider"), note = qs("env-provider-note");
   let s; try { s = await api("/api/settings"); } catch (e) { note.textContent = e.message; return; }
-  const labels = { "claude-code": "Claude Code", "gemini-cli": "Gemini CLI" };
+  const labels = { "claude-code": "Claude Code", "gemini-cli": "Gemini CLI", "antigravity-cli": "Antigravity CLI (agy)" };
   sel.replaceChildren();
   for (const name of s.choices) { const o = el("option", (labels[name] || name) + (s.available[name] ? "" : " — not installed")); o.value = name; sel.append(o); }
   sel.value = s.provider;
