@@ -246,3 +246,34 @@ class TestIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSetBodyPlan(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        from mod_orchestra import workflow
+        from mod_orchestra.state import Store
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name); self.store = Store(base / "s.sqlite")
+        p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop); (base / "projects").mkdir()
+        workflow.new_project(self.store, name="G", mod_id="g_mod", package="com.x.g", idea="hostile mobs: brute, scout; mobs: pig")
+        workflow.plan_project(self.store, "g_mod"); workflow.approve_spec(self.store, "g_mod")
+
+    def plans(self):
+        return {m["identifier"]: m["body_plan"] for m in self.store.project("g_mod")["spec"]["mobs"]}
+
+    def test_changes_named_mobs_and_returns_the_spec_to_draft(self):
+        from mod_orchestra.specedit import set_body_plan
+        out = set_body_plan(self.store, "g_mod", "biped", ["brute", "scout"])
+        self.assertEqual(out["spec_state"], "DRAFT")
+        self.assertEqual(self.plans(), {"brute": "biped", "scout": "biped", "pig": "quadruped"})
+
+    def test_all_mobs_when_none_named_and_validation(self):
+        from mod_orchestra.specedit import set_body_plan
+        from mod_orchestra.validation import InputError
+        set_body_plan(self.store, "g_mod", "insect")
+        self.assertEqual(set(self.plans().values()), {"insect"})
+        with self.assertRaises(InputError):
+            set_body_plan(self.store, "g_mod", "centaur")
+        with self.assertRaisesRegex(InputError, "unknown mob"):
+            set_body_plan(self.store, "g_mod", "biped", ["ghost"])

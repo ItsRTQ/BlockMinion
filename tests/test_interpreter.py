@@ -116,6 +116,21 @@ class Proposal(Base):
         spec = spec_from_proposal(cur, dict(PROPOSAL, mod_id="evil", package="com.evil", name="Evil"))
         self.assertEqual((spec.mod_id, spec.package, spec.name), ("i_mod", "com.x.i", "Crystals"))
 
+    def test_mobs_and_gear_only_proposal_is_accepted_and_keeps_body_plan(self):
+        """The Grokos shape: no free items/blocks, hostile mobs plus a material set; body_plan chosen by the agent survives."""
+        proposal = {"features": [], "mobs": [{"identifier": "tall_groko", "label": "Tall Groko", "behavior": "hostile", "health": 24, "speed": 0.28, "width": 0.7,
+                                              "height": 2.4, "attack_damage": 5, "drops": [{"item": "groko_tribe_sword", "count_min": 1, "count_max": 1, "chance": 0.25}],
+                                              "body_plan": "biped", "egg_colors": [1, 2], "spawn": None}],
+                    "materials": [{"identifier": "groko_tribe", "label": "Groko Tribe", "ingredient": "minecraft:iron_ingot", "tools": ["sword"], "armor": ["helmet"],
+                                   "recipes": False}]}
+        spec = spec_from_proposal(self.spec(), proposal)
+        self.assertEqual([m.body_plan for m in spec.mobs], ["biped"]); self.assertEqual(spec.features, [])
+
+    def test_prompt_teaches_body_plan(self):
+        from mod_orchestra.interpreter import SPEC_INSTRUCTIONS as text
+        for needle in ("body_plan", "humanoids", "biped"):
+            self.assertIn(needle, text)
+
     def test_proposal_without_features_is_rejected(self):
         with self.assertRaisesRegex(InputError, "no items, blocks, mobs"):
             spec_from_proposal(self.spec(), {"features": []})
