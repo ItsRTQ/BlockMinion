@@ -127,8 +127,8 @@ jobs:
         shell: bash
         run: |
           for p in ci_mod ci_gear; do craftctl logs $p --lines 200 > build_tail_$p.txt 2>/dev/null || true; done
-          cat build_tail_*.txt | grep -nE "error:|Caused by|What went wrong" | head -40 | while IFS= read -r line; do echo "::error title=craftctl build::${line:0:400}"; done
-          cat build_tail_*.txt
+          { cat build_tail_*.txt 2>/dev/null | grep -nE "error:|Caused by|What went wrong" | head -40 | while IFS= read -r line; do echo "::error title=craftctl build::${line:0:400}"; done; } || true
+          cat build_tail_*.txt 2>/dev/null || true
 
   kitchen-sink:
     name: Build examples/kitchen_sink (every knowledge skill's code, compiled)
