@@ -6,6 +6,9 @@ captures everything the worker printed, and accepts only a schema-valid handoff.
 else fails the run and returns the task to the user.
 
 v1 uses the user's installed Claude Code and subscription (`claude -p`); no API key.
+`GeminiCliProvider` runs the same envelope through the user's installed Gemini CLI (`gemini --prompt … --output-format
+stream-json`), with the role definition and skills inlined in the prompt and the MCP servers declared in the
+workspace's `.gemini/settings.json` for the duration of the run.
 """
 from __future__ import annotations
 import json
@@ -178,9 +181,58 @@ def live_summary(raw: str, limit: int = 60) -> list[str]:
                     text = content if isinstance(content, str) else " ".join(c.get("text", "") for c in content or [] if isinstance(c, dict))
                     if block.get("is_error"):
                         out.append("   ✗ " + text.strip().replace("\n", " ")[:160])
+        elif t == "result" and "stats" in obj and "num_turns" not in obj:   # Gemini CLI
+            st = obj.get("stats") or {}
+            out.append(f"■ finished: {obj.get('status', '?')} · {st.get('input_tokens', '?')}/{st.get('output_tokens', '?')} tokens")
         elif t == "result":
             out.append(f"■ finished: {obj.get('subtype')} · {obj.get('num_turns')} turns · ${float(obj.get('total_cost_usd') or 0):.2f}")
+        elif t == "message" and obj.get("role") == "assistant" and str(obj.get("content") or "").strip():   # Gemini CLI
+            out.append("… " + str(obj["content"]).strip().replace("\n", " ")[:160])
+        elif t == "tool_use" and "tool_name" in obj:   # Gemini CLI
+            inp = obj.get("parameters") or {}
+            arg = inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("pattern") or inp.get("query") or ""
+            out.append(f"→ {obj.get('tool_name')} {str(arg)[:140]}")
+        elif t == "tool_result" and obj.get("status") == "error":   # Gemini CLI
+            err = obj.get("error") or {}
+            out.append("   ✗ " + str(err.get("message") or obj.get("output") or "").strip().replace("\n", " ")[:160])
     return out[-limit:]
+
+
+def parse_gemini_stream(raw: str) -> dict:
+    """Fold a Gemini CLI `--output-format stream-json` log (JSONL; other lines ignored) into one record:
+    the assistant text in order (message events, deltas or whole), session id and model from `init`, the `result`
+    event's status/stats, and any `error` events. Works on a partial log too (the run may have been killed)."""
+    text_parts: list[str] = []
+    rec = {"text": "", "session_id": None, "model": None, "status": None, "stats": None, "errors": [], "result_seen": False}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = obj.get("type")
+        if t == "init":
+            rec["session_id"] = obj.get("session_id") or rec["session_id"]; rec["model"] = obj.get("model") or rec["model"]
+        elif t == "message" and obj.get("role") == "assistant":
+            content = obj.get("content")
+            if isinstance(content, list):
+                content = "".join(c.get("text", "") for c in content if isinstance(c, dict))
+            if isinstance(content, str):
+                text_parts.append(content)
+        elif t == "error":
+            rec["errors"].append(str(obj.get("message") or obj.get("error") or obj)[:300])
+        elif t == "result":
+            rec["result_seen"] = True
+            rec["status"] = obj.get("status"); rec["stats"] = obj.get("stats")
+            rec["model"] = obj.get("model") or rec["model"]
+            if obj.get("error"):
+                rec["errors"].append(str(obj["error"])[:300])
+            if isinstance(obj.get("response"), str) and obj["response"].strip() and not text_parts:
+                text_parts.append(obj["response"])
+    rec["text"] = "".join(text_parts)
+    return rec
 
 
 class AgentProvider:
@@ -307,3 +359,99 @@ class ClaudeCodeProvider(AgentProvider):
         if record["killed"]:
             errors.append(f"worker killed after {self.timeout}s timeout")
         return RunResult(record["exit_code"], record["duration_s"], log_path, raw, handoff, errors, session_id, cost, turns, record["killed"])
+
+
+def _role_prompt(role: str) -> str:
+    """The role's agent definition with its skills inlined, as plain prompt text (for runtimes without `--agents`)."""
+    agents = _load_agent_definitions()
+    entry = agents.get(role)
+    if entry is None:
+        raise StateError(f"unknown role {role!r}; known: {', '.join(sorted(agents))}")
+    return f"# You are the `{role}` worker\n{entry['description']}\n\n{entry['prompt']}"
+
+
+GEMINI_EXIT_CODES = {42: "bad input", 53: "turn limit exceeded"}
+
+
+class GeminiCliProvider(AgentProvider):
+    """Runs one bounded worker with the user's installed Gemini CLI and their Google login (no API key).
+
+    Differences from Claude Code that this adapter absorbs: no `--agents` (the role prompt and skills go in front of the
+    packet), no `--mcp-config` (the servers are written to the workspace's `.gemini/settings.json` for the run and the
+    previous file is restored afterwards), no guard hook (the MCP server refuses USER-ONLY operations by itself), and the
+    final text arrives as `message` events rather than inside `result`. The prompt goes through stdin so Windows' argv
+    limit never truncates an inlined skill."""
+    name = "gemini-cli"
+    SETTINGS_REL = Path(".gemini") / "settings.json"
+
+    def __init__(self, binary: str | None = None, timeout: int = AGENT_TIMEOUT, model: str | None = None, approval_mode: str | None = None):
+        self.binary = binary or os.environ.get("CRAFTCTL_GEMINI_BIN") or shutil.which("gemini")
+        self.timeout = timeout
+        self.model = model or os.environ.get("CRAFTCTL_GEMINI_MODEL") or None
+        self.approval_mode = approval_mode or os.environ.get("CRAFTCTL_GEMINI_APPROVAL") or "yolo"   # headless: no prompt to answer
+
+    def available(self) -> bool:
+        return bool(self.binary) and (Path(self.binary).exists() if os.sep in str(self.binary) else bool(shutil.which(str(self.binary))))
+
+    def _servers(self, envelope: TaskEnvelope) -> dict:
+        servers = {"minecraft-orchestra": {"command": "python", "args": ["-m", "mod_orchestra.cli", "mcp"],
+                                           "env": {"CRAFTCTL_HOME": str(HOME)}, "trust": True, "timeout": 120000}}
+        if envelope.role == "designer":
+            from .models import blockbench_server_config
+            servers["blockbench"] = {**blockbench_server_config(envelope.workspace), "trust": True}
+        return servers
+
+    def _settings(self, envelope: TaskEnvelope, existing: dict | None) -> dict:
+        base = dict(existing or {})
+        base["mcpServers"] = {**(base.get("mcpServers") or {}), **self._servers(envelope)}
+        base["mcp"] = {**(base.get("mcp") or {}), "allowed": sorted(self._servers(envelope))}   # only ours this run
+        return base
+
+    def run(self, envelope: TaskEnvelope, log_path: Path) -> RunResult:
+        if not self.binary:
+            raise StateError("Gemini CLI (`gemini`) not found on PATH. Install Gemini CLI or set CRAFTCTL_GEMINI_BIN.")
+        prompt = _role_prompt(envelope.role) + "\n\n" + envelope.packet + "\n" + envelope.extra_instructions + HANDOFF_INSTRUCTIONS
+        settings_path = envelope.workspace / self.SETTINGS_REL
+        previous = settings_path.read_text(encoding="utf8") if settings_path.is_file() else None
+        try:
+            existing = json.loads(previous) if previous else None
+        except json.JSONDecodeError:
+            existing = None
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(self._settings(envelope, existing), indent=1), encoding="utf8")
+        try:
+            cmd = [self.binary, "--prompt", "Carry out the task described in the input below, in this workspace. Finish with the handoff block.",
+                   "--output-format", "stream-json", "--approval-mode", self.approval_mode, "--skip-trust"]
+            if self.model:
+                cmd += ["--model", self.model]
+            env = controlled_env({"CRAFTCTL_HOME": str(HOME)})
+            for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+                                "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "NO_BROWSER"):
+                if passthrough in os.environ:
+                    env[passthrough] = os.environ[passthrough]   # the Google login lives under ~/.gemini
+            record = run_logged(cmd, cwd=envelope.workspace, log=log_path, timeout=self.timeout, env=env, stdin_text=prompt)
+        finally:
+            if previous is None:
+                settings_path.unlink(missing_ok=True)
+                try:
+                    settings_path.parent.rmdir()   # only if we created it and it is empty
+                except OSError:
+                    pass
+            else:
+                settings_path.write_text(previous, encoding="utf8")
+        raw = log_path.read_text(encoding="utf8", errors="replace")
+        rec = parse_gemini_stream(raw)
+        errors_prefix: list[str] = []
+        if not rec["result_seen"] and not rec["text"]:
+            errors_prefix.append("gemini did not print a stream-json result (see worker log)")
+        if record["exit_code"] in GEMINI_EXIT_CODES:
+            errors_prefix.append(f"gemini exit {record['exit_code']}: {GEMINI_EXIT_CODES[record['exit_code']]}")
+        errors_prefix += [f"gemini error: {e}" for e in rec["errors"]]
+        handoff, errors = extract_handoff(rec["text"])
+        errors = errors_prefix + errors if handoff is None else errors_prefix + errors
+        if record["killed"]:
+            errors.append(f"worker killed after {self.timeout}s timeout")
+        turns = None
+        if isinstance(rec["stats"], dict) and isinstance(rec["stats"].get("tool_calls"), int):
+            turns = rec["stats"]["tool_calls"]
+        return RunResult(record["exit_code"], record["duration_s"], log_path, raw, handoff, errors, rec["session_id"], None, turns, record["killed"])

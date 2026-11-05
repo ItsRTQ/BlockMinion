@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .capabilities import CAPABILITIES, handoff
 from .fabric import accept_changes
-from .provider import AgentProvider, ClaudeCodeProvider, FakeProvider, TaskEnvelope, RunResult
+from .provider import AgentProvider, ClaudeCodeProvider, GeminiCliProvider, FakeProvider, TaskEnvelope, RunResult
 from .redact import redact_obj
 from .state import Store, StateError
 from .validation import InputError
@@ -238,12 +238,25 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
     return outcome
 
 
-def provider_from_env() -> AgentProvider:
-    """CRAFTCTL_PROVIDER=fake (+ CRAFTCTL_FAKE_REPLY_FILE) lets the UI/CLI be exercised without Claude Code."""
-    if os.environ.get("CRAFTCTL_PROVIDER") == "fake":
+PROVIDER_NAMES = ("claude-code", "gemini-cli", "fake")
+
+
+def provider_by_name(name: str | None) -> AgentProvider:
+    """claude-code (default), gemini-cli, or fake (+ CRAFTCTL_FAKE_REPLY_FILE) for exercising the UI/CLI without a model."""
+    name = (name or "claude-code").strip().lower()
+    if name == "fake":
         path = os.environ.get("CRAFTCTL_FAKE_REPLY_FILE")
         return FakeProvider(Path(path).read_text(encoding="utf8") if path and Path(path).is_file() else "")
-    return ClaudeCodeProvider()
+    if name in ("gemini-cli", "gemini"):
+        return GeminiCliProvider()
+    if name in ("claude-code", "claude"):
+        return ClaudeCodeProvider()
+    raise StateError(f"unknown provider {name!r}; use one of {', '.join(PROVIDER_NAMES)}")
+
+
+def provider_from_env() -> AgentProvider:
+    """CRAFTCTL_PROVIDER selects the runtime for every role: claude-code (default), gemini-cli, or fake."""
+    return provider_by_name(os.environ.get("CRAFTCTL_PROVIDER"))
 
 
 def dispatch(store: Store, pid: str, *, task_id: str | None = None, provider: AgentProvider | None = None) -> dict:
