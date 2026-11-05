@@ -1461,7 +1461,7 @@
                 0,
                 0
               ],
-              "interpolation": "catmullrom"
+              "interpolation": "linear"
             },
             {
               "time": 0.4,
@@ -1470,7 +1470,7 @@
                 0,
                 0
               ],
-              "interpolation": "catmullrom"
+              "interpolation": "linear"
             },
             {
               "time": 0.55,

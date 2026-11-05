@@ -99,14 +99,38 @@ def jointed_limb(prefix: str, parent: str, joints: list[tuple[str, list, list, l
     return bones, cubes
 
 
-def curve(bone: str, channel: str, points: list[tuple[float, list]], delay: float = 0.0, interpolation: str = "catmullrom") -> dict:
+def curve(bone: str, channel: str, points: list[tuple[float, list]], delay: float = 0.0, interpolation: str = "catmullrom",
+          snap: int | None = None) -> dict:
     """A one-shot channel from (time, value) points: windup -> impact -> recovery -> rest. `delay` shifts every inner
-    point later (follow-through on a child bone) while the first and last points stay at 0 and the clip end."""
+    point later (follow-through on a child bone) while the first and last points stay at 0 and the clip end.
+    `snap` is the index of the impact point: the key before it and the impact itself become `linear`, so the hit is a
+    straight 0.1-0.15 s slam instead of a rounded spline (anticipation and recovery stay smooth)."""
     keys = []
     for i, (t, v) in enumerate(points):
         tt = t if i in (0, len(points) - 1) else round(t + delay, 2)
-        keys.append({"time": round(tt, 2), "value": list(v), "interpolation": interpolation})
+        interp = "linear" if snap is not None and i in (snap - 1, snap) else interpolation
+        keys.append({"time": round(tt, 2), "value": list(v), "interpolation": interp})
     return {"bone": bone, "channel": channel, "keyframes": keys}
+
+
+def chain(bones: list[str], length: float, amplitude: float, axis: int = 1, lag: float = 0.125, grow: float = 1.5,
+          samples: int | None = None, interpolation: str = "catmullrom") -> list[dict]:
+    """A travelling wave down a chain (tail, serpent, tentacle): each segment repeats the previous one `lag` of a
+    cycle later with `grow` times the amplitude, so the tip whips after the base. Loop-seamed; one channel per bone."""
+    import math
+    samples = samples or max(4, int(round(length / 0.1)))   # 0.1 s steps keep keys on 20/s ticks
+    out = []
+    for n, bone in enumerate(bones):
+        amp = amplitude * (grow ** n)
+        keys = []
+        for i in range(samples + 1):
+            u = i / samples
+            v = [0.0, 0.0, 0.0]
+            v[axis] = round(amp * math.sin(2 * math.pi * (u - lag * n)), 2)
+            keys.append({"time": round(length * u, 2), "value": v, "interpolation": interpolation})
+        keys[-1]["value"] = list(keys[0]["value"])
+        out.append({"bone": bone, "channel": "rotation", "keyframes": keys})
+    return out
 
 
 def lift(bone: str, length: float, amplitude: float, phase: int = 1, axis: int = 2) -> dict:
@@ -211,14 +235,14 @@ def quadruped() -> dict:
             ])
             bones += b; cubes += c
     idle = [combine(bob("head", 2.0, 3.0, channel="rotation", axis=0), drift("head", 2.0, (1.0, 2.5, 0.8), seed=1)),
-            bob("tail", 2.0, 8.0, channel="rotation", axis=1), drift("body", 2.0, (0.6, 0.4, 0.5))]
+            combine(swing("tail", 2.0, 8.0, 1, axis=1), drift("tail", 2.0, (3.0, 0, 0), seed=3)), drift("body", 2.0, (0.6, 0.4, 0.5))]
     walk = [swing("left_front_leg", 1.0, 25, 1), swing("right_back_leg", 1.0, 25, 1),
             swing("right_front_leg", 1.0, 25, -1), swing("left_back_leg", 1.0, 25, -1),
             knee("left_front_leg_lower", 1.0, 30, 1), knee("right_back_leg_lower", 1.0, 30, 1),
             knee("right_front_leg_lower", 1.0, 30, -1), knee("left_back_leg_lower", 1.0, 30, -1),
             bob("body", 1.0, 0.5)]
-    attack = [curve("body", "position", [(0, [0, 0, 0]), (0.3, [0, 1, 1]), (0.5, [0, -0.5, -3]), (0.7, [0, 0, -1]), (1.0, [0, 0, 0])]),
-              curve("head", "rotation", [(0, [0, 0, 0]), (0.3, [-20, 0, 0]), (0.5, [25, 0, 0]), (0.7, [5, 0, 0]), (1.0, [0, 0, 0])]),
+    attack = [curve("body", "position", [(0, [0, 0, 0]), (0.3, [0, 1, 1]), (0.5, [0, -0.5, -3]), (0.7, [0, 0, -1]), (1.0, [0, 0, 0])], snap=2),
+              curve("head", "rotation", [(0, [0, 0, 0]), (0.3, [-20, 0, 0]), (0.5, [25, 0, 0]), (0.7, [5, 0, 0]), (1.0, [0, 0, 0])], snap=2),
               curve("left_front_leg", "rotation", [(0, [0, 0, 0]), (0.3, [-45, 0, 0]), (0.5, [20, 0, 0]), (1.0, [0, 0, 0])]),
               curve("right_front_leg", "rotation", [(0, [0, 0, 0]), (0.3, [-45, 0, 0]), (0.5, [20, 0, 0]), (1.0, [0, 0, 0])]),
               curve("left_front_leg_lower", "rotation", [(0, [0, 0, 0]), (0.3, [-30, 0, 0]), (0.5, [0, 0, 0]), (1.0, [0, 0, 0])], delay=0.05),
@@ -261,9 +285,9 @@ def biped() -> dict:
             swing("left_arm", 1.0, 30, -1), swing("right_arm", 1.0, 30, 1),
             bob("left_arm_forearm", 1.0, -10, channel="rotation", axis=0), bob("right_arm_forearm", 1.0, -10, channel="rotation", axis=0),
             bob("body", 1.0, 0.4)]
-    attack = [curve("right_arm", "rotation", [(0, [0, 0, 0]), (0.3, [-110, 0, -15]), (0.5, [20, 0, 0]), (0.65, [-10, 0, 0]), (1.0, [0, 0, 0])]),
+    attack = [curve("right_arm", "rotation", [(0, [0, 0, 0]), (0.3, [-110, 0, -15]), (0.5, [20, 0, 0]), (0.65, [-10, 0, 0]), (1.0, [0, 0, 0])], snap=2),
               curve("right_arm_forearm", "rotation", [(0, [0, 0, 0]), (0.3, [-35, 0, 0]), (0.5, [10, 0, 0]), (0.65, [-5, 0, 0]), (1.0, [0, 0, 0])], delay=0.05),
-              curve("body", "rotation", [(0, [0, 0, 0]), (0.3, [0, -12, 0]), (0.5, [5, 12, 0]), (1.0, [0, 0, 0])]),
+              curve("body", "rotation", [(0, [0, 0, 0]), (0.3, [0, -12, 0]), (0.5, [5, 12, 0]), (1.0, [0, 0, 0])], snap=2),
               curve("head", "rotation", [(0, [0, 0, 0]), (0.3, [-5, 10, 0]), (0.5, [8, -8, 0]), (1.0, [0, 0, 0])], delay=0.05),
               curve("left_arm", "rotation", [(0, [0, 0, 0]), (0.3, [25, 0, 10]), (0.5, [-15, 0, 10]), (1.0, [0, 0, 0])])]
     return _recipe("biped", texture=(64, 64), visible_box=[1.5, 2.5, 1.25], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=1.0,
@@ -299,8 +323,8 @@ def bird() -> dict:
             bob("right_wing", 2.0, 6.0, channel="rotation", axis=2), bob("tail", 2.0, 5.0, channel="rotation", axis=0)]
     walk = [swing("left_leg", 1.0, 25, 1), swing("right_leg", 1.0, 25, -1), bob("body", 1.0, 0.8),
             swing("head", 1.0, 6, 1), swing("left_wing", 1.0, 8, -1, axis=2), swing("right_wing", 1.0, 8, 1, axis=2)]
-    attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-25, 0, 0]), (0.4, [40, 0, 0]), (0.55, [10, 0, 0]), (0.8, [0, 0, 0])]),
-              curve("body", "position", [(0, [0, 0, 0]), (0.2, [0, 0.5, 1]), (0.4, [0, 0, -1.5]), (0.8, [0, 0, 0])]),
+    attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-25, 0, 0]), (0.4, [40, 0, 0]), (0.55, [10, 0, 0]), (0.8, [0, 0, 0])], snap=2),
+              curve("body", "position", [(0, [0, 0, 0]), (0.2, [0, 0.5, 1]), (0.4, [0, 0, -1.5]), (0.8, [0, 0, 0])], snap=2),
               curve("left_wing", "rotation", [(0, [0, 0, 0]), (0.2, [0, 0, -20]), (0.4, [0, 0, 10]), (0.8, [0, 0, 0])], delay=0.05),
               curve("right_wing", "rotation", [(0, [0, 0, 0]), (0.2, [0, 0, 20]), (0.4, [0, 0, -10]), (0.8, [0, 0, 0])], delay=0.05)]
     return _recipe("bird", texture=(64, 64), visible_box=[1, 1.5, 1], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=0.8,
@@ -329,12 +353,12 @@ def fish() -> dict:
         {"name": "tail_cube", "bone": "tail", "from": [-1, 3, 3], "to": [1, 7, 6]},
         {"name": "tail_fin_cube", "bone": "tail_fin", "from": [-0.5, 2, 6], "to": [0.5, 8, 9]},
     ]
-    idle = [swing("tail", 2.0, 8, 1, axis=1), swing("tail_fin", 2.0, 12, 1, axis=1), bob("body", 2.0, 0.5),
+    idle = chain(["tail", "tail_fin"], 2.0, 8, axis=1, lag=0.12, grow=1.5) + [bob("body", 2.0, 0.5),
             drift("head", 2.0, (1.5, 2.0, 1.0), seed=2), drift("left_fin", 2.0, (0, 6, 3), seed=4), drift("right_fin", 2.0, (0, -6, -3), seed=5)]
-    walk = [swing("body", 1.0, 5, -1, axis=1), swing("tail", 1.0, 20, 1, axis=1), swing("tail_fin", 1.0, 30, 1, axis=1),
+    walk = [swing("body", 1.0, 5, -1, axis=1)] + chain(["tail", "tail_fin"], 1.0, 20, axis=1, lag=0.12, grow=1.5) + [
             swing("left_fin", 1.0, 15, 1, axis=1), swing("right_fin", 1.0, 15, -1, axis=1)]
-    attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-12, 0, 0]), (0.4, [15, 0, 0]), (0.8, [0, 0, 0])]),
-              curve("body", "position", [(0, [0, 0, 0]), (0.2, [0, 0, 1]), (0.4, [0, 0, -2]), (0.8, [0, 0, 0])]),
+    attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-12, 0, 0]), (0.4, [15, 0, 0]), (0.8, [0, 0, 0])], snap=2),
+              curve("body", "position", [(0, [0, 0, 0]), (0.2, [0, 0, 1]), (0.4, [0, 0, -2]), (0.8, [0, 0, 0])], snap=2),
               curve("tail", "rotation", [(0, [0, 0, 0]), (0.2, [0, 25, 0]), (0.4, [0, -25, 0]), (0.6, [0, 10, 0]), (0.8, [0, 0, 0])]),
               curve("tail_fin", "rotation", [(0, [0, 0, 0]), (0.2, [0, 35, 0]), (0.4, [0, -35, 0]), (0.6, [0, 15, 0]), (0.8, [0, 0, 0])], delay=0.05)]
     return _recipe("fish", texture=(64, 64), visible_box=[1, 1, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=0.8,
@@ -360,15 +384,14 @@ def serpent() -> dict:
         {"name": "tail_cube", "bone": "tail", "from": [-1, 0.5, 8], "to": [1, 3.5, 13]},
     ]
     idle = [combine(bob("head", 2.0, 3.0, channel="rotation", axis=0), drift("head", 2.0, (1.0, 4.0, 1.0), seed=1, spike=(0.9, 0, -6))),
-            swing("tail", 2.0, 6, 1, axis=1), drift("body", 2.0, (0.4, 1.5, 0.3))]
-    walk = [swing("body", 1.0, 12, 1, axis=1), swing("segment_2", 1.0, 20, -1, axis=1),
-            swing("segment_3", 1.0, 20, 1, axis=1), swing("tail", 1.0, 25, -1, axis=1), swing("head", 1.0, 8, -1, axis=1)]
+            drift("body", 2.0, (0.4, 1.5, 0.3))] + chain(["segment_2", "segment_3", "tail"], 2.0, 3, axis=1, lag=0.15, grow=1.6)
+    walk = [swing("head", 1.0, 8, -1, axis=1)] + chain(["body", "segment_2", "segment_3", "tail"], 1.0, 10, axis=1, lag=0.2, grow=1.35)
     attack = [curve("body", "rotation", [(0, [0, 0, 0]), (0.3, [-25, 0, 0]), (0.5, [10, 0, 0]), (0.7, [2, 0, 0]), (1.0, [0, 0, 0])]),
-              curve("head", "rotation", [(0, [0, 0, 0]), (0.3, [-30, 0, 0]), (0.5, [20, 0, 0]), (0.7, [5, 0, 0]), (1.0, [0, 0, 0])], delay=0.05),
-              curve("body", "position", [(0, [0, 0, 0]), (0.3, [0, 1, 2]), (0.5, [0, 0, -4]), (0.7, [0, 0, -2]), (1.0, [0, 0, 0])]),
+              curve("head", "rotation", [(0, [0, 0, 0]), (0.3, [-30, 0, 0]), (0.5, [20, 0, 0]), (0.7, [5, 0, 0]), (1.0, [0, 0, 0])], delay=0.05, snap=2),
+              curve("body", "position", [(0, [0, 0, 0]), (0.3, [0, 1, 2]), (0.5, [0, 0, -4]), (0.7, [0, 0, -2]), (1.0, [0, 0, 0])], snap=2),
               curve("segment_2", "rotation", [(0, [0, 0, 0]), (0.3, [15, 0, 0]), (0.5, [-10, 0, 0]), (1.0, [0, 0, 0])], delay=0.05)]
     return _recipe("serpent", texture=(64, 64), visible_box=[1, 0.5, 2], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=1.0,
-                   notes="Alternating Y-rotation signs down the chain make the S-curve; each segment pivots at its front joint. "
+                   notes="A travelling Y wave down the chain (each segment lags the previous one, the tail whips most) makes the slither; each segment pivots at its front joint. "
                          "Add segments by chaining more bones with the same 4-unit step. Raise the head bone for a cobra. Attack: Strike: coil back and rear the head (0.3), lunge forward and down (0.5), recover.")
 
 
@@ -400,7 +423,7 @@ def insect() -> dict:
     walk = [combine(swing(f"{s_}_{p}_leg", 1.0, 20, ph, axis=1), lift(f"{s_}_{p}_leg", 1.0, 12 * (1 if s_ == "left" else -1), ph, axis=2))
             for s_, p, ph in gait] + \
            [knee(f"{s_}_{p}_leg_lower", 1.0, 15 * (1 if s_ == "left" else -1), ph, axis=2) for s_, p, ph in gait] + [bob("body", 1.0, 0.3)]
-    attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-25, 0, 0]), (0.4, [30, 0, 0]), (0.55, [8, 0, 0]), (0.8, [0, 0, 0])]),
+    attack = [curve("head", "rotation", [(0, [0, 0, 0]), (0.2, [-25, 0, 0]), (0.4, [30, 0, 0]), (0.55, [8, 0, 0]), (0.8, [0, 0, 0])], snap=2),
               curve("body", "rotation", [(0, [0, 0, 0]), (0.2, [10, 0, 0]), (0.4, [-8, 0, 0]), (0.8, [0, 0, 0])]),
               curve("abdomen", "rotation", [(0, [0, 0, 0]), (0.2, [-8, 0, 0]), (0.4, [6, 0, 0]), (0.8, [0, 0, 0])], delay=0.05),
               curve("left_front_leg", "rotation", [(0, [0, 0, 0]), (0.2, [-50, 0, 0]), (0.4, [10, 0, 0]), (0.8, [0, 0, 0])]),

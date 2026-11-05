@@ -3031,7 +3031,7 @@
               "uuid": "4a0f317f-803f-475a-88de-b535700ae9ed",
               "channel": "rotation",
               "time": 0.2,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": -25,
@@ -3044,7 +3044,7 @@
               "uuid": "59961341-af6f-4f85-8acf-f79ba3ec0223",
               "channel": "rotation",
               "time": 0.4,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 30,

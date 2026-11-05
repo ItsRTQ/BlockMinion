@@ -132,7 +132,7 @@ invisible in hand and GUI.
 - One root bone (`body` for quadrupeds, `root` or `body` for bipeds) so whole-model bob/turn is one channel.
 - Multi-joint limbs nest proximal → distal (`upper_leg → lower_leg → foot`); the pivot of each bone sits at the
   joint it rotates around, set **before** animating. Wrong pivots show as sliding/floating on rotation.
-- Rotation keyframes in degrees, `[-360, 360]` (**enforced**); scale never ≤ 0; looping clips must start and end
+- Rotation keyframes in degrees, `[-360, 360]` (**enforced**); scale never negative (**enforced**; 0 hides the part and only warns); looping clips must start and end
   on the same value per channel (**enforced**: `LOOP_SEAM`). `snapping` is 20/s (**enforced**) so keyframes land
   on ticks: use times that are multiples of 0.05.
 - Bone density: every cube that should move on its own (ears, jaw, tail segments, a hat, a held prop) gets its own bone;
@@ -221,4 +221,20 @@ Analysed from a downloaded `.bbmodel` (format 5.0, geckolib_model); numbers and 
   impact 35–50%.
 - What landed from it: `rigs.drift/lift/combine`, rest rotation on recipe bones (insect splay), texture-size rule
   relaxed to uniform integer multiples, skill rules on joint caps, inflate, mirror_uv and alive idles.
+
+## 12. Calibration — a hand-authored personality creature (CC0 raccoon, read 2026-11-05)
+
+- 29 cubes, 19 bones, depth 4, named root → `body`; head with ears, hat → feather; arms at 38° X rest; three-segment
+  tail; legs → feet; backpack with lid and straps. 0 rotated cubes, `inflate` 9/29, PNG 128² over 64² UV.
+- 13 clips with few keys (idle: 11 bones, 65 keys over 3 s): idle, walk 1.0, run 0.5, sit_beg, eat, wash (loops);
+  happy 1.6, sneeze 3.0 (once); backpack_off 2.4 / on 1.2 / open / close (`hold`), backpack_idle (loop).
+- Walk and run **re-pose** the biped on all fours: `body` −94° X and +3.6 up, head +94, legs scale 1.35 / feet 0.74.
+- `scale` as visibility (straps 1→0 in a 0.05 s linear step) and as squash-and-stretch (head 1.04/0.96 chewing,
+  tail 1.35 puff).
+- Sneeze: 1.2 s catmullrom build-up (head 0→10→16→12→28), **linear** 0.12 s snap (28→−32), aftershock wobble
+  (±6 over 0.8 s), hat launched with linear keys (+9 up, −360° spin), feather follow-through.
+- Idle: head look-around (yaw −8→+6 over 2.4 s), breathing (`body` position y −0.2), ear double-flick (linear, 0.1 s
+  steps at 2.0 s), tail figure-8 with `tail_tip` lagging at 2× amplitude.
+- What landed from it: `curve(snap=)` linear impacts on every attack, `chain()` travelling waves (serpent, fish and
+  quadruped tails), the scale rule corrected, skill rules on re-posing, state clips and props physics.
 

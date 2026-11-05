@@ -63,6 +63,18 @@ Target density: the base rig is a 10–19 bone skeleton; a finished creature run
 - Loops are subtle: idle ±2–5 on rotation, walk ±25–30 on legs, 0.3–0.8 position bob. Decorative bobs on one-shots fade
   in and out (`sin²(πt/length)` envelope) so the clip starts and ends at rest.
 - `death`-style clips export `loop: "hold"` (`hold_on_last_frame`); only idle/walk loop.
+- Impacts are linear: the windup→impact pair is two `linear` keys 0.1–0.15 s apart (60° in 0.12 s reads as a hit); the
+  anticipation before it can be long and smooth (`catmullrom`, 1 s+ for a sneeze or roar) and the recovery adds small
+  aftershocks (±6° wobble) before rest. Props launched by the hit get linear position/rotation keys (ballistic arc, spin).
+- `scale` is a tool, not a hazard: 1.04/0.96 squash-and-stretch on a chewing head, 1.35 on a puffed tail; 0 on a bone
+  hides that part (step it with two linear keys 0.05 s apart) and the validator only warns. Negative scale never.
+- A clip may re-pose the whole creature: a biped's walk can drop it on all fours (`body` rotation −90 and a lift on
+  position, head compensating, legs stretched by scale). Put stance on `body`, not in the rig.
+- Chains (tails, serpents, tentacles): a travelling wave — each segment repeats the previous one a fraction of a cycle
+  later with ~1.5× the amplitude, so the tip whips after the base; the idle tail of a creature does a slow figure-8
+  (X and Y out of phase) with the tip lagging.
+- State clips: `loop: hold` clips that leave a pose (`backpack_off`) paired with a loop that runs in that state
+  (`backpack_idle`) make a state machine out of animations; the entity switches controllers by state.
 - Rest pose on bones, not cubes, when the shape is a posed limb: a splayed spider leg or a cocked wing is `rotation` on the
   bone (pivot at the joint), so every clip stays relative to the pose and the joint still bends where it should. Rotate
   the cube itself only for static shape (plates, horns, fins) that never animates on its own.

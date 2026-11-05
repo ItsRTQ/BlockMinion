@@ -2013,7 +2013,7 @@
               "uuid": "a17b8fc3-19f2-4072-8dad-bb283450eaea",
               "channel": "rotation",
               "time": 0.3,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": -110,
@@ -2026,7 +2026,7 @@
               "uuid": "3ac0c09e-c133-4fa9-8232-aacb64bc8465",
               "channel": "rotation",
               "time": 0.5,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 20,
@@ -2155,7 +2155,7 @@
               "uuid": "77a27ffb-6ac7-42c7-8966-2609de4353b5",
               "channel": "rotation",
               "time": 0.3,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 0,
@@ -2168,7 +2168,7 @@
               "uuid": "b0d2d68f-636e-4138-83f4-f4bab583e2b4",
               "channel": "rotation",
               "time": 0.5,
-              "interpolation": "catmullrom",
+              "interpolation": "linear",
               "data_points": [
                 {
                   "x": 5,
