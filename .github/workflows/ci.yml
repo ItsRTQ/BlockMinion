@@ -40,6 +40,26 @@ jobs:
         run: |
           craftctl doctor | python -c "import sys,json; w=json.load(sys.stdin)['wrapper']; print(json.dumps(w['files'], indent=1)); sys.exit(0 if w['ok'] else 1)"
 
+  ui:
+    name: The UI in a simulated browser, against the real server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install craftctl
+        run: python -m pip install -e .
+      - name: Install the test browser
+        run: npm ci
+        working-directory: tests/ui
+      - name: Dialogs, refresh safety, activity banner, Mobs and Items tours
+        run: npm test
+        working-directory: tests/ui
+
   fabric-build:
     name: Build examples/crystal_example (JDK 25, clean runner)
     runs-on: ubuntu-latest

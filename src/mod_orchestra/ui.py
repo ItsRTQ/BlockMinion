@@ -37,6 +37,7 @@ def serve(store: Store, port: int = 8765) -> None:
 
     inflight: dict[str, dict] = {}   # pid -> {"thread", "job", "started", "result", "error"}
     inflight_lock = threading.Lock()
+    finished_jobs: list[dict] = []   # the last jobs that ended, newest last: the banner shows what finished and where to look
 
     def start_job(pid: str, job: str, fn) -> dict:
         """The UI is the user: long operations (agent runs, builds, smokes, the game client) run in a
@@ -54,6 +55,12 @@ def serve(store: Store, port: int = 8765) -> None:
                     store.add_event(pid, "controller", "JOB_ERROR", {"job": job, "error": str(exc)[:400]})
                 finally:
                     entry["finished"] = time.time()
+                    try:
+                        from .activity import finished_entry
+                        with inflight_lock:
+                            finished_jobs.append(finished_entry(store, pid, entry)); del finished_jobs[:-30]
+                    except Exception:
+                        pass   # the banner is a convenience: it must never break a job
             th = threading.Thread(target=worker, name=f"{job}-{pid}", daemon=True)
             entry["thread"] = th
             inflight[pid] = entry
@@ -119,6 +126,11 @@ def serve(store: Store, port: int = 8765) -> None:
                             "choices": [n for n in PROVIDER_NAMES if n != "fake"],
                             "available": {"claude-code": ClaudeCodeProvider().available(), "gemini-cli": GeminiCliProvider().available(),
                                           "antigravity-cli": AntigravityCliProvider().available()}}
+                if path == "/api/activity":
+                    from .activity import snapshot
+                    with inflight_lock:
+                        done = list(finished_jobs)
+                    return snapshot(store, inflight, done)
                 if path == "/api/projects": return store.projects()
                 if path.startswith("/api/run/"):
                     run_id = path.removeprefix("/api/run/")
@@ -352,10 +364,10 @@ def serve(store: Store, port: int = 8765) -> None:
 
         def do_GET(self):
             path = urlparse(self.path).path
-            if path in ("/", "/app.js", "/style.css"):
+            if path in ("/", "/app.js", "/kit.js", "/style.css"):
                 if self.headers.get("Host") != f"127.0.0.1:{port}":
                     return self.response({"error": "Invalid host"}, 403)
-                resource = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}[path]
+                resource = {"/": "index.html", "/app.js": "app.js", "/kit.js": "kit.js", "/style.css": "style.css"}[path]
                 raw = files("mod_orchestra").joinpath("static", resource).read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8" if path == "/" else "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")

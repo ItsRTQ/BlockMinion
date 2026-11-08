@@ -230,3 +230,22 @@ texts, behavior descriptions and criteria; control and bracket characters become
 and what the user types through the UI or CLI stays strict. (3) A structural rejection (an unknown identifier, a loop of dependencies) reopens the SPEC task with the controller's reason in its packet, and `dispatch.dispatch_with_retry`, now behind the UI's
 Run agent button as Autopilot already did, makes the one retry itself instead of waiting for another press.
 
+## The UI stays out of your way
+
+**Background work.** Agents, builds, smokes and the client already run in a server thread (`start_job`); the page never waits on them. What used to hurt was the page itself: while a job ran it called `openProject()`
+every four seconds, which rebuilt every tab (so scroll, open sections and half-typed text were lost) and ran `show("project")`, which dragged you back from Environment or New mod. Now `openProject` is only what *you* do;
+`refreshProject` is the poll's way and it never navigates, skips a payload whose fingerprint did not change, waits while `Guard.busy()` (a dialog or modal is open, a field has the focus, or you typed in the last 8 seconds),
+and when it does redraw it keeps the scroll, the open `<details>` and the focus (`Guard.snapshot/hold/restore`; the page height is held so the browser never clamps the scroll). Text in the theme box you typed and have not saved is not overwritten.
+
+**Activity.** `activity.py` builds `GET /api/activity`: for every project with a job in flight, the job, how long, and the agent now running (role, runtime, task) turned into a sentence ("Designer · model of brute") and a
+*target* (tab, sub-tab, mob or card); plus the last 15 minutes of finished jobs (done, needs you, failed, with the error). The sidebar marks each working project, and a floating banner that follows you says what is running,
+in which step and with which runtime; click it for the list, and *Watch it* / *See result* opens the project at the right tab, sub-tab and mob or card. When a job finishes you get a toast, the banner turns green, red or amber
+until you open that project or dismiss it, and, if it is the project you are looking at, one safe refresh. The tab title shows `● working` too.
+
+**Dialogs.** `kit.js` replaces every browser `confirm`, `prompt` and `alert` with dialogs in the page's own style: `confirmBox`, `promptBox`, `formBox` (several fields at once) and `noticeBox`; they queue, trap the
+focus, return it where it was, close on Escape or a click outside, take Enter (Ctrl+Enter in a text area) and render their text as text, never as HTML. The question before running an agent names the runtime in use (it said "Claude Code" always).
+
+**Tests.** `tests/ui` loads the real `index.html`, `kit.js` and `app.js` into jsdom against the real `craftctl ui` server on a seeded home (`seed.py`: the infectious zombies generated, a project with items, one not generated);
+only `/api/activity` is simulated. It covers the dialogs, the refresh rules (checked by breaking them on purpose), the banner and the deep links, and a tour of the Spec, Mobs and Items tabs with no native popup allowed.
+`cd tests/ui && npm ci && npm test` (CI job `ui`).
+
