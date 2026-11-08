@@ -187,6 +187,109 @@ class TestCarriersBeforeGeneration(unittest.TestCase):
                 self.assertEqual(read_spec(store.project("infect")["spec"]).behaviors[1].affects, ("runner",))
 
 
+class TestFittingTheProposal(unittest.TestCase):
+    """Regression: the interpreter's whole proposal was rejected over a 61+ character art.silhouette of the Runner and the run was lost."""
+    LONG = "a lean sprinter hunched forward with long clawed hands dragging low and a ragged coat flapping behind it"
+
+    def long_silhouette(self):
+        p = proposal(); p["mobs"][0]["art"]["silhouette"] = self.LONG; return p
+
+    def test_a_long_silhouette_is_trimmed_not_rejected_and_the_user_is_told(self):
+        spec = spec_from_proposal(CURRENT, self.long_silhouette())
+        runner = next(m for m in spec.mobs if m.identifier == "runner")
+        self.assertLessEqual(len(runner.art.silhouette), 60); self.assertTrue(self.LONG.startswith(runner.art.silhouette))   # cut at a word, nothing rewritten
+        note = spec.assumptions[-1]
+        self.assertTrue(note.startswith("Trimmed to fit the spec's limits")); self.assertIn("mob runner art.silhouette to 60 characters", note)
+
+    def test_every_cosmetic_field_is_fitted(self):
+        from mod_orchestra.interpreter import fit_proposal
+        p = proposal()
+        p["mobs"][0]["art"] = {"concept": "word " * 100, "tags": ["ok tag", "x", "a" * 80, "ok tag"] + [f"cue number {i}" for i in range(30)], "silhouette": "s " * 40, "pieces": {"sword": "no"}}
+        p["materials"] = [{"identifier": "g", "label": "G", "ingredient": "minecraft:iron_ingot", "tools": ["sword"], "armor": [], "art": {"pieces": {"sword": "fine", "wand": "drop me"}}}]
+        p["behaviors"][0]["description"] = "d" * 2000
+        p["behaviors"][0]["acceptance"] = ["a criterion that is far too long " * 20, "no"] + ["an observable criterion %d" % i for i in range(20)]
+        fitted, notes = fit_proposal(p)
+        art = fitted["mobs"][0]["art"]
+        self.assertLessEqual(len(art["concept"]), 320); self.assertLessEqual(len(art["silhouette"]), 60)
+        self.assertEqual(len(art["tags"]), 16); self.assertNotIn("x", art["tags"]); self.assertEqual(art["tags"].count("ok tag"), 1); self.assertTrue(all(2 <= len(t) <= 48 for t in art["tags"]))
+        self.assertEqual(fitted["materials"][0]["art"]["pieces"], {"sword": "fine"})
+        b = fitted["behaviors"][0]
+        self.assertLessEqual(len(b["description"]), 1500); self.assertEqual(len(b["acceptance"]), 12); self.assertTrue(all(5 <= len(a) <= 300 for a in b["acceptance"]))
+        self.assertEqual(p["mobs"][0]["art"]["silhouette"], "s " * 40)                                      # the original is not touched
+        self.assertTrue(any("art.pieces.wand dropped" in n for n in notes))
+
+    def test_dangerous_characters_become_spaces(self):
+        from mod_orchestra.interpreter import fit_proposal
+        p = proposal(); p["mobs"][0]["art"]["concept"] = "a <b>zombie</b> with {braces}, [brackets] and a back\\slash\x07"
+        self.assertEqual(fit_proposal(p)[0]["mobs"][0]["art"]["concept"], "a b zombie /b with braces , brackets and a back slash")
+
+    def test_structure_is_still_rejected_and_so_are_the_users_own_edits(self):
+        p = proposal(); p["behaviors"][0]["affects"] = ["ghost"]
+        with self.assertRaisesRegex(InputError, "unknown identifiers"):
+            spec_from_proposal(CURRENT, p)
+        p = proposal(); p["behaviors"][0]["title"] = "T" * 80
+        with self.assertRaisesRegex(InputError, "title"):
+            spec_from_proposal(CURRENT, p)                                                                   # titles feed ids and `after`: never trimmed silently
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "s.sqlite")
+            with patch.object(workflow, "PROJECTS", Path(tmp) / "p"):
+                (Path(tmp) / "p").mkdir()
+                workflow.new_project(store, name="G", mod_id="g_mod", package="com.x.g", idea="hostile mobs: brute")
+                from mod_orchestra.content import set_art
+                with self.assertRaisesRegex(InputError, "silhouette"):
+                    set_art(store, "g_mod", "mob", "brute", concept="a hulking ork", silhouette=self.LONG)      # what the user types is not trimmed behind their back
+
+    def test_the_prompt_states_the_limits(self):
+        text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
+        for needle in ("Field limits", "art.silhouette 60 (a short phrase, not a sentence)", "each tag 2-48 characters and at most 16 tags", "behavior title 3-60 characters, description 20-1500, 1-12 criteria of 5-300"):
+            self.assertIn(needle, text)
+
+
+class TestTheButtonRetries(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name); self.store = Store(base / "s.sqlite")
+        p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop); (base / "projects").mkdir()
+        workflow.new_project(self.store, name="Infectious Zombies", mod_id="infect", package="com.example.infect", idea=IDEA)
+        workflow.plan_project(self.store, "infect")
+
+    def reply(self, spec):
+        handoff = {"task": "infect:SPEC", "status": "WAITING_USER", "scope": "propose the spec", "changed_files": [], "checks_run": [], "evidence": {"level": "NONE", "pointer": "proposal"},
+                   "risks": [], "unknowns": [], "questions": [], "spec": spec, "needs_user": ["craftctl approve-spec"], "next_agent": "none"}
+        return "Here is the proposal.\n```handoff\n" + json.dumps(handoff) + "\n```\n"
+
+    def test_a_trimmable_proposal_needs_one_run_and_no_retry(self):
+        from mod_orchestra.dispatch import dispatch_with_retry
+        from mod_orchestra.provider import FakeProvider
+        p = proposal(); p["mobs"][0]["art"]["silhouette"] = TestFittingTheProposal.LONG
+        out = dispatch_with_retry(self.store, "infect", task_id="infect:SPEC", provider=FakeProvider(self.reply(p)))
+        self.assertEqual(out["task_state"], "WAITING_USER"); self.assertEqual(sum(1 for r in self.store.runs("infect")), 1)
+        self.assertTrue(read_spec(self.store.project("infect")["spec"]).assumptions[-1].startswith("Trimmed to fit"))
+
+    def test_a_structural_error_is_retried_once_with_its_reason_and_then_reported(self):
+        from mod_orchestra.dispatch import dispatch_with_retry
+        from mod_orchestra.provider import FakeProvider
+        p = proposal(); p["behaviors"][0]["affects"] = ["ghost"]
+        out = dispatch_with_retry(self.store, "infect", task_id="infect:SPEC", provider=FakeProvider(self.reply(p)))
+        self.assertEqual(out["task_state"], "FAILED"); self.assertIn("proposal rejected", out["error"])
+        self.assertEqual(len(self.store.runs("infect")), 2)                                                  # the first run plus exactly one retry
+        retries = [e for e in self.store.events("infect", 200) if e["kind"] == "AUTO_RETRY"]
+        self.assertEqual(len(retries), 1); self.assertIn("unknown identifiers", retries[0]["payload"]["reason"])
+        self.assertIn("PREVIOUS ATTEMPT REJECTED BY THE CONTROLLER", self.store.task_instructions("infect:SPEC"))
+
+    def test_the_retry_gets_the_reason_and_can_succeed(self):
+        from mod_orchestra.dispatch import dispatch_with_retry
+        from mod_orchestra.provider import FakeProvider
+        bad = proposal(); bad["behaviors"][0]["affects"] = ["ghost"]
+        replies = iter([self.reply(bad), self.reply(proposal())])
+        class Sequence(FakeProvider):
+            def run(self, envelope, log_path):
+                self.reply = next(replies); return super().run(envelope, log_path)
+        out = dispatch_with_retry(self.store, "infect", task_id="infect:SPEC", provider=Sequence(""))
+        self.assertEqual(out["task_state"], "WAITING_USER"); self.assertEqual(len(self.store.runs("infect")), 2)
+        self.assertEqual(len(read_spec(self.store.project("infect")["spec"]).behaviors), 5)
+
+
 class TestPrimateRig(unittest.TestCase):
     def test_it_is_a_registered_plan_with_the_usual_clips(self):
         self.assertIn("primate", rigs.BODY_PLANS)

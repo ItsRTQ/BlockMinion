@@ -222,3 +222,11 @@ The coder brief of a capability says to build it **once** as a reusable componen
 a carrier change small. `content.set_behavior_carriers` (UI route `behavior-carriers`, `craftctl set-carriers`) applies the change: before generation it is a spec edit and returns the spec to draft; after generation it updates the
 spec and the card's relations without resetting the approval, rewrites the brief of the coder task if the coder has not started it, and otherwise creates a change request that adds or removes only the wiring of the mobs that changed.
 
+### A proposal is fitted, not lost
+
+Seen on the first real run: an interpreter spent 2 minutes on a good proposal and the controller rejected all of it because one `art.silhouette` was 61+ characters. Three layers now stand between a cosmetic slip and a lost run.
+(1) The interpreter's prompt lists every field limit. (2) `interpreter.fit_proposal` fits the cosmetic text of an agent's proposal before validation: art concepts, silhouettes, tags (max 16, 2-48 characters, no duplicates) and per-piece
+texts, behavior descriptions and criteria; control and bracket characters become spaces; long text is cut at a word; the trims are listed in one extra assumption so the user sees them. Structure, identifiers, numbers and behavior titles are never touched,
+and what the user types through the UI or CLI stays strict. (3) A structural rejection (an unknown identifier, a loop of dependencies) reopens the SPEC task with the controller's reason in its packet, and `dispatch.dispatch_with_retry`, now behind the UI's
+Run agent button as Autopilot already did, makes the one retry itself instead of waiting for another press.
+

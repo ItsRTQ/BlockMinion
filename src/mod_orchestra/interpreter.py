@@ -8,6 +8,7 @@ answers are appended to the idea (`craftctl answer`), approval is `craftctl appr
 The worker never writes the database and never widens scope on its own.
 """
 from __future__ import annotations
+import re
 import json
 from .spec import Spec, read_spec, SCHEMA_VERSION, RECIPE_KINDS
 from .state import Store, StateError
@@ -90,6 +91,8 @@ consequence in ONE foundation behavior, then give every member the user says can
 without the capability, and never let a member bypass the effect with a shortcut of your own. List every inference like this under `assumptions`, so the user can see how far you went.
 If the idea allows two readings that would build different things (infect on hit versus convert on death), state the reading you chose as the FIRST assumption. When the user says something happens "at random", add a criterion that over many trials every outcome appears. Do not invent mechanics the user did not describe; where the user left a number open (infection time, damage), pick a sensible one, put it in the description
 and list it under `assumptions`. Mobs a behavior is about must still be listed under `mobs` with their stats; a behavior never replaces the mob.
+Field limits (a proposal that breaks a structural one is rejected and you are asked to resend it; cosmetic text is trimmed to fit): art.concept 320 characters, art.silhouette 60 (a short phrase, not a sentence),
+each tag 2-48 characters and at most 16 tags, each art.pieces text 320; behavior title 3-60 characters, description 20-1500, 1-12 criteria of 5-300 characters each, at most 12 behaviors; theme 600 characters.
 Art direction (`art`): every feature, tool/armor set (material), food and mob takes an `"art"` object so the designer paints something specific to it, never a stock icon:
 `{{"concept": "one or two sentences: what it is and how it looks, in this mod's world", "tags": ["6-10 concrete visual cues"], "silhouette": "optional shape phrase"}}`.
 A material's `art` also carries `"pieces": {{"sword": "its own sentence", "pickaxe": "...", "helmet": "...", ...}}` with a different shape idea for every piece of the set.
@@ -107,10 +110,95 @@ is wasted. Keep explanations short and put them under `assumptions`/`unknowns`.
 """
 
 
+_BAD_CHARS = re.compile(r"[\x00-\x1f<>{}\[\]\\]")
+
+
+def _fit(text, limit: int) -> tuple[str, bool]:
+    """Plain text of at most `limit` characters: control and bracket characters become spaces, spaces collapse, a long text is cut at a word boundary."""
+    t = re.sub(r"\s+", " ", _BAD_CHARS.sub(" ", str(text or ""))).strip()
+    if len(t) <= limit:
+        return t, False
+    cut = t[:limit]
+    if " " in cut and cut.rfind(" ") >= int(limit * 0.6):
+        cut = cut[:cut.rfind(" ")]
+    return cut.rstrip(" ,;:-"), True
+
+
+def _fit_art(art, label: str, notes: list[str], piece_kinds: tuple = ()):
+    """The cosmetic art fields of an agent's proposal, fitted to their limits (the user's own edits stay strict): the proposal is not rejected over a long phrase."""
+    if isinstance(art, str):
+        art = {"concept": art}
+    if not isinstance(art, dict):
+        return art
+    out = dict(art)
+    for key, limit in (("concept", 320), ("silhouette", 60)):
+        if key in out:
+            out[key], cut = _fit(out[key], limit)
+            if cut:
+                notes.append(f"{label} art.{key} to {limit} characters")
+    if "tags" in out:
+        raw = out["tags"] if isinstance(out["tags"], (list, tuple)) else re.split(r"[,;\n]", str(out["tags"]))
+        tags, seen = [], set()
+        for t in raw:
+            fitted, cut = _fit(t, 48)
+            if cut:
+                notes.append(f"{label} a tag to 48 characters")
+            if len(fitted) >= 2 and fitted.lower() not in seen:
+                seen.add(fitted.lower()); tags.append(fitted)
+        if len(tags) > 16:
+            notes.append(f"{label} art.tags to 16 tags")
+        out["tags"] = tags[:16]
+    if isinstance(out.get("pieces"), dict):
+        pieces = {}
+        for k, v in out["pieces"].items():
+            if piece_kinds and k not in piece_kinds:
+                notes.append(f"{label} art.pieces.{k} dropped (not a piece of this set)")
+                continue
+            pieces[k], cut = _fit(v, 320)
+            if cut:
+                notes.append(f"{label} art.pieces.{k} to 320 characters")
+        out["pieces"] = pieces
+    return out
+
+
+def fit_proposal(proposal: dict) -> tuple[dict, list[str]]:
+    """Fit the cosmetic text of an agent's proposal (art sheets, behavior descriptions and criteria) to the spec's limits and return what was trimmed.
+    Structure, identifiers, numbers and titles are never touched: a real mistake there is still rejected, with its reason, for the agent to fix."""
+    import copy
+    p, notes = copy.deepcopy(proposal), []
+    for key, label in (("features", "item"), ("foods", "food"), ("mobs", "mob")):
+        for e in p.get(key) or []:
+            if isinstance(e, dict) and e.get("art") is not None:
+                e["art"] = _fit_art(e["art"], f"{label} {e.get('identifier', '?')}", notes)
+    for m in p.get("materials") or []:
+        if isinstance(m, dict) and m.get("art") is not None:
+            m["art"] = _fit_art(m["art"], f"material {m.get('identifier', '?')}", notes, tuple(m.get("tools") or ()) + tuple(m.get("armor") or ()))
+    for b in p.get("behaviors") or []:
+        if not isinstance(b, dict):
+            continue
+        if "description" in b:
+            b["description"], cut = _fit(b["description"], 1500)
+            if cut:
+                notes.append(f"behavior {b.get('title', '?')} description to 1500 characters")
+        if isinstance(b.get("acceptance"), (list, tuple)):
+            fitted = []
+            for a in b["acceptance"]:
+                text, cut = _fit(a, 300)
+                if cut:
+                    notes.append(f"a criterion of behavior {b.get('title', '?')} to 300 characters")
+                if len(text) >= 5:
+                    fitted.append(text)
+            if len(fitted) > 12:
+                notes.append(f"behavior {b.get('title', '?')} criteria to 12")
+            b["acceptance"] = fitted[:12]
+    return p, notes
+
+
 def spec_from_proposal(current: dict, proposal: dict) -> Spec:
     """Merge a worker's proposal onto the project's identity fields and validate it as a real spec."""
     if not isinstance(proposal, dict):
         raise InputError("spec proposal must be an object")
+    proposal, trimmed = fit_proposal(proposal)
     raw = {
         "schema_version": SCHEMA_VERSION, "name": current["name"], "mod_id": current["mod_id"], "package": current["package"],
         "idea": current["idea"], "profile": current["profile"],
@@ -121,6 +209,9 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "behaviors": proposal.get("behaviors", []),
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
+    if trimmed:   # visible to the user with the other assumptions
+        shown = "; ".join(trimmed[:6]) + (f"; and {len(trimmed) - 6} more" if len(trimmed) > 6 else "")
+        raw["assumptions"] = raw["assumptions"][:11] + [f"Trimmed to fit the spec's limits (the wording was kept): {shown}."]
     spec = read_spec(raw)
     from .spec import has_content
     if not has_content(spec):
