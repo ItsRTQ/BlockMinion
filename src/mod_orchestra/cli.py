@@ -103,6 +103,8 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("set-art", help="USER-ONLY: write the art direction of one entity (what the designer paints it from); empty fields clear it")
     a.add_argument("project"); a.add_argument("--kind", required=True, choices=["item", "block", "food", "mob", "set", "tool", "armor"]); a.add_argument("--id", required=True)
     a.add_argument("--concept", default=""); a.add_argument("--tags", nargs="*", default=[]); a.add_argument("--silhouette", default="")
+    a = sub.add_parser("set-carriers", help="USER-ONLY: change which mobs carry a capability behavior (before generate it resets the spec approval; after, the coder wires the change)")
+    a.add_argument("project"); a.add_argument("--behavior", required=True, help="the behavior's card id, e.g. infection"); a.add_argument("--mobs", nargs="+", required=True)
     a = sub.add_parser("show-art", help="The effective art direction of every entity of a project (written or derived from the theme)"); a.add_argument("project")
     a = sub.add_parser("set-body-plan", help="USER-ONLY (before generate): change the base rig of existing mobs (all when --mobs is omitted); the spec returns to DRAFT")
     a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect", "primate"]); a.add_argument("--mobs", nargs="*", default=None)
@@ -317,6 +319,9 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "set-art":
         from .content import set_art
         return set_art(store, args.project, args.kind, args.id, concept=args.concept, tags=args.tags, silhouette=args.silhouette)
+    if args.command == "set-carriers":
+        from .content import set_behavior_carriers
+        return set_behavior_carriers(store, args.project, args.behavior, args.mobs)
     if args.command == "show-art":
         from .content import list_art
         return list_art(store, args.project)

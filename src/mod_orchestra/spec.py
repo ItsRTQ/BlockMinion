@@ -80,8 +80,10 @@ class Behavior:
     title: str
     description: str                 # what must happen, in the user's terms, with every number the user gave
     acceptance: tuple = ()           # 1-12 observable criteria, one GameTest each ("a villager hit by a runner converts to a variant after 10 s")
-    affects: tuple = ()              # identifiers of the mobs/items/blocks/sets it is about
+    affects: tuple = ()              # identifiers of the mobs/items/blocks/sets it is about; for a capability, exactly the mobs that CARRY it
     after: tuple = ()                # titles of behaviors it builds on: its task waits for theirs
+    kind: str = "mechanic"           # "capability": something mobs carry (infection, a freezing touch, an explosion on death), built once and wired to each carrier,
+                                     # whose carriers the user checks and edits; "mechanic": a one-off (one mob's movement, one projectile)
 
 
 def behavior_id(title: str) -> str:
@@ -98,7 +100,7 @@ def coerce_behavior(value) -> "Behavior":
         v = value.get(key) or ()
         return tuple(str(x).strip() for x in ([v] if isinstance(v, str) else v) if str(x).strip())
     return Behavior(title=str(value.get("title") or "").strip(), description=str(value.get("description") or "").strip(),
-                    acceptance=many("acceptance"), affects=many("affects"), after=many("after"))
+                    acceptance=many("acceptance"), affects=many("affects"), after=many("after"), kind=str(value.get("kind") or "mechanic").strip().lower())
 
 
 def validate_behaviors(spec: "Spec") -> None:
@@ -121,6 +123,12 @@ def validate_behaviors(spec: "Spec") -> None:
             raise InputError(f"{label}: the description is plain text of 20-1500 characters")
         if not (1 <= len(b.acceptance) <= 12) or any(not (5 <= len(a) <= 300) or not ART_TEXT.match(a) for a in b.acceptance):
             raise InputError(f"{label}: give 1-12 acceptance criteria of 5-300 characters (each one becomes a GameTest)")
+        if b.kind not in ("mechanic", "capability"):
+            raise InputError(f"{label}: kind is capability or mechanic")
+        if b.kind == "capability":
+            mob_ids = {m.identifier for m in spec.mobs}
+            if not b.affects or [a for a in b.affects if a not in mob_ids]:
+                raise InputError(f"{label}: a capability lists the mobs that carry it in `affects` (at least one, and only mobs of this spec: {sorted(mob_ids)})")
         bad = [a for a in b.affects if a not in entity_ids]
         if bad:
             raise InputError(f"{label}: affects unknown identifiers {bad}; use the identifier of a mob, item, block, food or set of this spec")

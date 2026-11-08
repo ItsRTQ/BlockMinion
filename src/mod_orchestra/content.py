@@ -130,6 +130,49 @@ def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str 
     return {"kind": kind, "identifier": identifier, "art": list_art(store, pid)[f"{kind}:{identifier}"]}
 
 
+def set_behavior_carriers(store: Store, pid: str, behavior: str, carriers: list[str]) -> dict:
+    """Change which mobs carry a capability (the infection, a freezing touch ...). Before generation it is a spec edit (the approval is reset like any edit);
+    afterwards the spec is updated and the code follows: a coder task that has not started gets its brief rewritten with the new carriers, one that has
+    gets a change request that wires or unwires only the carriers."""
+    from .spec import behavior_id
+    proj = store.project(pid); spec = read_spec(proj["spec"])
+    b = next((x for x in spec.behaviors if behavior_id(x.title) == behavior), None)
+    if b is None:
+        raise InputError(f"Unknown behavior {behavior!r}; the project has {[behavior_id(x.title) for x in spec.behaviors]}")
+    if b.kind != "capability":
+        raise InputError(f"{b.title!r} is a mechanic, not a capability: only capabilities have carriers")
+    mobs = {m.identifier for m in spec.mobs}
+    new = list(dict.fromkeys(str(c) for c in carriers))
+    if not new or [c for c in new if c not in mobs]:
+        raise InputError(f"Carriers are one or more mobs of this project ({sorted(mobs)}), got {new}")
+    if tuple(new) == tuple(b.affects):
+        return {"behavior": behavior, "carriers": new, "changed": False, "task": None}
+    added, removed = [c for c in new if c not in b.affects], [c for c in b.affects if c not in new]
+    new_spec = replace(spec, behaviors=[replace(x, affects=tuple(new)) if x is b else x for x in spec.behaviors])
+    if proj["status"] not in GENERATED_STATUSES:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"carriers of {behavior}: +{added} -{removed}")
+        return {"behavior": behavior, "carriers": new, "changed": True, "task": None, "spec_state": "DRAFT"}
+    _save_spec(store, pid, new_spec, f"carriers of {behavior}: +{added} -{removed}")
+    from .modmap import custom_cards, update_card, request_change, feature_instructions, plan_behaviors
+    card = custom_cards(store, pid).get(behavior)
+    if card is None:
+        return {"behavior": behavior, "carriers": new, "changed": True, "task": (plan_behaviors(store, pid) or [None])[0]}   # never planned: plan it now with the new carriers
+    update_card(store, pid, behavior, by="user", note=f"carriers: +{added} -{removed}", derived_from=new)
+    task_id = f"{pid}:FEATURE:{behavior}"
+    feature = next((t for t in store.tasks(pid) if t["id"] == task_id), None)
+    if feature is not None and feature["state"] in ("BACKLOG", "READY"):
+        card = custom_cards(store, pid)[behavior]
+        with store.tx() as con:
+            con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(feature_instructions(card, kind="capability", carriers=new))))
+        return {"behavior": behavior, "carriers": new, "changed": True, "task": task_id, "how": "brief rewritten: the coder has not started it"}
+    request = (f"The carriers of this capability changed. " + (f"Give it to: {', '.join(added)}: wire the existing component into their entity classes and add a GameTest per new carrier. " if added else "")
+               + (f"Take it away from: {', '.join(removed)}: remove only their wiring and their GameTests. " if removed else "")
+               + f"Do not duplicate the component; the carriers are now {', '.join(new)}.")
+    out = request_change(store, pid, behavior, request)
+    return {"behavior": behavior, "carriers": new, "changed": True, "task": out["task"], "how": "change request for the coder"}
+
+
 def _save_spec(store: Store, pid: str, spec, reason: str) -> None:
     validate_spec_content(spec)
     with store.tx() as con:

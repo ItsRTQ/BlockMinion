@@ -147,11 +147,13 @@
         "spitter",
         "brute"
       ],
-      "after": []
+      "after": [],
+      "kind": "mechanic"
     },
     {
-      "title": "Infectious melee and targeting",
-      "description": "Every melee hit of a Runner, a Spitter or a Brute applies Infectious Poison for 10 seconds to the mob it hits (never to another infectious zombie). The Runner attacks everything it can reach except infectious zombies and mobs already under Infectious Poison: players, animals, golems and other mobs.",
+      "title": "Infection",
+      "kind": "capability",
+      "description": "Every melee hit of a carrier applies Infectious Poison for 10 seconds to the mob it hits, never to another carrier. Carriers never attack each other or mobs under Infectious Poison; the Runner attacks every other living mob it can reach (players, animals, golems, villagers, pillagers and vanilla zombies).",
       "acceptance": [
         "A villager hit by a Runner gets Infectious Poison for 10 seconds",
         "A pillager hit by a Brute and a vanilla zombie hit by a Spitter in melee get it too",
@@ -169,7 +171,8 @@
     },
     {
       "title": "Spitter acid spit",
-      "description": "The Spitter attacks from range: when its target is within 16 blocks it spits an acid projectile that deals 4 damage on impact and applies Infectious Poison for 10 seconds. The acid never affects infectious zombies.",
+      "kind": "mechanic",
+      "description": "The Spitter attacks from range, as a delivery of Infection: when its target is within 16 blocks it spits an acid projectile that deals 4 damage on impact and applies Infectious Poison for 10 seconds. The acid never affects carriers.",
       "acceptance": [
         "A Spitter with a target 10 blocks away shoots an acid projectile",
         "A projectile that hits a mob deals 4 damage and applies Infectious Poison",
@@ -193,7 +196,8 @@
       "affects": [
         "brute"
       ],
-      "after": []
+      "after": [],
+      "kind": "mechanic"
     },
     {
       "title": "Brute thrown blocks and shield breaker",
@@ -207,7 +211,8 @@
       "affects": [
         "brute"
       ],
-      "after": []
+      "after": [],
+      "kind": "mechanic"
     }
   ],
   "assumptions": [

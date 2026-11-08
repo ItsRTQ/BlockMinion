@@ -212,3 +212,13 @@ interpreter returns.
 Body plans gained `primate`: a hunched torso (rest pitch on `body`), long arms that are front legs (`*_arm_lower` flexes in the swing, so the gait gate judges them like knees), short legs, a
 head set back, and a windup-and-slam attack. The gait check treats the highest point of a pendulum-like limb as a set of near-peak samples and passes a foot that is clearly higher while travelling forward.
 
+### Capabilities and their carriers
+
+A behavior is either a `mechanic` (a one-off: one mob's movement, one projectile) or a `capability`: something mobs carry, such as an infection, a freezing touch or an explosion on death. For a capability,
+`affects` is exactly the list of carriers (mobs only, at least one), and the interpreter writes which mobs it chose and why under `assumptions`. What the user says explicitly always wins; where they did not limit it,
+a capability given to a group belongs to every member. The Spec tab shows each capability with a toggle per mob ("Carried by"), so a wrong guess is one click instead of a rerun.
+
+The coder brief of a capability says to build it **once** as a reusable component and give it to each carrier by wiring only (a few lines in the entity class, never a copy), with one GameTest per carrier. That is what makes
+a carrier change small. `content.set_behavior_carriers` (UI route `behavior-carriers`, `craftctl set-carriers`) applies the change: before generation it is a spec edit and returns the spec to draft; after generation it updates the
+spec and the card's relations without resetting the approval, rewrites the brief of the coder task if the coder has not started it, and otherwise creates a change request that adds or removes only the wiring of the mobs that changed.
+

@@ -313,6 +313,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
+                    if op == "behavior-carriers":
+                        from .content import set_behavior_carriers
+                        return set_behavior_carriers(store, pid, str(payload.get("behavior", "")), list(payload.get("carriers") or []))
                     if op == "set-art":
                         from .content import set_art
                         return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),

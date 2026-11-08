@@ -24,7 +24,7 @@ class TestBehaviorSpec(unittest.TestCase):
     def test_the_ideal_interpretation_is_a_valid_spec(self):
         spec = spec_from_proposal(CURRENT, PROPOSAL)
         self.assertEqual([(m.identifier, m.body_plan, m.health) for m in spec.mobs], [("runner", "biped", 30), ("spitter", "biped", 24), ("brute", "primate", 80)])
-        self.assertEqual([behavior_id(b.title) for b in spec.behaviors], ["infectious_poison_and_conversion", "infectious_melee_and_targeting", "spitter_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"])
+        self.assertEqual([behavior_id(b.title) for b in spec.behaviors], ["infectious_poison_and_conversion", "infection", "spitter_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"])
         again = read_spec(json.loads(json.dumps(spec.to_dict())))
         self.assertEqual(again.behaviors, spec.behaviors)
 
@@ -41,7 +41,9 @@ class TestBehaviorSpec(unittest.TestCase):
         with_behavior()
         for bad, why in ((dict(title="ab"), "title"), (dict(description="short"), "description"), (dict(acceptance=[]), "acceptance"), (dict(acceptance=["x"]), "acceptance"),
                          (dict(affects=["ghost"]), "unknown identifiers"), (dict(after=["No such behavior"]), "not other behaviors"), (dict(after=["Extra mechanic"]), "not other behaviors"),
-                         (dict(title="Brute"), "identifier of a mob"), (dict(title="Spitter acid spit"), "same card id")):
+                         (dict(title="Brute"), "identifier of a mob"), (dict(title="Spitter acid spit"), "same card id"),
+                         (dict(kind="trait"), "kind is capability or mechanic"), (dict(kind="capability", affects=[]), "lists the mobs that carry it"),
+                         (dict(kind="capability", affects=["brute", "ghost"]), "lists the mobs that carry it")):
             with self.assertRaisesRegex(InputError, why, msg=str(bad)):
                 with_behavior(**bad)
         with self.assertRaisesRegex(InputError, "At most 12"):
@@ -64,7 +66,7 @@ class TestBehaviorSpec(unittest.TestCase):
 
     def test_the_rules_learned_from_a_real_interpretation(self):
         text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
-        for needle in ("Use `after` ONLY when a behavior needs code or an effect that another one creates", "must not wait for each other", "Say WHEN every mechanic triggers",
+        for needle in ("A behavior is a `capability` when it is something mobs CARRY", "built once as a\nreusable component wired to each carrier", "Use `after` ONLY when a behavior needs code or an effect that another one creates", "must not wait for each other", "Say WHEN every mechanic triggers",
                        "what every new effect, projectile or state DOES in numbers", "state the reading you chose as the FIRST assumption", "over many trials every outcome appears",
                        "What the user says explicitly always wins", "only the Spitter spits", "belongs to every member of that group", "that effect IS how the group does the thing", "never let a member bypass the effect with a shortcut of your own", "so the user can see how far you went"):
             self.assertIn(needle, text)
@@ -88,23 +90,23 @@ class TestGenerationPlansBehaviors(unittest.TestCase):
 
     def test_each_behavior_becomes_a_card_and_a_coder_task(self):
         self.assertEqual(sorted(self.out["behavior_tasks"]), sorted(f"infect:FEATURE:{i}" for i in
-                         ("infectious_poison_and_conversion", "infectious_melee_and_targeting", "spitter_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker")))
+                         ("infectious_poison_and_conversion", "infection", "spitter_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker")))
         for tid in self.out["behavior_tasks"]:
             self.assertEqual(self.tasks[tid]["role"], "coder")
         from mod_orchestra.modmap import custom_cards
         cards = custom_cards(self.store, "infect")
         self.assertEqual(cards["infectious_poison_and_conversion"]["derived_from"], ["runner", "spitter", "brute"])
-        self.assertEqual(len(cards["infectious_poison_and_conversion"]["acceptance"]), 5)
+        self.assertEqual(len(cards["infectious_poison_and_conversion"]["acceptance"]), 5); self.assertEqual(cards["infection"]["derived_from"], ["runner", "spitter", "brute"])
 
     def test_dependencies_order_the_tasks(self):
         self.assertEqual(self.tasks["infect:FEATURE:infectious_poison_and_conversion"]["state"], "READY")        # the foundation: the effect and what it does when a mob dies under it
-        for waits in ("infectious_melee_and_targeting", "spitter_acid_spit"):
+        for waits in ("infection", "spitter_acid_spit"):
             self.assertEqual(self.tasks[f"infect:FEATURE:{waits}"]["state"], "BACKLOG")                          # each way of applying it waits for the effect
         for free in ("brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"):
             self.assertEqual(self.tasks[f"infect:FEATURE:{free}"]["state"], "READY")                             # independent: they do not wait for the infection
         with self.store.tx() as con:
             edges = [tuple(r) for r in con.execute("SELECT predecessor, successor FROM task_edges WHERE successor LIKE 'infect:FEATURE:%'")]
-        self.assertEqual(sorted(edges), [("infect:FEATURE:infectious_poison_and_conversion", "infect:FEATURE:infectious_melee_and_targeting"),
+        self.assertEqual(sorted(edges), [("infect:FEATURE:infectious_poison_and_conversion", "infect:FEATURE:infection"),
                                          ("infect:FEATURE:infectious_poison_and_conversion", "infect:FEATURE:spitter_acid_spit")])
 
     def test_the_coder_brief_has_the_description_the_criteria_and_the_gametests(self):
@@ -126,6 +128,63 @@ class TestGenerationPlansBehaviors(unittest.TestCase):
         self.assertEqual(plan_behaviors(self.store, "infect"), [])
         ids = {c["id"] for c in mod_map(self.store, "infect")["cards"]}
         self.assertTrue({"infectious_poison_and_conversion", "brute", "runner"} <= ids)
+
+
+class TestCapabilities(TestGenerationPlansBehaviors):
+    """INFECTION is a capability: the coder builds it once and wires every carrier; the user checks and edits who carries it."""
+
+    def test_the_coder_is_told_to_build_it_once_and_wire_the_carriers(self):
+        text = self.store.task_instructions("infect:FEATURE:infection")
+        for needle in ("This is a CAPABILITY carried by: runner, spitter, brute", "Implement it ONCE as a reusable component", "never a copy of the logic", "one @GameTest per carrier"):
+            self.assertIn(needle, text)
+        self.assertNotIn("CAPABILITY", self.store.task_instructions("infect:FEATURE:spitter_acid_spit"))             # a mechanic gets the plain brief
+
+    def test_a_carrier_change_before_the_coder_starts_rewrites_the_brief(self):
+        from mod_orchestra.content import set_behavior_carriers
+        from mod_orchestra.modmap import custom_cards
+        out = set_behavior_carriers(self.store, "infect", "infection", ["runner", "brute"])
+        self.assertEqual((out["changed"], out["task"], out["how"]), (True, "infect:FEATURE:infection", "brief rewritten: the coder has not started it"))
+        self.assertIn("carried by: runner, brute", self.store.task_instructions("infect:FEATURE:infection"))
+        self.assertEqual(custom_cards(self.store, "infect")["infection"]["derived_from"], ["runner", "brute"])
+        self.assertEqual(read_spec(self.store.project("infect")["spec"]).behaviors[1].affects, ("runner", "brute"))
+        self.assertEqual(self.store.project("infect")["spec_state"], "APPROVED")                                  # after generation the edit is cosmetic for the spec
+        self.assertFalse([t for t in self.store.tasks("infect") if ":CHANGE:" in t["id"]])
+
+    def test_after_the_coder_built_it_the_change_is_a_task_that_wires_only_the_carriers(self):
+        from mod_orchestra.content import set_behavior_carriers
+        with self.store.tx() as con:
+            con.execute("UPDATE tasks SET state='DONE' WHERE id='infect:FEATURE:infection'")
+        out = set_behavior_carriers(self.store, "infect", "infection", ["runner", "spitter", "brute"][:1] + ["spitter"])
+        self.assertEqual(out["how"], "change request for the coder")
+        text = self.store.task_instructions(out["task"])
+        for needle in ("Take it away from: brute", "remove only their wiring and their GameTests", "Do not duplicate the component", "REQUESTED CHANGE"):
+            self.assertIn(needle, text)
+        out2 = set_behavior_carriers(self.store, "infect", "infection", ["runner", "spitter", "brute"])
+        self.assertIn("Give it to: brute", self.store.task_instructions(out2["task"])); self.assertIn("a GameTest per new carrier", self.store.task_instructions(out2["task"]))
+
+    def test_nothing_changes_when_the_carriers_are_the_same_and_bad_input_is_refused(self):
+        from mod_orchestra.content import set_behavior_carriers
+        self.assertEqual(set_behavior_carriers(self.store, "infect", "infection", ["brute", "runner", "spitter"])["changed"], True)   # a new order counts
+        self.assertFalse(set_behavior_carriers(self.store, "infect", "infection", ["brute", "runner", "spitter"])["changed"])
+        for args, why in ((("ghost", ["runner"]), "Unknown behavior"), (("spitter_acid_spit", ["runner"]), "mechanic"), (("infection", []), "one or more mobs"), (("infection", ["villager"]), "one or more mobs")):
+            with self.assertRaisesRegex(InputError, why):
+                set_behavior_carriers(self.store, "infect", *args)
+
+
+class TestCarriersBeforeGeneration(unittest.TestCase):
+    def test_it_edits_the_spec_and_resets_the_approval(self):
+        from mod_orchestra.content import set_behavior_carriers
+        from mod_orchestra.interpreter import apply_interpretation
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "s.sqlite")
+            with patch.object(workflow, "PROJECTS", Path(tmp) / "p"):
+                (Path(tmp) / "p").mkdir()
+                workflow.new_project(store, name="Infectious Zombies", mod_id="infect", package="com.example.infect", idea=IDEA)
+                apply_interpretation(store, "infect", {"status": "WAITING_USER", "spec": PROPOSAL, "questions": []}, "run-1")
+                workflow.plan_project(store, "infect"); workflow.approve_spec(store, "infect")
+                out = set_behavior_carriers(store, "infect", "infection", ["runner"])
+                self.assertEqual((out["task"], out["spec_state"]), (None, "DRAFT")); self.assertEqual(store.project("infect")["spec_state"], "DRAFT")
+                self.assertEqual(read_spec(store.project("infect")["spec"]).behaviors[1].affects, ("runner",))
 
 
 class TestPrimateRig(unittest.TestCase):

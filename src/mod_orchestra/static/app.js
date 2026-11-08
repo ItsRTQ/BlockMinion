@@ -243,10 +243,27 @@ function renderSpec(p) {
     const wrap = el("div", null, "spec-box"); wrap.style.marginTop = "10px"; wrap.append(el("h4", `Behaviors the coder builds after generation (${s.behaviors.length})`));
     wrap.append(el("div", "Each becomes a feature card with a coder task; every acceptance criterion becomes a GameTest. Say what to change in the answer box if one is wrong.", "muted"));
     for (const b of s.behaviors) {
-      const d = el("div", null, "behavior"); d.append(el("b", b.title), el("div", b.description, "art-concept"));
+      const d = el("div", null, "behavior"); d.append(el("b", b.title), ...(b.kind === "capability" ? [el("span", "capability", "art-source authored")] : []), el("div", b.description, "art-concept"));
       const ul = el("ul"); for (const a of b.acceptance || []) ul.append(el("li", a)); d.append(ul);
-      const meta = []; if ((b.affects || []).length) meta.push("about: " + b.affects.join(", ")); if ((b.after || []).length) meta.push("after: " + b.after.join(", "));
+      const meta = []; if (b.kind !== "capability" && (b.affects || []).length) meta.push("about: " + b.affects.join(", ")); if ((b.after || []).length) meta.push("after: " + b.after.join(", "));
       if (meta.length) d.append(el("small", meta.join(" · "), "muted"));
+      if (b.kind === "capability") {   // who carries it: every mob as a toggle, so a wrong guess is one click away
+        const bid = b.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "feature";
+        const row = el("div", null, "carriers"); row.append(el("span", "Carried by:", "muted"));
+        for (const m of s.mobs || []) {
+          const on = (b.affects || []).includes(m.identifier);
+          row.append(btn((on ? "✓ " : "") + m.label, async () => {
+            const next = on ? b.affects.filter(x => x !== m.identifier) : [...b.affects, m.identifier];
+            if (!next.length) return toast("A capability needs at least one carrier", "bad");
+            try {
+              const r = await api(`/api/project/${p.id}/behavior-carriers`, { behavior: bid, carriers: next });
+              toast(r.task ? `Carriers saved. Coder task ${r.task}: ${r.how || "planned"}` : "Carriers saved; the spec returns to draft, approve it again", "ok");
+              await openProject(p.id);
+            } catch (e) { toast(e.message, "bad"); }
+          }, "mini " + (on ? "primary" : "secondary")));
+        }
+        d.append(row);
+      }
       wrap.append(d);
     }
     body.append(wrap);
