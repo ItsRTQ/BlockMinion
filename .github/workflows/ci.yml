@@ -57,7 +57,8 @@ jobs:
         run: npm ci
         working-directory: tests/ui
       - name: Dialogs, refresh safety, activity banner, Mobs and Items tours
-        run: npm run test:ci
+        shell: bash
+        run: npm run test:ci 2>&1 | tee ui.log
         working-directory: tests/ui
       - name: Show the failures as annotations
         if: failure()
@@ -65,14 +66,15 @@ jobs:
         working-directory: tests/ui
         run: |
           python - <<'PY'
-          import re
-          lines = open("tap.log", encoding="utf8", errors="replace").read().splitlines() if __import__("os").path.exists("tap.log") else ["(no tap.log: the tests did not start)"]
-          shown = 0
-          for i, line in enumerate(lines):
-              if line.startswith("not ok") or re.search(r"^\s+(error|code|expected|actual):", line) or "timed out" in line or "did not start" in line or "exited" in line:
-                  print("::error title=ui test::" + line.strip()[:380].replace("%", "%25")); shown += 1
-              if shown >= 40: break
-          print("::error title=ui tap tail::" + " | ".join(l.strip() for l in lines[-12:])[:900].replace("%", "%25"))
+          import os
+          def encode(text):
+              return text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          log = open("ui.log", encoding="utf8", errors="replace").read().splitlines() if os.path.exists("ui.log") else ["(no ui.log: the tests did not start)"]
+          tap = open("tap.log", encoding="utf8", errors="replace").read().splitlines() if os.path.exists("tap.log") else []
+          print("::error title=ui: the end of the run::" + encode("\n".join(log[-90:])[-6000:]))
+          bad = [i for i, l in enumerate(tap) if l.startswith("not ok")]
+          for i in bad[:6]:
+              print("::error title=ui: failing test::" + encode("\n".join(tap[i:i + 40])[:3500]))
           PY
 
   fabric-build:
