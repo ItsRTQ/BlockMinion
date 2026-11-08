@@ -86,11 +86,14 @@ windup → impact → recovery → rest) for hostile and neutral mobs, which the
 already carries all three, retune rather than drop them — `bbmodel_geckolib_validate` with
 `require_idle_walk: true` passing, `bbmodel_render` used at least once to look at the result (rest + a walk frame),
 and both exports written with `overwrite: true` when re-exporting.
-Texture: do not paint pixels by hand. Call `mcp__minecraft-orchestra__orchestra_paint_skin {project, mob, palette:{base,...}, zones:[...], face:{...}}`
-once the geometry is final: it paints `models/<mob>.png` at 2x (128x128 over a 64x64 layout) with a colour per zone, face shading, edges and a head
-face (brows, eyes with pupils, nose, mouth, optional tusks) whose colours are pushed apart until they stand out, and returns the contrast report
-(`face_check.ok` must be true; `orchestra_check_skin` measures any PNG). Pick colours that fit the theme in the task packet, then
-`bbmodel_geckolib_set_texture` and `bbmodel_render` to look at it: eyes and mouth must be readable at a glance. Report the four file paths in `changed_files`
+Texture: do not paint pixels by hand. Call `mcp__minecraft-orchestra__orchestra_paint_skin {project, mob, palette, zones, surface, face}`
+once the geometry is final: it paints `models/<mob>.png` at 2x (128x128 over a 64x64 layout) with a colour per zone, an optional surface per zone
+(`flesh`, `rotten`, `hide`, `cloth`: mottling, veins, growths, scars, grime), face shading, edges and a head face (`angry`, `calm` or `grim`: small
+deep-set eyes for anything grotesque) whose colours are pushed apart until they stand out, and returns the contrast report (`face_check.ok` must be
+true; `orchestra_check_skin` measures any PNG). The colours come from the art direction and the palette of the task packet, never from an example and
+never from habit; no regular stripes unless the art direction asks for them; honour its `reference` and `avoid`; and if it says hulking or massive,
+reshape the cubes (thick shoulders and arms, a small head) before painting. Then `bbmodel_geckolib_set_texture` and `bbmodel_render` to look at it:
+eyes and mouth must be readable at a glance and the creature must look like its art direction, not like a toy. Report the four file paths in `changed_files`
 (relative to the workspace, e.g. `models/<mob>.geo.json`) and the validator result under `checks_run`.
 Never touch `src/` or `assets/` yourself: the controller installs the exports over the placeholders.
 """

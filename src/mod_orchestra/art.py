@@ -98,7 +98,8 @@ def effective_art(spec: Spec, kind: str, identifier: str) -> dict:
     authored_concept = piece_text or (art.concept if art and art.concept else "")
     concept = authored_concept or (f"{label}: " + (f"{', '.join(cues)}; " if cues else "") + (f"showing {', '.join(tags[:4])}" if tags else "designed to fit this mod")).strip()
     return {"concept": concept, "tags": tags, "silhouette": art.silhouette if art else "", "palette": theme_palette(spec.theme),
-            "source": "authored" if authored_concept or (art and art.tags) else "derived", "cues": list(cues)}
+            "reference": art.reference if art else "", "avoid": list(art.avoid) if art else [],
+            "source": "authored" if authored_concept or (art and art.tags) or (art and (art.reference or art.avoid)) else "derived", "cues": list(cues)}
 
 
 def brief(spec: Spec, kind: str, identifier: str, *, palette: bool = True) -> str:
@@ -109,6 +110,10 @@ def brief(spec: Spec, kind: str, identifier: str, *, palette: bool = True) -> st
         lines.append("visual cues: " + ", ".join(a["tags"]))
     if a["silhouette"]:
         lines.append(f"silhouette: {a['silhouette']}")
+    if a["reference"]:
+        lines.append(f"it should resemble: {a['reference']} (you cannot see it: follow the cues, which spell out what it means)")
+    if a["avoid"]:
+        lines.append("it must NOT look like: " + ", ".join(a["avoid"]) + " (this wins over every default)")
     if palette and a["palette"]:
         lines.append("palette: " + "; ".join(f"{p['name']} {p['hex']}" for p in a["palette"]))
     return "\n".join(lines)

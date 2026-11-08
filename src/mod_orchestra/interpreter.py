@@ -91,7 +91,11 @@ consequence in ONE foundation behavior, then give every member the user says can
 without the capability, and never let a member bypass the effect with a shortcut of your own. List every inference like this under `assumptions`, so the user can see how far you went.
 If the idea allows two readings that would build different things (infect on hit versus convert on death), state the reading you chose as the FIRST assumption. When the user says something happens "at random", add a criterion that over many trials every outcome appears. Do not invent mechanics the user did not describe; where the user left a number open (infection time, damage), pick a sensible one, put it in the description
 and list it under `assumptions`. Mobs a behavior is about must still be listed under `mobs` with their stats; a behavior never replaces the mob.
-Field limits (a proposal that breaks a structural one is rejected and you are asked to resend it; cosmetic text is trimmed to fit): art.concept 320 characters, art.silhouette 60 (a short phrase, not a sentence),
+The user's style words are the art direction: "grotesque", "human skin tone", "mutant", "cute", "metallic", "ancient" belong in the concept AND in the tags, and the theme's colours must follow them (a mutated human is flesh-toned, an ice golem is
+pale and cold; never default to green because something is infected, and never to a saturated palette). When the user names something it should resemble ("like the Tank from Left 4 Dead", "like a vanilla pig"), put it in `art.reference`
+and spell out in the concept and the tags what that means in proportions, silhouette, palette family and surface, because the designer cannot see it; for a hulking brute that means a small head and enormous shoulders and arms. When the user rules
+something out ("not cartoon", "no bright colours"), or the style implies it (grotesque rules out cute), list it in `art.avoid` (up to 8 short phrases).
+Field limits (a proposal that breaks a structural one is rejected and you are asked to resend it; cosmetic text is trimmed to fit): art.concept 320 characters, art.silhouette 60 (a short phrase, not a sentence), art.reference 120, at most 8 art.avoid phrases of 2-48 characters,
 each tag 2-48 characters and at most 16 tags, each art.pieces text 320; behavior title 3-60 characters, description 20-1500, 1-12 criteria of 5-300 characters each, at most 12 behaviors; theme 600 characters.
 Art direction (`art`): every feature, tool/armor set (material), food and mob takes an `"art"` object so the designer paints something specific to it, never a stock icon:
 `{{"concept": "one or two sentences: what it is and how it looks, in this mod's world", "tags": ["6-10 concrete visual cues"], "silhouette": "optional shape phrase"}}`.
@@ -131,7 +135,7 @@ def _fit_art(art, label: str, notes: list[str], piece_kinds: tuple = ()):
     if not isinstance(art, dict):
         return art
     out = dict(art)
-    for key, limit in (("concept", 320), ("silhouette", 60)):
+    for key, limit in (("concept", 320), ("silhouette", 60), ("reference", 120)):
         if key in out:
             out[key], cut = _fit(out[key], limit)
             if cut:
@@ -148,6 +152,16 @@ def _fit_art(art, label: str, notes: list[str], piece_kinds: tuple = ()):
         if len(tags) > 16:
             notes.append(f"{label} art.tags to 16 tags")
         out["tags"] = tags[:16]
+    if "avoid" in out:
+        raw_avoid = out["avoid"] if isinstance(out["avoid"], (list, tuple)) else re.split(r"[,;\n]", str(out["avoid"]))
+        avoid, seen_a = [], set()
+        for t in raw_avoid:
+            fitted, cut = _fit(t, 48)
+            if len(fitted) >= 2 and fitted.lower() not in seen_a:
+                seen_a.add(fitted.lower()); avoid.append(fitted)
+        if len(avoid) > 8:
+            notes.append(f"{label} art.avoid to 8 phrases")
+        out["avoid"] = avoid[:8]
     if isinstance(out.get("pieces"), dict):
         pieces = {}
         for k, v in out["pieces"].items():

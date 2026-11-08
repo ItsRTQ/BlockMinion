@@ -249,3 +249,15 @@ focus, return it where it was, close on Escape or a click outside, take Enter (C
 only `/api/activity` is simulated. It covers the dialogs, the refresh rules (checked by breaking them on purpose), the banner and the deep links, and a tour of the Spec, Mobs and Items tabs with no native popup allowed.
 `cd tests/ui && npm ci && npm test` (CI job `ui`).
 
+### Skins that do not look like toys
+
+A real Brute came back green, striped, with white square eyes, as a mascot and not the grotesque mutated primate that was asked for. Four causes, all ours, each now closed.
+(1) **The examples taught the answer.** The skill showed a green palette, a `bone` colour and a `bands` stripe pattern, and the designer copied them: 93% of that skin's pixels sat on those example colours. The skill and the designer's instructions
+now carry no colour at all (a test fails if one comes back), say that colours come only from the art direction, and forbid regular stripes unless the art asks for them. (2) **The painter could only fill and band.** Zones take a `surface`
+(`flesh`, `rotten`, `hide`, `cloth`, or an object): mottling, veins, growths, scars, grime, streaks, weave and tears, with every secondary colour derived from the zone's own so a surface never brings a hue, and a tone ramp where shadows lean
+cold and lights warm. (3) **The eyes were judged against the wrong thing.** On pale skin they were pushed toward black and vanished in their own sockets; they are now judged against their socket and, where there is room, against the skin too, mouths and
+brows go dark and eyes and teeth light (`ensure_contrast(prefer=...)`), and the face has a `grim` style (small deep-set eyes, a heavy brow, a ragged mouth). (4) **The user's words were lost.** `art.reference` ("like the Tank from Left 4 Dead") and `art.avoid`
+("cartoon", "bright colours") now travel from the interpreter (who must also keep style words in the concept and the tags, make the theme's colours follow them and not default to green for infection) to every designer packet, editable from the Art form,
+`craftctl set-art` and the spec. `craftctl paint-skin <project> --mob <id> --recipe skin.json [--install]` repaints a mob with no agent from a recipe file (`docs/examples/skin-recipes/`), and installs it as the mob's texture.
+What this does not do: change a silhouette. A slender ape stays slender under any skin; proportions are the rig's job.
+

@@ -1,0 +1,11 @@
+{
+  "palette": {"base": "#9d8878", "rags": "#4b4944", "bone": "#c9bda4"},
+  "zones": [
+    {"bones": ["body", "head"], "color": "base", "surface": {"preset": "flesh", "mottle": 0.5, "veins": 0.45, "blotches": 0.18}},
+    {"bones": ["*_arm", "*_arm_lower", "*_knuckles"], "color": "base", "surface": {"preset": "rotten", "blotches": 0.4}},
+    {"bones": ["back_spines"], "color": "bone", "surface": {"mottle": 0.3, "grime": 0.3, "ramp": true}},
+    {"bones": ["*_leg", "*_leg_shin"], "color": "rags", "surface": "cloth"}
+  ],
+  "face": {"style": "grim", "eyes": "#d6c46a", "mouth": "#1c1012", "brow": "#2a1d1e", "teeth": "#cdbf9f"},
+  "seed": "brute"
+}

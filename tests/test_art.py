@@ -354,3 +354,105 @@ class TestSpriteTool(Project):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReferenceAndAvoid(Project):
+    """The user's own words ("like the Tank from Left 4 Dead", "not cartoon") have a place to live and reach the designer."""
+
+    def test_coercion_validation_and_round_trip(self):
+        a = coerce_art({"concept": "a brute", "reference": " the Tank from Left 4 Dead ", "avoid": "cartoon, bright colours ; stripes"})
+        self.assertEqual((a.reference, a.avoid), ("the Tank from Left 4 Dead", ("cartoon", "bright colours", "stripes")))
+        self.assertIsNotNone(coerce_art({"reference": "a vanilla pig"}))                                    # a sheet with only a reference is a sheet
+        for bad in (Art(reference="r" * 130), Art(avoid=tuple(f"thing {i}" for i in range(9))), Art(avoid=("a",))):
+            with self.assertRaises(InputError):
+                validate_art(bad, "x")
+
+    def test_the_proposal_is_fitted_not_rejected(self):
+        from mod_orchestra.interpreter import fit_proposal
+        fitted, notes = fit_proposal({"mobs": [{"identifier": "b", "art": {"reference": "ref " * 60, "avoid": [f"avoid number {i}" for i in range(12)] + ["x" * 70, "avoid number 1"]}}]})
+        art = fitted["mobs"][0]["art"]
+        self.assertLessEqual(len(art["reference"]), 120); self.assertEqual(len(art["avoid"]), 8); self.assertTrue(all(2 <= len(t) <= 48 for t in art["avoid"]))
+        self.assertTrue(any("art.avoid to 8" in n for n in notes)); self.assertTrue(any("art.reference to 120" in n for n in notes))
+
+    def test_the_effective_sheet_and_the_designer_brief_carry_them(self):
+        mats = [replace(self.spec.materials[0], art=Art(concept="crude iron", reference="a goblin forge's work", avoid=("shiny", "ornate")))]
+        spec = replace(self.spec, materials=mats)
+        a = art.effective_art(spec, "tool", "groko_sword"); self.assertEqual((a["reference"], a["avoid"], a["source"]), ("a goblin forge's work", ["shiny", "ornate"], "authored"))
+        text = art.brief(spec, "tool", "groko_sword")
+        self.assertIn("it should resemble: a goblin forge's work", text); self.assertIn("it must NOT look like: shiny, ornate", text); self.assertIn("wins over every default", text)
+        self.assertNotIn("resemble", art.brief(self.spec, "tool", "groko_sword"))                           # nothing is said when nothing was asked
+
+    def test_the_mob_packet_and_the_sprite_task_show_them(self):
+        from mod_orchestra.content import set_art
+        from mod_orchestra.models import rig_block, request_sprites
+        set_art(self.store, "g_mod", "mob", "brute", concept="a hulking grotesque mutant with pale human skin", reference="the Tank from Left 4 Dead", avoid=["cartoon", "saturated green"])
+        packet = rig_block(self.store, "g_mod", "brute", self.root)
+        for needle in ("it should resemble: the Tank from Left 4 Dead", "it must NOT look like: cartoon, saturated green"):
+            self.assertIn(needle, packet)
+        set_art(self.store, "g_mod", "set", "groko", concept="crude iron", avoid=["shiny"])
+        self.assertIn("it must NOT look like: shiny", self.store.task_instructions(request_sprites(self.store, "g_mod", ["groko_sword"])["task"]))
+
+    def test_set_art_edits_them_and_the_listing_returns_them(self):
+        from mod_orchestra.content import list_art, set_art
+        out = set_art(self.store, "g_mod", "mob", "brute", concept="a brute", reference="the Tank", avoid="cartoon, cute")
+        self.assertEqual((out["art"]["reference"], out["art"]["avoid"]), ("the Tank", ["cartoon", "cute"]))
+        self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["avoid"], ["cartoon", "cute"])
+        set_art(self.store, "g_mod", "mob", "brute")                                                        # everything empty clears it
+        self.assertIsNone(read_spec(self.store.project("g_mod")["spec"]).mobs[0].art)
+
+    def test_the_interpreter_is_told_to_keep_the_users_style_words(self):
+        from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
+        text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
+        for needle in ("The user's style words are the art direction", "belong in the concept AND in the tags", "never default to green because something is infected", "art.reference",
+                       "the designer cannot see it", "a small head and enormous shoulders and arms", "list it in `art.avoid`", "art.reference 120, at most 8 art.avoid phrases"):
+            self.assertIn(needle, text)
+
+    def test_the_skill_has_no_stock_colours_and_says_how_to_look_like_a_brute(self):
+        root = Path(__file__).resolve().parents[1]
+        for rel in (".claude/skills/blockbench/SKILL.md", "src/mod_orchestra/resources/claude/skills/blockbench/SKILL.md", "src/mod_orchestra/models.py"):
+            text = (root / rel).read_text(encoding="utf8")
+            for stock in ("#5c7f3a", "#d9cfb8", "#8c2d19", "#3b3f42"):
+                self.assertNotIn(stock, text, f"{rel} still teaches {stock}")
+        skill = (root / ".claude/skills/blockbench/SKILL.md").read_text(encoding="utf8")
+        for needle in ("The colours are never given here", "No regular bands or stripes", "`grim`", "Shape comes before paint", "`reference`", "`avoid`", "`rotten`"):
+            self.assertIn(needle, skill)
+
+
+class TestPaintWithoutAnAgent(Project):
+    RECIPE = {"palette": {"base": "#9d8878", "rags": "#4b4944"}, "zones": [{"bones": ["body", "head"], "color": "base", "surface": "flesh"}, {"bones": ["*_leg*"], "color": "rags", "surface": "cloth"}],
+              "face": {"style": "grim", "eyes": "#d6c46a", "mouth": "#1c1012"}, "seed": "brute"}
+
+    def setUp(self):
+        super().setUp()
+        from mod_orchestra import rigs
+        rigs.stage_rig(self.root, "biped", "brute", "g_mod")
+
+    def test_it_paints_the_models_png_and_installs_it_as_the_mobs_texture(self):
+        from mod_orchestra.content import paint_mob_skin
+        out = paint_mob_skin(self.store, "g_mod", "brute", self.RECIPE, install=True)
+        self.assertEqual((out["size"], out["installed"], out["face_check"]["ok"]), ([128, 128], True, True))
+        installed = self.root / "src/main/resources/assets/g_mod/textures/entity/brute.png"
+        self.assertEqual(skin.decode_png(installed.read_bytes())[:2], (128, 128)); self.assertEqual(installed.read_bytes(), (self.root / "models/brute.png").read_bytes())
+
+    def test_without_install_only_the_model_workspace_changes(self):
+        from mod_orchestra.content import paint_mob_skin
+        before = (self.root / "src/main/resources/assets/g_mod/textures/entity/brute.png").read_bytes() if (self.root / "src/main/resources/assets/g_mod/textures/entity/brute.png").exists() else None
+        out = paint_mob_skin(self.store, "g_mod", "brute", self.RECIPE)
+        self.assertFalse(out["installed"]); self.assertTrue((self.root / "models/brute.png").is_file())
+        after = (self.root / "src/main/resources/assets/g_mod/textures/entity/brute.png")
+        self.assertEqual(after.read_bytes() if after.exists() else None, before)
+
+    def test_bad_input_is_refused(self):
+        from mod_orchestra.content import paint_mob_skin
+        from mod_orchestra.state import StateError
+        for mob, recipe, error in (("../x", self.RECIPE, InputError), ("ghost", self.RECIPE, StateError), ("brute", {}, InputError), ("brute", {"palette": {"cloth": "#000000"}}, InputError),
+                                   ("brute", dict(self.RECIPE, surface="granite"), InputError)):
+            with self.assertRaises(error, msg=mob):
+                paint_mob_skin(self.store, "g_mod", mob, recipe)
+
+    def test_the_command_line_does_the_same(self):
+        import os, subprocess, sys
+        recipe = Path(self.tmp.name) / "skin.json"; recipe.write_text(json.dumps(self.RECIPE))
+        env = {**os.environ, "CRAFTCTL_HOME": self.tmp.name}
+        r = subprocess.run([sys.executable, "-m", "mod_orchestra.cli", "paint-skin", "--help"], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr); self.assertIn("--install", r.stdout); self.assertIn("--recipe", r.stdout)
