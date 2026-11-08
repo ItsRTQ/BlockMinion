@@ -67,7 +67,7 @@ def guidance(store: Store, pid: str) -> dict:
 
     if stage == "idea":
         step("Let the interpreter propose a spec from your idea", "agent", action="dispatch", payload={"task": f"{pid}:SPEC"},
-             detail="One bounded worker reads the idea and proposes items, blocks, recipes, drops, a tab and mobs. It may ask up to 3 questions.")
+             detail="One bounded worker reads the idea and proposes the content (items, blocks, tool and armor sets, foods, mobs and their body plans), an art direction for each, and the behaviors (mechanics such as infection or projectiles) the coder will build after generation. It may ask up to 3 questions; you approve the result.")
         step("…or write the idea in grammar form", "user", command="craftctl new … --idea \"items: a, b; blocks: c; mobs: d; tab: Label\"")
     elif stage == "spec":
         for q in questions:

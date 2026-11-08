@@ -62,6 +62,14 @@ class TestBehaviorSpec(unittest.TestCase):
             self.assertIn(needle, SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}"))
         self.assertNotIn("keep the user's wish in `unknowns`", SPEC_INSTRUCTIONS)                    # the old instruction that dropped custom AI
 
+    def test_the_rules_learned_from_a_real_interpretation(self):
+        text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
+        for needle in ("Use `after` ONLY when a behavior needs code or an effect that another one creates", "must not wait for each other", "Say WHEN every mechanic triggers",
+                       "what every new effect, projectile or state DOES in numbers", "state the reading you chose as the FIRST assumption", "over many trials every outcome appears"):
+            self.assertIn(needle, text)
+        from mod_orchestra.guidance import guidance
+        self.assertNotIn("a tab and mobs", open(Path(__file__).resolve().parents[1] / "src/mod_orchestra/guidance.py", encoding="utf8").read())
+
 
 class TestGenerationPlansBehaviors(unittest.TestCase):
     def setUp(self):
