@@ -66,7 +66,7 @@ class TestBehaviorSpec(unittest.TestCase):
         text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
         for needle in ("Use `after` ONLY when a behavior needs code or an effect that another one creates", "must not wait for each other", "Say WHEN every mechanic triggers",
                        "what every new effect, projectile or state DOES in numbers", "state the reading you chose as the FIRST assumption", "over many trials every outcome appears",
-                       "EVERY member has it", "that effect IS how the group does the thing", "never let a member bypass the effect with a shortcut of your own", "so the user can see how far you went"):
+                       "What the user says explicitly always wins", "only the Spitter spits", "belongs to every member of that group", "that effect IS how the group does the thing", "never let a member bypass the effect with a shortcut of your own", "so the user can see how far you went"):
             self.assertIn(needle, text)
         from mod_orchestra.guidance import guidance
         self.assertNotIn("a tab and mobs", open(Path(__file__).resolve().parents[1] / "src/mod_orchestra/guidance.py", encoding="utf8").read())
