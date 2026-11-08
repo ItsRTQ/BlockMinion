@@ -1,0 +1,9 @@
+{
+  "name": "mod-orchestra-ui-tests",
+  "private": true,
+  "type": "module",
+  "description": "Runs the real UI (index.html, kit.js, app.js) in jsdom against the real local server, seeded by seed.py",
+  "scripts": {"test": "node --test --test-concurrency=1",
+    "test:ci": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=tap.log"},
+  "devDependencies": {"jsdom": "^26.1.0"}
+}

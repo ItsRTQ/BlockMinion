@@ -21,13 +21,16 @@ async function api(path, payload) {
   if (!r.ok) throw new Error(body.error || r.statusText);
   return body;
 }
+const RUNTIME_LABELS = { "claude-code": "Claude Code", "gemini-cli": "Gemini CLI", "antigravity-cli": "Antigravity CLI" };
+let runtimeId = "claude-code";
+const runtimeName = () => RUNTIME_LABELS[runtimeId] || runtimeId;
 let toastTimer = null;
 function toast(msg, kind) { const t = qs("toast"); t.textContent = msg; t.className = "toast " + (kind || ""); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add("hidden"), kind === "bad" ? 9000 : 5000); }
 
 // ---------- navigation ----------
 function show(view) { for (const v of document.querySelectorAll(".view")) v.classList.add("hidden"); qs("view-" + view).classList.remove("hidden"); }
 qs("nav-new").onclick = () => { show("new"); selected = null; renderProjectList(); };
-qs("nav-env").onclick = async () => { show("env"); await renderEnv(); };
+qs("nav-env").onclick = async () => { show("env"); try { await renderEnv(); } catch (e) { toast("Environment: " + e.message, "bad"); } };
 for (const t of document.querySelectorAll(".subtab")) t.onclick = () => { for (const x of document.querySelectorAll(".subtab")) x.classList.toggle("active", x === t); for (const p of document.querySelectorAll(".subpane")) p.classList.toggle("hidden", p.id !== "sub-" + t.dataset.sub); };
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => { activeTab = t.dataset.tab; for (const x of document.querySelectorAll(".tab")) x.classList.toggle("active", x === t); for (const p of document.querySelectorAll(".tabpane")) p.classList.toggle("hidden", p.id !== "tab-" + activeTab); };
 qs("lightbox-close").onclick = () => qs("lightbox").classList.add("hidden");
@@ -59,10 +62,13 @@ async function renderProjectList() {
   if (!projects.length) list.append(el("div", "No projects yet", "dim"));
   for (const p of projects) {
     const b = el("button", null, "proj" + (p.id === selected ? " active" : ""));
-    const left = el("div"); left.append(el("div", p.name, "pname"), el("div", p.status.toLowerCase().replace(/_/g, " "), "pstage"));
+    b.dataset.pid = p.id;
+    const work = el("div", null, "pwork"); work.hidden = true;
+    const left = el("div"); left.append(el("div", p.name, "pname"), el("div", p.status.toLowerCase().replace(/_/g, " "), "pstage"), work);
     const dot = el("span", null, "dot"); dot.style.background = p.status === "GAME_VERIFIED" ? "var(--ok)" : p.status.startsWith("BUILD_PASSED") ? "var(--info)" : p.status === "BUILD_FAILED" ? "var(--bad)" : "var(--dim)";
     b.append(left, dot); b.onclick = () => openProject(p.id); list.append(b);
   }
+  Activity.render();   // the markers of what is running or just finished
 }
 
 // ---------- new project ----------
@@ -99,6 +105,7 @@ async function renderEnv() {
 async function renderRuntime() {
   const sel = qs("env-provider"), note = qs("env-provider-note");
   let s; try { s = await api("/api/settings"); } catch (e) { note.textContent = e.message; return; }
+  runtimeId = s.provider || runtimeId;
   const labels = { "claude-code": "Claude Code", "gemini-cli": "Gemini CLI", "antigravity-cli": "Antigravity CLI (agy)" };
   sel.replaceChildren();
   for (const name of s.choices) { const o = el("option", (labels[name] || name) + (s.available[name] ? "" : " — not installed")); o.value = name; sel.append(o); }
@@ -113,7 +120,7 @@ async function renderRuntime() {
   };
   syncModel();
   sel.onchange = async () => {
-    try { s = { ...s, ...(await api("/api/settings", { provider: sel.value })) }; toast("Agent runtime: " + (labels[s.provider] || s.provider), "ok"); describe(); s = { ...s, ...(await api("/api/settings")) }; syncModel(); }
+    try { s = { ...s, ...(await api("/api/settings", { provider: sel.value })) }; runtimeId = s.provider || runtimeId; toast("Agent runtime: " + (labels[s.provider] || s.provider), "ok"); describe(); s = { ...s, ...(await api("/api/settings")) }; syncModel(); }
     catch (e) { toast(e.message, "bad"); sel.value = s.provider; }
   };
   modelSave.onclick = async () => {
@@ -123,18 +130,54 @@ async function renderRuntime() {
 }
 
 // ---------- project ----------
+let lastFp = null, deferredRefresh = null, lastRefreshAt = 0;
+const isProjectView = () => !qs("view-project").classList.contains("hidden");
+// what the page shows depends on this payload; the job's elapsed time moves on its own, so it is left out
+const fingerprint = (p) => JSON.stringify({ ...p, job: p.job ? { job: p.job.job, running: p.job.running, error: p.job.error } : null });
+
+// The user opens a project: navigate to it and draw everything.
 async function openProject(id) {
   selected = id; show("project");
   let p; try { p = await api("/api/project/" + encodeURIComponent(id)); } catch (e) { toast(e.message, "bad"); return; }
-  lastProject = p;
-  await renderProjectList();
-  qs("p-id").textContent = p.id + " · " + p.spec.package; qs("p-name").textContent = p.name;
-  const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
-  qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
-  for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
-    try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) r.catch(e => toast(`${name}: ${e.message}`, "bad")); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
+  await renderProject(p);
+  Activity.seen(id);
+}
+// Draw a project's payload without moving the user: the scroll, the open sections and the focus survive the rebuild.
+async function renderProject(p) {
+  const id = p.id, snap = Guard.snapshot(); Guard.hold(snap);
+  try {
+    lastProject = p; lastFp = fingerprint(p);
+    await renderProjectList();
+    qs("p-id").textContent = p.id + " · " + p.spec.package; qs("p-name").textContent = p.name;
+    const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
+    qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
+    const pending = [];
+    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+      try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) pending.push(r.catch(e => toast(`${name}: ${e.message}`, "bad"))); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
+    }
+    await Promise.allSettled(pending);
+  } finally { Guard.restore(snap); }
+}
+// The poll's way of updating: never navigates, skips unchanged data, and waits while the user is typing or has a dialog open.
+async function refreshProject(id) {
+  if (selected !== id || !isProjectView()) return;
+  let p; try { p = await api("/api/project/" + encodeURIComponent(id)); } catch (e) { return; }
+  if (selected !== id || !isProjectView() || fingerprint(p) === lastFp) return;
+  if (Guard.busy()) { clearTimeout(deferredRefresh); deferredRefresh = setTimeout(() => refreshProject(id), 2500); return; }
+  await renderProject(p);
+}
+// Where a banner link goes: the project, the tab, the sub-tab and the mob or card.
+async function goTo(pid, target = {}) {
+  if (selected !== pid || !isProjectView()) await openProject(pid);
+  if (target.tab) { const t = document.querySelector(`.tab[data-tab="${target.tab}"]`); if (t) t.click(); }
+  if (target.sub) { const t = document.querySelector(`.subtab[data-sub="${target.sub}"]`); if (t) t.click(); }
+  const focus = target.focus || "";
+  if (focus.startsWith("mob:")) {
+    const n = document.querySelector(`[data-focus="${focus}"]`);
+    if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("flash"); setTimeout(() => n.classList.remove("flash"), 1800); }
+  } else if (focus && target.tab === "map" && mapState.data && mapState.data.cards.some(c => c.id === focus)) {
+    mapState.sel = focus; drawMap(lastProject); openCard(lastProject, focus);
   }
-  if (p.dispatching) pollUntilIdle(id);
 }
 
 function renderStepper(g) {
@@ -143,6 +186,7 @@ function renderStepper(g) {
   g.stages.forEach((s, i) => { const d = el("div", null, "step " + (i < idx ? "done" : i === idx ? "current" : "")); d.append(el("div", (i < idx ? "✓ " : "") + (i + 1), "sn"), el("div", s, "st")); box.append(d); });
 }
 
+if (qs("theme-text")) qs("theme-text").addEventListener("input", (e) => { if (e.isTrusted) e.target.dataset.dirty = "1"; });
 const POLICY_KEYS = ["approve_spec", "generate", "build", "gametest", "server_smoke"];
 async function savePolicy(pid) {
   const policy = Object.fromEntries(POLICY_KEYS.map(k => [k, qs("pol-" + k).checked]));
@@ -199,11 +243,11 @@ function actionButton(p, s) {
   const id = p.id;
   const run = async (fn, msg) => { await fn(); if (msg) toast(msg, "ok"); await openProject(id); };
   switch (s.action) {
-    case "dispatch": return btn(s.who === "agent" ? "Run agent" : "Run", async () => { if (!confirm("Start ONE Claude Code worker for " + (s.payload.task || "the next task") + "?\nUses your installed Claude Code and your session. It cannot approve, decide or build.")) return; await api(`/api/project/${id}/dispatch`, { task: s.payload.task }); toast("Worker started. This page refreshes until it finishes.", "ok"); await openProject(id); }, "primary");
-    case "answer": return btn("Answer", async () => { const text = prompt(s.label.replace(/^Answer: /, "")); if (!text) return; await run(() => api(`/api/project/${id}/answer`, { text }), "Answer added. Run the interpreter again from Now."); }, "primary");
+    case "dispatch": return btn(s.who === "agent" ? "Run agent" : "Run", async () => { if (!await confirmBox(`Start ONE ${runtimeName()} worker for ${s.payload.task || "the next task"}?\nUses your installed ${runtimeName()} and your session. It cannot approve, decide or build.`, { title: "Run an agent", ok: "Run agent" })) return; await api(`/api/project/${id}/dispatch`, { task: s.payload.task }); toast("Agent started. The banner at the bottom follows it; this page stays where it is.", "ok"); await openProject(id); }, "primary");
+    case "answer": return btn("Answer", async () => { const text = await promptBox(s.label.replace(/^Answer: /, ""), "", { title: "Answer the interpreter", ok: "Send answer", multiline: true, required: true }); if (!text) return; await run(() => api(`/api/project/${id}/answer`, { text }), "Answer added. Run the interpreter again from Now."); }, "primary");
     case "approve": { const wrap = el("div", null, "actions"); wrap.style.marginTop = "0";
       wrap.append(btn("Approve spec", () => run(() => api(`/api/project/${id}/approve`, {}), "Spec approved."), "primary"));
-      wrap.append(btn("Approve & continue Autopilot", async () => { const budget = prompt("Autopilot budget in dollars (max 5 runs):", "5"); if (budget == null) return; await api(`/api/project/${id}/approve`, { autopilot: true, max_runs: 5, max_cost_usd: Math.max(0.5, Math.min(50, Number(budget) || 5)) }); toast("Approved. Autopilot running; it stops when it needs you.", "ok"); await openProject(id); }, "secondary"));
+      wrap.append(btn("Approve & continue Autopilot", async () => { const budget = await promptBox("Maximum spend for this Autopilot session, in dollars. It also stops after 5 agent runs.", "5", { title: "Autopilot budget", ok: "Approve and run", multiline: false }); if (budget == null) return; await api(`/api/project/${id}/approve`, { autopilot: true, max_runs: 5, max_cost_usd: Math.max(0.5, Math.min(50, Number(budget) || 5)) }); toast("Approved. Autopilot running; it stops when it needs you.", "ok"); await openProject(id); }, "secondary"));
       return wrap; }
     case "generate": return btn("Generate source", () => run(() => api(`/api/project/${id}/generate`, {}), "Source generated (unverified)."), "primary");
     case "request-build": return btn("Request build approval", () => run(() => api(`/api/project/${id}/request-build`, {}), "Approval requested. Grant it in Now."), "primary");
@@ -213,10 +257,10 @@ function actionButton(p, s) {
     case "decide": return btn(s.payload.grant ? "Grant" : "Deny", () => run(() => api(`/api/project/${id}/decide`, s.payload), s.payload.grant ? "Granted. Run it from Now." : "Denied."), "primary");
     case "build": return btn("Run trusted build", async () => { await api(`/api/project/${id}/build-bg`, s.payload); toast("Build started.", "ok"); await openProject(id); }, "primary");
     case "server-smoke": return btn("Run server smoke", async () => { await api(`/api/project/${id}/server-smoke`, s.payload); toast("Server starting…", "ok"); await openProject(id); }, "primary");
-    case "run-client": return btn("Launch game client", async () => { if (!confirm("Opens Minecraft with only this mod (isolated run/ folder). Close the game when done.")) return; await api(`/api/project/${id}/run-client`, {}); toast("Client launching. Come back here when you close it.", "ok"); await openProject(id); }, "primary");
+    case "run-client": return btn("Launch game client", async () => { if (!await confirmBox("Opens Minecraft with only this mod (isolated run/ folder). Close the game when done.")) return; await api(`/api/project/${id}/run-client`, {}); toast("Client launching. Come back here when you close it.", "ok"); await openProject(id); }, "primary");
     case "evidence": return btn("Record evidence", () => { activeTab = "verify"; document.querySelector('[data-tab="verify"]').click(); qs("evidence-note").focus(); });
     case "orchestrate": return btn("Autopilot", async () => {
-      const budget = prompt("Autopilot budget — max dollars for this session (max 5 runs):", String(s.payload.max_cost_usd));
+      const budget = await promptBox("Maximum spend for this Autopilot session, in dollars. It also stops after 5 agent runs.", String(s.payload.max_cost_usd), { title: "Autopilot budget", ok: "Continue", multiline: false });
       if (budget == null) return; const max_cost_usd = Math.max(0.5, Math.min(50, Number(budget) || 5));
       await api(`/api/project/${id}/orchestrate`, { max_runs: s.payload.max_runs, max_cost_usd }); toast(`Autopilot running (budget $${max_cost_usd}). It stops when it needs you.`, "ok"); await openProject(id); }, "primary");
     case "requeue": return btn("Requeue", () => run(() => api(`/api/task/${encodeURIComponent(s.payload.task)}/requeue`, {}), "Task back to READY."));
@@ -227,8 +271,8 @@ function actionButton(p, s) {
 // ---------- spec ----------
 function renderSpec(p) {
   const s = p.spec;
-  if (qs("theme-text")) qs("theme-text").value = s.theme || "";
-  if (qs("theme-save")) qs("theme-save").onclick = async () => { try { await api(`/api/project/${p.id}/theme`, { theme: qs("theme-text").value }); toast("Theme saved; designer runs from now on follow it.", "ok"); } catch (e) { toast(e.message, "bad"); } }; qs("spec-state").textContent = `Spec ${p.spec_state} · schema ${s.schema_version}`;
+  if (qs("theme-text") && qs("theme-text").dataset.dirty !== "1") qs("theme-text").value = s.theme || "";
+  if (qs("theme-save")) qs("theme-save").onclick = async () => { try { await api(`/api/project/${p.id}/theme`, { theme: qs("theme-text").value }); delete qs("theme-text").dataset.dirty; toast("Theme saved; designer runs from now on follow it.", "ok"); } catch (e) { toast(e.message, "bad"); } }; qs("spec-state").textContent = `Spec ${p.spec_state} · schema ${s.schema_version}`;
   const body = qs("spec-body"); body.replaceChildren();
   const grid = el("div", null, "spec-grid");
   const box = (title, items) => { const b = el("div", null, "spec-box"); b.append(el("h4", title)); const ul = el("ul"); if (!items.length) ul.append(el("li", "none", "dim")); for (const i of items) ul.append(el("li", i)); b.append(ul); return b; };
@@ -285,7 +329,7 @@ async function renderGallery(p) {
   if (!p.gallery.length) { g.append(el("p", "This mod has no mobs. Add one with craftctl add-mob before generating, or describe it in the idea.", "muted")); return; }
   await loadArt(p.id);
   for (const m of p.gallery) {
-    const card = el("div", null, "mob");
+    const card = el("div", null, "mob"); card.dataset.focus = "mob:" + m.mob;
     const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`));
     const meta = el("div", null, "mob-meta");
     meta.append(el("span", m.placeholder ? "placeholder model" : "designer model", "pill " + (m.placeholder ? "warn" : "purple")));
@@ -319,7 +363,7 @@ async function renderGallery(p) {
     row.append(btn(m.placeholder && !m.feedback.length ? "Send and run designer" : "Send feedback and rerun designer", async () => {
       if (!ta.value.trim()) throw new Error("Write the feedback first");
       const out = await api(`/api/project/${p.id}/feedback`, { mob: m.mob, text: ta.value.trim() });
-      if (!confirm("Feedback saved. Start the designer now? (~$1–2, 2–4 min)")) { await openProject(p.id); return; }
+      if (!confirmBox("Feedback saved. Start the designer now? (about $12 and 24 minutes)", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await openProject(p.id); return; }
       await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer started with your feedback.", "ok"); await openProject(p.id);
     }, "primary"));
     if (m.task_state === "READY") row.append(btn("Run designer as is", async () => { await api(`/api/project/${p.id}/dispatch`, { task: m.task }); toast("Designer started.", "ok"); await openProject(p.id); }));
@@ -419,16 +463,16 @@ function artLine(a) {
 }
 // kind: item | block | food | mob | set (concept + visual cues) | tool | armor (one piece: its own concept)
 async function editArt(pid, kind, identifier, onDone) {
-  const a = artMap[`${kind}:${identifier}`] || { concept: "", tags: [], silhouette: "", source: "derived" };
-  const concept = prompt(`What does ${a.label || identifier} look like, and why? One or two sentences, concrete (shapes, materials, wear). Empty = derive from the theme.`, a.source === "derived" ? "" : a.concept);
-  if (concept === null) return;
-  let tags = [];
-  if (kind !== "tool" && kind !== "armor") {
-    const t = prompt("Visual cues, comma separated (e.g. serrated edge, bone teeth, hammered iron, rust red). Empty = derive from the theme.", a.source === "derived" ? "" : (a.tags || []).join(", "));
-    if (t === null) return;
-    tags = t.split(",").map(x => x.trim()).filter(Boolean);
-  }
-  await api(`/api/project/${pid}/set-art`, { kind, identifier, concept: concept.trim(), tags, silhouette: a.silhouette || "" });
+  const a = artMap[`${kind}:${identifier}`] || { concept: "", tags: [], silhouette: "", source: "derived", label: identifier };
+  const pieceOnly = kind === "tool" || kind === "armor";
+  const fields = [{ name: "concept", label: "What it looks like, and why", multiline: true, rows: 4, value: a.source === "derived" ? "" : a.concept,
+                    help: "One or two sentences, concrete: shapes, materials, wear. Empty = derive from the theme." }];
+  if (!pieceOnly) fields.push({ name: "tags", label: "Visual cues", multiline: true, rows: 2, value: a.source === "derived" ? "" : (a.tags || []).join(", "),
+                                help: "Comma separated, e.g. serrated edge, bone teeth, hammered iron, rust red. Empty = derive from the theme." });
+  const out = await formBox({ title: `Art direction: ${a.label || identifier}`, fields, ok: "Save art direction" });
+  if (out === null) return;
+  const tags = pieceOnly ? [] : (out.tags || "").split(",").map(x => x.trim()).filter(Boolean);
+  await api(`/api/project/${pid}/set-art`, { kind, identifier, concept: out.concept.trim(), tags, silhouette: a.silhouette || "" });
   toast("Art direction saved", "ok");
   if (onDone) await onDone();
 }
@@ -453,18 +497,18 @@ async function renderFeatures(p) {
     if (bits.length) mid.append(el("small", bits.join(" · ")));
     mid.append(artLine(artMap[`${f.kind}:${f.identifier}`]));
     const right = el("div", null, "actions"); right.style.marginTop = "0";
-    if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = prompt(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
+    if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = await promptBox(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
-    right.append(btn("Rename", async () => { const label = prompt("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
-    if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!confirm(`Remove ${f.identifier} from the spec?`)) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
+    right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
+    if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
     row.append(img, mid, right); return row;
   };
   // Material sets: one card per material with the set-level actions once, pieces inside.
   const materials = [...new Set(feats.filter(f => f.material).map(f => f.material))];
   for (const mat of materials) {
     const pieces = feats.filter(f => f.material === mat); const hasArmor = pieces.some(f => f.kind === "armor");
-    const card = el("div", null, "mob"); const head = el("div", null, "mob-head"); head.append(el("h4", `${mat} set · ${pieces.length} piece(s)`));
+    const card = el("div", null, "mob"); card.dataset.focus = "mob:" + m.mob; const head = el("div", null, "mob-head"); head.append(el("h4", `${mat} set · ${pieces.length} piece(s)`));
     const acts = el("div", null, "actions"); acts.style.marginTop = "0";
     acts.append(btn("Set art", () => editArt(p.id, "set", mat, () => openProject(p.id)), "mini secondary"));
     card.append(artLine(artMap[`set:${mat}`]));
@@ -472,9 +516,9 @@ async function renderFeatures(p) {
       const helmet = pieces.find(f => f.armor_previews) || pieces.find(f => f.kind === "armor");
       const is3d = pieces.some(f => f.armor_style === "3d");
       head.append(el("span", is3d ? "3D GeckoLib armor" : "textured armor", "pill"));
-      if (is3d) acts.append(btn("Design 3D armor", async () => { const notes = prompt(`Notes for the designer about the ${mat} 3D armor (silhouette, crest, pauldrons, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor3d-design`, { material: mat, notes }); if (confirm(`Task ${out.task} created. Start the designer now? (~$1–2, 3–6 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer modelling the armor in Blockbench; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
-      else acts.append(btn("Design worn armor", async () => { const notes = prompt(`Notes for the designer about the ${mat} worn armor (style, motifs, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor-design`, { material: mat, notes }); if (confirm(`Task ${out.task} created. Start the designer now? (~$1, 2–4 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer painting the worn armor; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
-      acts.append(btn("Retint worn armor", async () => { const choice = prompt(`Worn armor for "${mat}":\n• leave EMPTY = match the icon's colours automatically\n• or type a colour like #2a9d8f`, ""); if (choice === null) return; const payload = choice.trim() ? { material: mat, color: choice.trim() } : { material: mat, match_icon: true }; const out = await api(`/api/project/${p.id}/retint-armor`, payload); toast(out.note, "ok"); await openProject(p.id); }, "mini secondary"));
+      if (is3d) acts.append(btn("Design 3D armor", async () => { const notes = await promptBox(`Notes for the designer about the ${mat} 3D armor (silhouette, crest, pauldrons, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor3d-design`, { material: mat, notes }); if (await confirmBox(`Task ${out.task} created. Start the designer now? (~$1–2, 3–6 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer modelling the armor in Blockbench; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
+      else acts.append(btn("Design worn armor", async () => { const notes = await promptBox(`Notes for the designer about the ${mat} worn armor (style, motifs, colours), or leave empty:`, ""); if (notes === null) return; const out = await api(`/api/project/${p.id}/armor-design`, { material: mat, notes }); if (await confirmBox(`Task ${out.task} created. Start the designer now? (~$1, 2–4 min)`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer painting the worn armor; renders appear here when done.", "ok"); } await openProject(p.id); }, "mini primary"));
+      acts.append(btn("Retint worn armor", async () => { const choice = await promptBox(`Worn armor for "${mat}":\n• leave EMPTY = match the icon's colours automatically\n• or type a colour like #2a9d8f`, ""); if (choice === null) return; const payload = choice.trim() ? { material: mat, color: choice.trim() } : { material: mat, match_icon: true }; const out = await api(`/api/project/${p.id}/retint-armor`, payload); toast(out.note, "ok"); await openProject(p.id); }, "mini secondary"));
       for (const layer of ["1", "2"]) { const upA = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: "armor_layer_" + layer, identifier: mat, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); }); acts.append(upA, btn(`Upload layer ${layer} (64×32)`, () => upA.click(), "mini secondary")); }
       head.append(acts); card.append(head);
       const previews = (pieces.find(f => f.armor_previews)?.armor_previews) || [];
@@ -520,7 +564,7 @@ qs("sprites-go").onclick = async () => {
   try {
     const out = await api(`/api/project/${selected}/sprites`, { identifiers, notes: qs("sprites-notes").value, armor });
     closeModal("modal-sprites");
-    if (confirm(`Redesign ${out.task} created for ${identifiers.length} icon(s)${armor.length ? " + " + armor.length + " armor set(s)" : ""}. Start the designer now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Designer painting… the contact sheet appears in Items when done.", "ok"); }
+    if (await confirmBox(`Redesign ${out.task} created for ${identifiers.length} icon(s)${armor.length ? " + " + armor.length + " armor set(s)" : ""}. Start the designer now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Designer painting… the contact sheet appears in Items when done.", "ok"); }
     await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };
@@ -670,7 +714,7 @@ function renderVerify(p) {
   if (!generated) { qs("validate-box").textContent = "Generate source first."; return; }
   acts.append(btn("Check files unchanged", async () => { const v = await api(`/api/project/${p.id}/validate`); qs("validate-box").textContent = v.status === "PASS" ? `PASS · ${v.checked} files intact · ${v.revisions} accepted revision(s)` : `${v.status} · ${(v.problems || []).join("; ")}`; qs("validate-box").className = v.status === "PASS" ? "ok" : "bad"; }));
   acts.append(btn("Build log", async () => { const r = await api(`/api/project/${p.id}/logs`); const b = qs("build-log"); b.textContent = r.text; b.classList.remove("hidden"); }));
-  acts.append(btn("Launch game client", async () => { if (!confirm("Opens Minecraft with only this mod (isolated run/ folder). It compiles the current source first. Close the game when done.")) return; await api(`/api/project/${p.id}/run-client`, {}); toast("Client launching. Come back here when you close it.", "ok"); await openProject(p.id); }, "primary"));
+  acts.append(btn("Launch game client", async () => { if (!await confirmBox("Opens Minecraft with only this mod (isolated run/ folder). It compiles the current source first. Close the game when done.")) return; await api(`/api/project/${p.id}/run-client`, {}); toast("Client launching. Come back here when you close it.", "ok"); await openProject(p.id); }, "primary"));
   acts.append(btn("Diagnose last build", async () => { const d = await api(`/api/project/${p.id}/diagnose`); const box = qs("diagnose-box"); box.replaceChildren(); if (d.status === "NO_LOG") { box.append(el("p", d.note, "muted")); return; } if (!d.classifications.length) { box.append(el("p", "No known failure pattern matched.", "muted")); return; } for (const c of d.classifications) { const w = el("div", null, "warning"); w.append(el("b", c.kind), el("div", c.symptom), el("div", c.guidance, "muted")); box.append(w); } }));
 }
 
@@ -682,22 +726,12 @@ function renderTasks(p) {
     const mid = el("div"); mid.append(el("div", task.title, "ttl"), el("small", task.id + " · " + task.role + (task.last_error ? " · " + task.last_error : ""))); row.append(mid);
     const right = el("div");
     if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Requeue", async () => { await api(`/api/task/${encodeURIComponent(task.id)}/requeue`, {}); await openProject(p.id); }, "mini"));
-    if (task.state === "READY" && !p.dispatching) right.append(btn("Run agent", async () => { if (!confirm("Start ONE worker on " + task.id + "?")) return; await api(`/api/project/${p.id}/dispatch`, { task: task.id }); await openProject(p.id); }, "mini primary"));
+    if (task.state === "READY" && !p.dispatching) right.append(btn("Run agent", async () => { if (!await confirmBox("Start ONE worker on " + task.id + "?")) return; await api(`/api/project/${p.id}/dispatch`, { task: task.id }); await openProject(p.id); }, "mini primary"));
     row.append(right); t.append(row);
   }
   const a = qs("approvals-list"); a.replaceChildren();
   if (!p.approvals.length) a.append(el("p", "No approvals yet.", "muted"));
   for (const ap of p.approvals) { const expired = ap.expires_at && ap.expires_at < Date.now() / 1000 && ap.state !== "CONSUMED"; const row = el("div", null, "task"); row.append(el("span", expired ? "EXPIRED" : ap.state, "state " + (expired ? "FAILED" : ap.state === "GRANTED" ? "READY" : ap.state === "CONSUMED" ? "DONE" : ap.state === "DENIED" ? "FAILED" : "WAITING_USER"))); const mid = el("div"); mid.append(el("div", ap.kind.replace(/_/g, " "), "ttl"), el("small", ap.description)); row.append(mid); const right = el("div"); if (ap.state === "PENDING" && !expired) { right.append(btn("Grant", async () => { await api(`/api/project/${p.id}/decide`, { approval_id: ap.id, grant: true }); await openProject(p.id); }, "mini primary"), btn("Deny", async () => { await api(`/api/project/${p.id}/decide`, { approval_id: ap.id, grant: false }); await openProject(p.id); }, "mini")); } row.append(right); a.append(row); }
-}
-
-// ---------- polling ----------
-function pollUntilIdle(id) {
-  clearTimeout(pollTimer);
-  pollTimer = setTimeout(async () => {
-    try { const p = await api("/api/project/" + encodeURIComponent(id)); if (selected !== id) return;
-      await openProject(id); if (p.dispatching) pollUntilIdle(id); else toast(p.job?.error ? `${p.job.job} failed — see Now.` : `${p.job?.job || "Job"} finished — see Now.`, p.job?.error ? "bad" : "ok"); }
-    catch (e) { toast(e.message, "bad"); }
-  }, 4000);
 }
 
 // ---------- boot ----------
@@ -706,7 +740,18 @@ function pollUntilIdle(id) {
   try { const d = await api("/api/doctor"); qs("sidebar-foot").textContent = `${d.profile.id} · ${d.os} · schema v${d.schema?.version ?? "?"}`; } catch (e) { toast("Cannot reach the local API: " + e.message, "bad"); }
   await renderProjectList();
   const projects = await api("/api/projects").catch(() => []);
+  api("/api/settings").then((r) => { runtimeId = r.provider || runtimeId; }).catch(() => {});
   if (projects.length) await openProject(projects[0].id); else show("new");
+  Activity.start({
+    selected: () => selected, goTo,
+    // while an agent works on the project you are looking at, bring the page up to date every few seconds, without moving you
+    onTick: (running) => { if (selected && running.has(selected) && Date.now() - lastRefreshAt > 4000) { lastRefreshAt = Date.now(); refreshProject(selected); } },
+    onFinished: (pid, entry) => {
+      const name = entry ? entry.name : pid, what = entry ? entry.step.label : "the job";
+      toast(entry && entry.state === "failed" ? `${name}: ${what} failed. ${entry.error || "See the banner or Now."}` : `${name}: ${what} ${entry && entry.state === "waiting" ? "needs you" : "finished"}.`, entry && entry.state === "failed" ? "bad" : "ok");
+      if (pid === selected) refreshProject(pid);
+    },
+  });
 })();
 
 // ---------- mod map ----------
@@ -789,10 +834,10 @@ function openCard(p, cid) {
     const ta = el("textarea"); ta.rows = 3; ta.placeholder = c.kind === "custom" ? "e.g. make the inventory 25 slots instead of 20" : c.kind === "mob" ? "e.g. make it drop 2 scrap instead of 1 and walk faster" : "e.g. 1500 durability instead of 1200";
     side.append(ta);
     const acts = el("div", null, "actions");
-    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (confirm(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
+    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
     if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
     if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
-    if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = prompt("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
+    if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = await promptBox("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
     side.append(acts);
   }
 }
@@ -803,7 +848,7 @@ qs("feature-form").onsubmit = async (e) => {
   try {
     const out = await api(`/api/project/${selected}/feature`, { title: qs("ft-title").value, description: qs("ft-desc").value, acceptance, derived_from });
     qs("feature-form").reset(); closeModal("modal-feature");
-    if (confirm(`Card "${out.card.title}" created and task ${out.task} queued. Start the coder now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Coder implementing the feature; the card updates when it finishes.", "ok"); }
+    if (await confirmBox(`Card "${out.card.title}" created and task ${out.task} queued. Start the coder now?`)) { await api(`/api/project/${selected}/dispatch`, { task: out.task }); toast("Coder implementing the feature; the card updates when it finishes.", "ok"); }
     await openProject(selected);
   } catch (err) { toast(err.message, "bad"); }
 };

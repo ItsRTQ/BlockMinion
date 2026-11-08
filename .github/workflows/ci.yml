@@ -40,6 +40,43 @@ jobs:
         run: |
           craftctl doctor | python -c "import sys,json; w=json.load(sys.stdin)['wrapper']; print(json.dumps(w['files'], indent=1)); sys.exit(0 if w['ok'] else 1)"
 
+  ui:
+    name: The UI in a simulated browser, against the real server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install craftctl
+        run: python -m pip install -e .
+      - name: Install the test browser
+        run: npm ci
+        working-directory: tests/ui
+      - name: Dialogs, refresh safety, activity banner, Mobs and Items tours
+        shell: bash
+        run: npm run test:ci 2>&1 | tee ui.log
+        working-directory: tests/ui
+      - name: Show the failures as annotations
+        if: failure()
+        shell: bash
+        working-directory: tests/ui
+        run: |
+          python - <<'PY'
+          import os
+          def encode(text):
+              return text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          log = open("ui.log", encoding="utf8", errors="replace").read().splitlines() if os.path.exists("ui.log") else ["(no ui.log: the tests did not start)"]
+          tap = open("tap.log", encoding="utf8", errors="replace").read().splitlines() if os.path.exists("tap.log") else []
+          print("::error title=ui: the end of the run::" + encode("\n".join(log[-90:])[-6000:]))
+          bad = [i for i, l in enumerate(tap) if l.startswith("not ok")]
+          for i in bad[:6]:
+              print("::error title=ui: failing test::" + encode("\n".join(tap[i:i + 40])[:3500]))
+          PY
+
   fabric-build:
     name: Build examples/crystal_example (JDK 25, clean runner)
     runs-on: ubuntu-latest

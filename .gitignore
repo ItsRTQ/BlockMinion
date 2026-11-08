@@ -9,3 +9,7 @@ dist/
 # interpreter suite runs are local unless committed on purpose
 tests/v1/results/*
 !tests/v1/results/20261022-155823.json
+
+# the UI tests' browser simulator
+tests/ui/node_modules/
+tests/ui/tap.log

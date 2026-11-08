@@ -30,7 +30,7 @@ def model_gallery(store: Store, pid: str) -> list[dict]:
                     r = runs.get(d.name, {})
                     versions.append({"run": d.name, "created_at": r.get("created_at"), "cost_usd": r.get("cost_usd"),
                                      "previews": [f".mod-orchestra/previews/{d.name}/{n}" for n in files]})
-        out.append({"mob": mid, "label": m["label"], "behavior": m["behavior"], "versions": versions, "drops": m.get("drops", []),
+        out.append({"mob": mid, "identifier": mid, "body_plan": m.get("body_plan") or "quadruped", "label": m["label"], "behavior": m["behavior"], "versions": versions, "drops": m.get("drops", []),
                     "bbmodel": (models / f"{mid}.bbmodel").is_file(), "geo": (models / f"{mid}.geo.json").is_file(),
                     "animation": (models / f"{mid}.animation.json").is_file(),
                     "texture": f"models/{mid}.png" if (models / f"{mid}.png").is_file() else None,
