@@ -33,12 +33,15 @@ export async function startServer() {
 // Loads the page. `overrides` maps an API path to a JSON body (or a function returning one) and is read on every request, so a test can change it later;
 // every other request goes to the real server. `calls` records what the page asked for. Native popups are recorded and must stay at zero.
 export async function loadPage(server, {overrides = {}, settle = true} = {}) {
-  const calls = [], popups = [];
+  const calls = [], popups = []; let pending = 0;
   let html = readFileSync(path.join(STATIC, 'index.html'), 'utf8').replace(/<link[^>]*style\.css[^>]*>/, '').replace(/<script src="[^"]*"><\/script>/g, '');
   const dom = new JSDOM(html, {
     url: `${server.base}/#${server.token}`, runScripts: 'dangerously', pretendToBeVisual: true,
     beforeParse(w) {
       w.fetch = async (input, init = {}) => {
+        pending++; try { return await request(input, init); } finally { pending--; }
+      };
+      const request = async (input, init = {}) => {
         const u = String(input), key = u.split('?')[0];
         calls.push({path: key, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null});
         if (key in overrides) {
@@ -66,7 +69,9 @@ export async function loadPage(server, {overrides = {}, settle = true} = {}) {
     key: (el, key, extra = {}) => el.dispatchEvent(new w.KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...extra})),
     waitFor: async (cond, what = 'the page', ms = 6000 * SLOW) => { const end = Date.now() + ms; for (;;) { const v = cond(); if (v) return v; if (Date.now() > end) throw new Error('timed out waiting for ' + what); await sleep(25); } },
     toasts: () => { const t = doc.getElementById('toast'); return t.classList.contains('hidden') ? '' : t.textContent; },
-    close: () => w.close(),
+    // wait until the page has no request in flight (and stays that way a moment), so closing the window and stopping the server cannot race with it
+    idle: async (ms = 8000 * SLOW) => { const end = Date.now() + ms; let quiet = 0; while (Date.now() < end && quiet < 3) { quiet = pending === 0 ? quiet + 1 : 0; await sleep(60); } },
+    close: async () => { await page.idle(); w.close(); },
   };
   if (settle) await page.waitFor(() => page.$('#p-name') && page.$('#p-name').textContent && !page.$('#project-list .dim'), 'the first project to render');
   return page;

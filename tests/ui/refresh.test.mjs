@@ -10,7 +10,7 @@ const refresh = () => page.eval('refreshProject("infect")');
 const projectCalls = () => page.calls.filter((c) => c.path === '/api/project/infect').length;
 
 test.before(async () => { server = await startServer(); page = await loadPage(server); });
-test.after(() => { page && page.close(); server && server.stop(); });
+test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
 test.beforeEach(async () => { for (const k of Object.keys(page.overrides)) delete page.overrides[k]; await page.eval('openProject("infect")'); });
 
 test('boot draws the selected project and the sidebar lists every project with a marker slot', () => {
@@ -75,6 +75,15 @@ test('theme text you typed and have not saved is not overwritten by a refresh', 
 test('opening a project navigates, even from another view', async () => {
   page.click(page.$('#nav-env')); await page.waitFor(() => !page.hidden('#view-env'));
   await page.eval('openProject("infect")'); assert.ok(page.hidden('#view-env')); assert.ok(!page.hidden('#view-project'));
+});
+
+test('an Environment view that cannot reach the server says so instead of failing silently', async () => {
+  const lost = []; const onReject = (e) => lost.push(String(e)); process.on('unhandledRejection', onReject);
+  try {
+    page.overrides['/api/doctor'] = async () => { throw new Error('connection lost'); };
+    page.click(page.$('#nav-env')); await page.waitFor(() => /Environment: connection lost/.test(page.toasts()), 'the error toast'); await page.idle();
+    assert.deepEqual(lost, [], 'nothing was left unhandled');
+  } finally { process.off('unhandledRejection', onReject); }
 });
 
 test('no refresh path used a native popup', () => { assert.deepEqual(page.popups, []); });

@@ -30,7 +30,7 @@ function toast(msg, kind) { const t = qs("toast"); t.textContent = msg; t.classN
 // ---------- navigation ----------
 function show(view) { for (const v of document.querySelectorAll(".view")) v.classList.add("hidden"); qs("view-" + view).classList.remove("hidden"); }
 qs("nav-new").onclick = () => { show("new"); selected = null; renderProjectList(); };
-qs("nav-env").onclick = async () => { show("env"); await renderEnv(); };
+qs("nav-env").onclick = async () => { show("env"); try { await renderEnv(); } catch (e) { toast("Environment: " + e.message, "bad"); } };
 for (const t of document.querySelectorAll(".subtab")) t.onclick = () => { for (const x of document.querySelectorAll(".subtab")) x.classList.toggle("active", x === t); for (const p of document.querySelectorAll(".subpane")) p.classList.toggle("hidden", p.id !== "sub-" + t.dataset.sub); };
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => { activeTab = t.dataset.tab; for (const x of document.querySelectorAll(".tab")) x.classList.toggle("active", x === t); for (const p of document.querySelectorAll(".tabpane")) p.classList.toggle("hidden", p.id !== "tab-" + activeTab); };
 qs("lightbox-close").onclick = () => qs("lightbox").classList.add("hidden");

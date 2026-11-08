@@ -13,7 +13,7 @@ const pill = () => page.$('#activity-pill'), bar = () => page.$('#activity-bar')
 const row = (pid) => page.$(`#project-list .proj[data-pid="${pid}"]`);
 
 test.before(async () => { server = await startServer(); page = await loadPage(server); });
-test.after(() => { page && page.close(); server && server.stop(); });
+test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
 test.beforeEach(async () => { page.overrides['/api/activity'] = idleFeed(); await page.eval('openProject("infect")'); await poll(); });
 
 test('with nothing going on the banner is hidden and no project is marked', () => {

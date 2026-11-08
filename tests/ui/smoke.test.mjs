@@ -4,7 +4,7 @@ import {startServer, loadPage} from './harness.mjs';
 
 let server, page;
 test.before(async () => { server = await startServer(); page = await loadPage(server); await page.eval('openProject("infect")'); });
-test.after(() => { page && page.close(); server && server.stop(); });
+test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
 const tab = (name) => page.click(page.$(`.tab[data-tab="${name}"]`));
 const sub = (name) => page.click(page.$(`.subtab[data-sub="${name}"]`));
 const dlgOpen = () => !page.hidden('#dlg');

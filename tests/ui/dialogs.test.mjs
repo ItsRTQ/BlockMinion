@@ -4,7 +4,7 @@ import {startServer, loadPage, sleep} from './harness.mjs';
 
 let server, page;
 test.before(async () => { server = await startServer(); page = await loadPage(server); });
-test.after(() => { page && page.close(); server && server.stop(); });
+test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
 
 const open = () => !page.hidden('#dlg');
 const buttons = () => page.$$('#dlg-actions button');
