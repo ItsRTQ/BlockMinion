@@ -1,0 +1,5 @@
+This mod will add 3 new zombies type that are more aggressive, faster, stronger, than regular zombies. this zombies will be able to infect villagers, vanilla minecraft zombies, pillagers.
+when one of this mobs gets infected they will transform into one of the 3 infectious zombies choose randomly.
+Variant 1 - Runner this one is a zombie that is unusually fast it attacks everything other than the infected mobs or other variants of the infected zombie.
+Variant 2 - Spitter this one will attack from a range and will spit acid to the targets giving them infectious poison dmg a new effect that any mob from the infectable table above that get kill by this will be transformed into a infectious zombie at random.
+Variant 3 - Brute this one will be the thoughest, it can break blocks up to deepslate level(no obsidian nor bedrock) it will have 80 health points. It can hope/jump up to 4 blocks high he is shape like a chimpanzee and move like one. if his target is far he can throw blocks to targets, that if hit apply slowness but he prefers getting close and personal his attacks break shields if block.

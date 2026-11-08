@@ -18,7 +18,7 @@ from .doctor import inspect
 from .workflow import new_project, plan_project, approve_spec, generate_project, summary
 from .build import request_build, build_project, tail_log
 from .diagnostics import project_diagnose
-from .dispatch import dispatch, orchestrate
+from .dispatch import dispatch, dispatch_with_retry, orchestrate
 from .guidance import guidance
 from .feedback import model_gallery, file_for_ui, give_model_feedback
 from .interpreter import answer
@@ -68,7 +68,7 @@ def serve(store: Store, port: int = 8765) -> None:
                 "result": e.get("result") if not e["thread"].is_alive() else None, "error": e.get("error")}
 
     def start_dispatch(pid: str, task_id: str | None) -> dict:
-        return start_job(pid, "dispatch", lambda: dispatch(store, pid, task_id=task_id))
+        return start_job(pid, "dispatch", lambda: dispatch_with_retry(store, pid, task_id=task_id))
 
     def run_detail(run_id: str) -> dict:
         for p in store.projects():
@@ -313,6 +313,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
+                    if op == "behavior-carriers":
+                        from .content import set_behavior_carriers
+                        return set_behavior_carriers(store, pid, str(payload.get("behavior", "")), list(payload.get("carriers") or []))
                     if op == "set-art":
                         from .content import set_art
                         return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),

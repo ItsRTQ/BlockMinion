@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 RIG_DIR = Path(__file__).resolve().parent / "resources" / "blockbench" / "rigs"
-BODY_PLANS = ("quadruped", "biped", "bird", "fish", "serpent", "insect")
+BODY_PLANS = ("quadruped", "biped", "bird", "fish", "serpent", "insect", "primate")
 DEFAULT_BODY_PLAN = "quadruped"
 
 
@@ -444,7 +444,54 @@ def insect() -> dict:
                          "spider, drop two legs for a beetle, lengthen the lower segments for a mantis. Attack: Bite: rear up with the front legs raised (0.2), snap the head down (0.4), settle.")
 
 
-RECIPES = {"quadruped": quadruped, "biped": biped, "bird": bird, "fish": fish, "serpent": serpent, "insect": insect}
+def primate() -> dict:
+    """Chimpanzee/gorilla family: a hunched torso (rest pitch -35), a head set back on the shoulders, arms long enough for the knuckles to reach the ground
+    and short bent legs. It walks on its knuckles: the arms are front legs (swing, elbow flexed in the swing) and move diagonally with the legs. 64x64."""
+    bones = [
+        {"name": "root", "origin": [0, 0, 0]},
+        {"name": "body", "parent": "root", "origin": [0, 10, 3], "rotation": [-35, 0, 0]},
+        {"name": "head", "parent": "body", "origin": [0, 21, 3], "rotation": [30, 0, 0]},
+    ]
+    cubes = [
+        {"name": "torso", "bone": "body", "from": [-5, 10, 0], "to": [5, 22, 6]},
+        {"name": "head_cube", "bone": "head", "from": [-3.5, 21, -0.5], "to": [3.5, 28, 6.5]},
+        {"name": "brow", "bone": "head", "from": [-3.5, 25, -1.5], "to": [3.5, 26.5, -0.5]},
+        {"name": "muzzle", "bone": "head", "from": [-2.5, 21.5, -2.5], "to": [2.5, 25, -0.5]},
+    ]
+    for side, sx in (("left", 1), ("right", -1)):
+        x0, x1 = (6, 9) if sx > 0 else (-9, -6)
+        b, c = jointed_limb(f"{side}_arm", "body", [
+            ("", [7.5 * sx, 20, 3], [x0, 12.5, 1.5], [x1, 20, 4.5], [40, 0, 6 * sx]),                            # shoulder: hangs from the leaning torso, about 5 degrees ahead of vertical
+            ("lower", [7.5 * sx, 12.5, 3], [x0, 5, 1.5], [x1, 12.5, 4.5]),                                       # forearm
+        ])
+        c.append({"name": f"{side}_hand", "bone": f"{side}_arm_lower", "from": [x0 - 0.5, 1.8, 1], "to": [x1 + 0.5, 5, 5]})   # the knuckles: the arm is as long as the shoulder is high
+        bones += b; cubes += c
+    for side, sx in (("left", 1), ("right", -1)):          # legs hang from root, so they come after every arm in tree order
+        lx0, lx1 = (1.5, 5.5) if sx > 0 else (-5.5, -1.5)
+        b, c = jointed_limb(f"{side}_leg", "root", [
+            ("", [3.5 * sx, 9.5, 3.5], [lx0, 4.5, 1.5], [lx1, 9.5, 5.5]),
+            ("shin", [3.5 * sx, 4.5, 3.5], [lx0, 0, 1.5], [lx1, 4.5, 5.5]),
+        ])
+        bones += b; cubes += c
+    idle = [combine(bob("body", 2.0, 1.2, channel="rotation", axis=0), drift("body", 2.0, (0.6, 1.2, 0.8), seed=1)),
+            combine(bob("head", 2.0, 2.0, channel="rotation", axis=0), drift("head", 2.0, (1.0, 4.0, 1.0), seed=2, spike=(1.2, 0, -6))),
+            drift("left_arm", 2.0, (1.5, 0.0, 1.5), seed=3), drift("right_arm", 2.0, (1.5, 0.0, 1.5), seed=4)]
+    walk = [swing("left_arm", 1.0, 16, 1), swing("right_leg", 1.0, 16, 1), swing("right_arm", 1.0, 16, -1), swing("left_leg", 1.0, 16, -1),
+            knee("left_arm_lower", 1.0, 34, 1), knee("right_leg_shin", 1.0, 42, 1), knee("right_arm_lower", 1.0, 34, -1), knee("left_leg_shin", 1.0, 42, -1),
+            swing("body", 1.0, 3, 1, axis=2), bob("body", 1.0, 0.6), swing("head", 1.0, 3, -1, axis=2)]
+    attack = [curve("body", "rotation", [(0, [0, 0, 0]), (0.3, [25, 0, 0]), (0.5, [-18, 0, 0]), (0.75, [-4, 0, 0]), (0.9, [0, 0, 0])], snap=2),
+              curve("left_arm", "rotation", [(0, [0, 0, 0]), (0.3, [105, 0, 0]), (0.5, [-30, 0, 0]), (0.75, [-6, 0, 0]), (0.9, [0, 0, 0])], snap=2),
+              curve("right_arm", "rotation", [(0, [0, 0, 0]), (0.3, [105, 0, 0]), (0.5, [-30, 0, 0]), (0.75, [-6, 0, 0]), (0.9, [0, 0, 0])], snap=2),
+              curve("left_arm_lower", "rotation", [(0, [0, 0, 0]), (0.3, [-35, 0, 0]), (0.5, [10, 0, 0]), (0.9, [0, 0, 0])], delay=0.05),
+              curve("right_arm_lower", "rotation", [(0, [0, 0, 0]), (0.3, [-35, 0, 0]), (0.5, [10, 0, 0]), (0.9, [0, 0, 0])], delay=0.05),
+              curve("head", "rotation", [(0, [0, 0, 0]), (0.3, [-18, 0, 0]), (0.5, [14, 0, 0]), (0.9, [0, 0, 0])], delay=0.05)]
+    return _recipe("primate", texture=(64, 64), visible_box=[1.5, 2, 1.5], bones=bones, cubes=cubes, idle=idle, walk=walk, attack=attack, attack_length=0.9,
+                   notes="Knuckle-walker: the torso is pitched forward by rest rotation on `body` and the head, arms and hands are rotated back to hang from it, so clips stay relative to that pose. The arms are front legs: "
+                         "diagonal gait with the opposite leg, elbows (`*_arm_lower`) flex in the swing like the knees. Attack rears up and slams both arms down. Lengthen the arms for a gorilla, shorten them and stand "
+                         "the torso more upright for a monkey, thicken the head and add a back for a silverback.")
+
+
+RECIPES = {"quadruped": quadruped, "biped": biped, "bird": bird, "fish": fish, "serpent": serpent, "insect": insect, "primate": primate}
 
 
 def recipe(plan: str) -> dict:

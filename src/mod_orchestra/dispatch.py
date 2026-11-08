@@ -329,6 +329,18 @@ def reconcile_stale_runs(store: Store, pid: str) -> list[str]:
 
 
 MAX_AUTO_RETRIES = 1
+
+
+def dispatch_with_retry(store: Store, pid: str, *, task_id: str | None = None, provider: AgentProvider | None = None) -> dict:
+    """One dispatch and, when the controller rejected the worker's output for a format reason and reopened the task with the reason in its packet, the
+    retry that Autopilot would also make: the same rule for the UI's Run agent button, so a rejected proposal is fixed by the agent, not by you pressing it again."""
+    out = dispatch(store, pid, task_id=task_id, provider=provider)
+    for _ in range(MAX_AUTO_RETRIES):
+        retry = out.get("auto_retry")
+        if not retry:
+            break
+        out = dispatch(store, pid, task_id=retry["task"], provider=provider)
+    return out
 HUMAN_NEEDED = ("WAITING_USER", "BLOCKED", "FAILED")
 
 

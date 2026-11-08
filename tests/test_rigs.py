@@ -80,7 +80,7 @@ class TestRecipes(unittest.TestCase):
         self.assertFalse([c for c in rec["cubes"] if c["bone"] == "held_item"])
         geo = {b["name"]: b for b in rigs.load_rig("biped", "geo")["minecraft:geometry"][0]["bones"]}
         self.assertEqual((geo["held_item"]["parent"], geo["held_item"]["pivot"]), ("right_arm_forearm", [6, 12, 0]))         # exported with the X mirror
-        for plan in ("quadruped", "bird", "fish", "serpent", "insect"):
+        for plan in ("quadruped", "bird", "fish", "serpent", "insect", "primate"):
             self.assertNotIn("held_item", [b["name"] for b in rigs.recipe(plan)["bones"]], plan)
 
     def test_combine_drift_lift_helpers(self):
@@ -125,7 +125,7 @@ class TestRecipes(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_every_foot_lifts_in_the_forward_swing(self):
         """Regression: knees flexed in the push-off half of the cycle (foot raised while it travels backward) on every walking rig."""
-        for plan in ("quadruped", "biped", "insect"):
+        for plan in ("quadruped", "biped", "insect", "primate"):
             proc = subprocess.run(["node", str(ROOT / "scripts/gait_check.mjs"), str(rigs.rig_path(plan, "bbmodel")), f"animation.{plan}.walk"], capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             legs = json.loads(proc.stdout)["legs"]

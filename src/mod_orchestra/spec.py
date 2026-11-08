@@ -73,6 +73,85 @@ def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None
 
 
 @dataclass(frozen=True)
+class Behavior:
+    """A mechanic the generator cannot express (an infection that converts mobs, a projectile, a new effect, custom targeting, block breaking): the interpreter
+    proposes it here, the user approves it with the spec, and after generation the controller turns it into a custom feature card plus a coder task. Every
+    acceptance criterion becomes a GameTest, so each behavior must be small enough to be proved server-side."""
+    title: str
+    description: str                 # what must happen, in the user's terms, with every number the user gave
+    acceptance: tuple = ()           # 1-12 observable criteria, one GameTest each ("a villager hit by a runner converts to a variant after 10 s")
+    affects: tuple = ()              # identifiers of the mobs/items/blocks/sets it is about; for a capability, exactly the mobs that CARRY it
+    after: tuple = ()                # titles of behaviors it builds on: its task waits for theirs
+    kind: str = "mechanic"           # "capability": something mobs carry (infection, a freezing touch, an explosion on death), built once and wired to each carrier,
+                                     # whose carriers the user checks and edits; "mechanic": a one-off (one mob's movement, one projectile)
+
+
+def behavior_id(title: str) -> str:
+    """The card id of a behavior: the title as snake_case (the Mod Map and the FEATURE task use it)."""
+    return re.sub(r"[^a-z0-9]+", "_", str(title).lower()).strip("_")[:40] or "feature"
+
+
+def coerce_behavior(value) -> "Behavior":
+    if isinstance(value, Behavior):
+        return value
+    if not isinstance(value, dict):
+        raise InputError(f"Bad behavior: {value!r}")
+    def many(key):
+        v = value.get(key) or ()
+        return tuple(str(x).strip() for x in ([v] if isinstance(v, str) else v) if str(x).strip())
+    return Behavior(title=str(value.get("title") or "").strip(), description=str(value.get("description") or "").strip(),
+                    acceptance=many("acceptance"), affects=many("affects"), after=many("after"), kind=str(value.get("kind") or "mechanic").strip().lower())
+
+
+def validate_behaviors(spec: "Spec") -> None:
+    if len(spec.behaviors) > 12:
+        raise InputError("At most 12 behaviors: group related mechanics into one card")
+    entity_ids = {f.identifier for f in spec.features} | {m.identifier for m in spec.mobs} | {f.identifier for f in spec.foods}
+    for mat in spec.materials:
+        entity_ids |= {mat.identifier} | {f"{mat.identifier}_{k}" for k in tuple(mat.tools) + tuple(mat.armor)}
+    ids: dict[str, Behavior] = {}
+    for b in spec.behaviors:
+        label = f"behavior {b.title!r}"
+        if not (3 <= len(b.title) <= 60) or not ART_TEXT.match(b.title):
+            raise InputError(f"{label}: the title is plain text of 3-60 characters")
+        bid = behavior_id(b.title)
+        if bid in ids:
+            raise InputError(f"{label}: two behaviors become the same card id {bid!r}")
+        if bid in entity_ids:
+            raise InputError(f"{label}: its card id {bid!r} is already the identifier of a mob, item or set; rename the behavior")
+        if not (20 <= len(b.description) <= 1500) or not ART_TEXT.match(b.description):
+            raise InputError(f"{label}: the description is plain text of 20-1500 characters")
+        if not (1 <= len(b.acceptance) <= 12) or any(not (5 <= len(a) <= 300) or not ART_TEXT.match(a) for a in b.acceptance):
+            raise InputError(f"{label}: give 1-12 acceptance criteria of 5-300 characters (each one becomes a GameTest)")
+        if b.kind not in ("mechanic", "capability"):
+            raise InputError(f"{label}: kind is capability or mechanic")
+        if b.kind == "capability":
+            mob_ids = {m.identifier for m in spec.mobs}
+            if not b.affects or [a for a in b.affects if a not in mob_ids]:
+                raise InputError(f"{label}: a capability lists the mobs that carry it in `affects` (at least one, and only mobs of this spec: {sorted(mob_ids)})")
+        bad = [a for a in b.affects if a not in entity_ids]
+        if bad:
+            raise InputError(f"{label}: affects unknown identifiers {bad}; use the identifier of a mob, item, block, food or set of this spec")
+        ids[bid] = b
+    for b in spec.behaviors:
+        bad = [t for t in b.after if behavior_id(t) not in ids or behavior_id(t) == behavior_id(b.title)]
+        if bad:
+            raise InputError(f"behavior {b.title!r}: after names {bad}, which are not other behaviors of this spec")
+    state: dict[str, int] = {}
+    def visit(bid: str, path: tuple) -> None:
+        if state.get(bid) == 2:
+            return
+        if state.get(bid) == 1:
+            raise InputError("behaviors depend on each other in a loop: " + " -> ".join(path + (bid,)))
+        state[bid] = 1
+        for t in ids[bid].after:
+            visit(behavior_id(t), path + (bid,))
+        state[bid] = 2
+    for bid in ids:
+        visit(bid, ())
+
+
+@dataclass(frozen=True)
 class Feature:
     kind: str
     identifier: str
@@ -309,6 +388,7 @@ class Spec:
     structures: list[Structure] = field(default_factory=list)
     biomes: list[Biome] = field(default_factory=list)
     dimensions: list[Dimension] = field(default_factory=list)
+    behaviors: list[Behavior] = field(default_factory=list)   # mechanics beyond the generator: custom cards + coder tasks after generation
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -486,6 +566,7 @@ def validate_food(spec: "Spec", f: Food) -> None:
 
 def validate_spec_content(spec: "Spec") -> None:
     ids = spec.local_ids()
+    validate_behaviors(spec)
     seen_all: dict[str, str] = {}
     for f in spec.features:
         seen_all[f.identifier] = "feature"
@@ -732,6 +813,7 @@ def read_spec(raw: dict) -> Spec:
         mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")), "art": coerce_art(m.get("art")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],
+        behaviors=[coerce_behavior(b) for b in raw.get("behaviors", [])],
     )
     validate_spec_content(spec)
     return spec
