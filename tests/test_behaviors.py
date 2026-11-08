@@ -24,7 +24,7 @@ class TestBehaviorSpec(unittest.TestCase):
     def test_the_ideal_interpretation_is_a_valid_spec(self):
         spec = spec_from_proposal(CURRENT, PROPOSAL)
         self.assertEqual([(m.identifier, m.body_plan, m.health) for m in spec.mobs], [("runner", "biped", 30), ("spitter", "biped", 24), ("brute", "primate", 80)])
-        self.assertEqual([behavior_id(b.title) for b in spec.behaviors], ["infection_and_factions", "infectious_poison_and_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"])
+        self.assertEqual([behavior_id(b.title) for b in spec.behaviors], ["infectious_poison_and_conversion", "infectious_melee_and_targeting", "spitter_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"])
         again = read_spec(json.loads(json.dumps(spec.to_dict())))
         self.assertEqual(again.behaviors, spec.behaviors)
 
@@ -41,7 +41,7 @@ class TestBehaviorSpec(unittest.TestCase):
         with_behavior()
         for bad, why in ((dict(title="ab"), "title"), (dict(description="short"), "description"), (dict(acceptance=[]), "acceptance"), (dict(acceptance=["x"]), "acceptance"),
                          (dict(affects=["ghost"]), "unknown identifiers"), (dict(after=["No such behavior"]), "not other behaviors"), (dict(after=["Extra mechanic"]), "not other behaviors"),
-                         (dict(title="Brute"), "identifier of a mob"), (dict(title="Infection and factions"), "same card id")):
+                         (dict(title="Brute"), "identifier of a mob"), (dict(title="Spitter acid spit"), "same card id")):
             with self.assertRaisesRegex(InputError, why, msg=str(bad)):
                 with_behavior(**bad)
         with self.assertRaisesRegex(InputError, "At most 12"):
@@ -65,7 +65,8 @@ class TestBehaviorSpec(unittest.TestCase):
     def test_the_rules_learned_from_a_real_interpretation(self):
         text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
         for needle in ("Use `after` ONLY when a behavior needs code or an effect that another one creates", "must not wait for each other", "Say WHEN every mechanic triggers",
-                       "what every new effect, projectile or state DOES in numbers", "state the reading you chose as the FIRST assumption", "over many trials every outcome appears"):
+                       "what every new effect, projectile or state DOES in numbers", "state the reading you chose as the FIRST assumption", "over many trials every outcome appears",
+                       "EVERY member has it", "that effect IS how the group does the thing", "never let a member bypass the effect with a shortcut of your own", "so the user can see how far you went"):
             self.assertIn(needle, text)
         from mod_orchestra.guidance import guidance
         self.assertNotIn("a tab and mobs", open(Path(__file__).resolve().parents[1] / "src/mod_orchestra/guidance.py", encoding="utf8").read())
@@ -87,21 +88,24 @@ class TestGenerationPlansBehaviors(unittest.TestCase):
 
     def test_each_behavior_becomes_a_card_and_a_coder_task(self):
         self.assertEqual(sorted(self.out["behavior_tasks"]), sorted(f"infect:FEATURE:{i}" for i in
-                         ("infection_and_factions", "infectious_poison_and_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker")))
+                         ("infectious_poison_and_conversion", "infectious_melee_and_targeting", "spitter_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker")))
         for tid in self.out["behavior_tasks"]:
             self.assertEqual(self.tasks[tid]["role"], "coder")
         from mod_orchestra.modmap import custom_cards
         cards = custom_cards(self.store, "infect")
-        self.assertEqual(cards["infection_and_factions"]["derived_from"], ["runner", "spitter", "brute"])
-        self.assertEqual(len(cards["infection_and_factions"]["acceptance"]), 5)
+        self.assertEqual(cards["infectious_poison_and_conversion"]["derived_from"], ["runner", "spitter", "brute"])
+        self.assertEqual(len(cards["infectious_poison_and_conversion"]["acceptance"]), 5)
 
     def test_dependencies_order_the_tasks(self):
-        self.assertEqual(self.tasks["infect:FEATURE:infection_and_factions"]["state"], "READY")
-        self.assertEqual(self.tasks["infect:FEATURE:infectious_poison_and_acid_spit"]["state"], "BACKLOG")      # waits for the infection system
-        self.assertEqual(self.tasks["infect:FEATURE:brute_breaks_blocks_and_leaps"]["state"], "READY")
+        self.assertEqual(self.tasks["infect:FEATURE:infectious_poison_and_conversion"]["state"], "READY")        # the foundation: the effect and what it does when a mob dies under it
+        for waits in ("infectious_melee_and_targeting", "spitter_acid_spit"):
+            self.assertEqual(self.tasks[f"infect:FEATURE:{waits}"]["state"], "BACKLOG")                          # each way of applying it waits for the effect
+        for free in ("brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"):
+            self.assertEqual(self.tasks[f"infect:FEATURE:{free}"]["state"], "READY")                             # independent: they do not wait for the infection
         with self.store.tx() as con:
             edges = [tuple(r) for r in con.execute("SELECT predecessor, successor FROM task_edges WHERE successor LIKE 'infect:FEATURE:%'")]
-        self.assertEqual(edges, [("infect:FEATURE:infection_and_factions", "infect:FEATURE:infectious_poison_and_acid_spit")])
+        self.assertEqual(sorted(edges), [("infect:FEATURE:infectious_poison_and_conversion", "infect:FEATURE:infectious_melee_and_targeting"),
+                                         ("infect:FEATURE:infectious_poison_and_conversion", "infect:FEATURE:spitter_acid_spit")])
 
     def test_the_coder_brief_has_the_description_the_criteria_and_the_gametests(self):
         text = self.store.task_instructions("infect:FEATURE:brute_breaks_blocks_and_leaps")
@@ -121,7 +125,7 @@ class TestGenerationPlansBehaviors(unittest.TestCase):
         from mod_orchestra.modmap import plan_behaviors, mod_map
         self.assertEqual(plan_behaviors(self.store, "infect"), [])
         ids = {c["id"] for c in mod_map(self.store, "infect")["cards"]}
-        self.assertTrue({"infection_and_factions", "brute", "runner"} <= ids)
+        self.assertTrue({"infectious_poison_and_conversion", "brute", "runner"} <= ids)
 
 
 class TestPrimateRig(unittest.TestCase):

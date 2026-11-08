@@ -3,55 +3,217 @@
   "tab": null,
   "tab_icon": null,
   "mobs": [
-    {"identifier": "runner", "label": "Runner", "behavior": "hostile", "health": 30, "speed": 0.38, "width": 0.6, "height": 1.95, "attack_damage": 4, "body_plan": "biped",
-     "drops": [{"item": "minecraft:rotten_flesh", "count_min": 0, "count_max": 2, "chance": 0.6}], "egg_colors": [6256186, 10346287], "spawn": null,
-     "art": {"concept": "A gaunt, unnaturally fast zombie: sinewy limbs with exposed tendons, torn clothes, and veins glowing acid green under grey-green skin.",
-             "tags": ["gaunt sinewy limbs", "exposed tendons", "torn clothes", "glowing green veins", "bared teeth"], "silhouette": "lean sprinter, hunched forward"}},
-    {"identifier": "spitter", "label": "Spitter", "behavior": "hostile", "health": 24, "speed": 0.25, "width": 0.6, "height": 1.95, "attack_damage": 3, "body_plan": "biped",
-     "drops": [{"item": "minecraft:rotten_flesh", "count_min": 0, "count_max": 2, "chance": 0.6}, {"item": "minecraft:spider_eye", "count_min": 0, "count_max": 1, "chance": 0.3}], "egg_colors": [6256186, 10147631], "spawn": null,
-     "art": {"concept": "A zombie with a swollen, translucent throat sac full of glowing acid and a jaw hanging open, drool dripping green.",
-             "tags": ["swollen throat sac", "glowing acid", "hanging jaw", "green drool", "pustules"], "silhouette": "hunched with a bulging neck"}},
-    {"identifier": "brute", "label": "Brute", "behavior": "hostile", "health": 80, "speed": 0.26, "width": 1.2, "height": 2.3, "attack_damage": 9, "body_plan": "primate",
-     "drops": [{"item": "minecraft:rotten_flesh", "count_min": 1, "count_max": 4, "chance": 0.8}, {"item": "minecraft:iron_ingot", "count_min": 0, "count_max": 2, "chance": 0.2}], "egg_colors": [3873607, 10147631], "spawn": null,
-     "art": {"concept": "A hulking chimpanzee-shaped zombie: knuckle-walking on huge forearms, scarred hide with tumours and exposed bone, a heavy brow and a cracked tusk.",
-             "tags": ["knuckle-walking", "oversized forearms", "scarred hide", "tumours", "exposed bone", "heavy brow"], "silhouette": "gorilla-like, hunched, arms to the ground"}}
+    {
+      "identifier": "runner",
+      "label": "Runner",
+      "behavior": "hostile",
+      "health": 30,
+      "speed": 0.38,
+      "width": 0.6,
+      "height": 1.95,
+      "attack_damage": 4,
+      "body_plan": "biped",
+      "drops": [
+        {
+          "item": "minecraft:rotten_flesh",
+          "count_min": 0,
+          "count_max": 2,
+          "chance": 0.6
+        }
+      ],
+      "egg_colors": [
+        6256186,
+        10346287
+      ],
+      "spawn": null,
+      "art": {
+        "concept": "A gaunt, unnaturally fast zombie: sinewy limbs with exposed tendons, torn clothes, and veins glowing acid green under grey-green skin.",
+        "tags": [
+          "gaunt sinewy limbs",
+          "exposed tendons",
+          "torn clothes",
+          "glowing green veins",
+          "bared teeth"
+        ],
+        "silhouette": "lean sprinter, hunched forward"
+      }
+    },
+    {
+      "identifier": "spitter",
+      "label": "Spitter",
+      "behavior": "hostile",
+      "health": 24,
+      "speed": 0.25,
+      "width": 0.6,
+      "height": 1.95,
+      "attack_damage": 3,
+      "body_plan": "biped",
+      "drops": [
+        {
+          "item": "minecraft:rotten_flesh",
+          "count_min": 0,
+          "count_max": 2,
+          "chance": 0.6
+        },
+        {
+          "item": "minecraft:spider_eye",
+          "count_min": 0,
+          "count_max": 1,
+          "chance": 0.3
+        }
+      ],
+      "egg_colors": [
+        6256186,
+        10147631
+      ],
+      "spawn": null,
+      "art": {
+        "concept": "A zombie with a swollen, translucent throat sac full of glowing acid and a jaw hanging open, drool dripping green.",
+        "tags": [
+          "swollen throat sac",
+          "glowing acid",
+          "hanging jaw",
+          "green drool",
+          "pustules"
+        ],
+        "silhouette": "hunched with a bulging neck"
+      }
+    },
+    {
+      "identifier": "brute",
+      "label": "Brute",
+      "behavior": "hostile",
+      "health": 80,
+      "speed": 0.26,
+      "width": 1.2,
+      "height": 2.3,
+      "attack_damage": 9,
+      "body_plan": "primate",
+      "drops": [
+        {
+          "item": "minecraft:rotten_flesh",
+          "count_min": 1,
+          "count_max": 4,
+          "chance": 0.8
+        },
+        {
+          "item": "minecraft:iron_ingot",
+          "count_min": 0,
+          "count_max": 2,
+          "chance": 0.2
+        }
+      ],
+      "egg_colors": [
+        3873607,
+        10147631
+      ],
+      "spawn": null,
+      "art": {
+        "concept": "A hulking chimpanzee-shaped zombie: knuckle-walking on huge forearms, scarred hide with tumours and exposed bone, a heavy brow and a cracked tusk.",
+        "tags": [
+          "knuckle-walking",
+          "oversized forearms",
+          "scarred hide",
+          "tumours",
+          "exposed bone",
+          "heavy brow"
+        ],
+        "silhouette": "gorilla-like, hunched, arms to the ground"
+      }
+    }
   ],
-  "materials": [], "foods": [], "sounds": [], "enchantments": [], "structures": [], "biomes": [], "dimensions": [], "ores": [],
+  "materials": [],
+  "foods": [],
+  "sounds": [],
+  "enchantments": [],
+  "structures": [],
+  "biomes": [],
+  "dimensions": [],
+  "ores": [],
   "theme": "Rotting infection: sickly green flesh (#5f7a3a), necrotic dark violet veins (#3d1f47), dried blood brown (#5a2a1c), bone yellow (#cfc79a) and glowing acid green (#9be32f). Torn, filthy clothing, exposed muscle and tendons, oozing pustules.",
   "behaviors": [
-    {"title": "Infection and factions",
-     "description": "Any villager, vanilla zombie or pillager hit by a Runner, a Spitter or a Brute becomes infected. After the infection time (assumed 10 seconds, with green particles around it) the infected mob is replaced where it stands by one of the three infectious zombies, chosen at random with equal chance. Infectious zombies never attack each other or infected mobs; the Runner attacks everything else it can reach (players, animals, golems and non-infected mobs).",
-     "acceptance": ["A villager hit by a Runner shows infection particles and, after 10 seconds, is replaced by a Runner, a Spitter or a Brute",
-                    "A vanilla zombie hit by a Brute is converted the same way",
-                    "A pillager hit by a Spitter is converted the same way",
-                    "Over 30 conversions all three variants appear",
-                    "A Runner attacks a player, a villager and a cow within range, and ignores a Spitter, a Brute and an infected villager"],
-     "affects": ["runner", "spitter", "brute"], "after": []},
-    {"title": "Infectious Poison and acid spit",
-     "description": "The Spitter attacks from range: when its target is within 16 blocks it spits an acid projectile. A hit applies Infectious Poison, a new damage-over-time effect (assumed 2 damage every second for 8 seconds). Any villager, vanilla zombie or pillager that dies while under Infectious Poison is replaced by a random infectious zombie, as in the infection system. Infectious zombies are never targeted by the acid.",
-     "acceptance": ["A Spitter with a target 10 blocks away shoots an acid projectile",
-                    "A projectile that hits a mob applies Infectious Poison and the mob takes damage over time",
-                    "A villager that dies while under Infectious Poison is replaced by a random infectious zombie",
-                    "The acid never hits or poisons a Runner, Spitter or Brute"],
-     "affects": ["spitter"], "after": ["Infection and factions"]},
-    {"title": "Brute breaks blocks and leaps",
-     "description": "The Brute breaks the blocks in its way to its target, as hard as deepslate and no harder: stone, dirt, wood and deepslate yes; obsidian and bedrock never. It can jump up to 4 blocks high to reach a target on a ledge. Its 80 health points and primate build are set in the mob itself.",
-     "acceptance": ["A Brute with a target behind a stone wall and a deepslate block breaks both to reach it",
-                    "A Brute does not break obsidian or bedrock",
-                    "A Brute reaches a target standing on a ledge 4 blocks high"],
-     "affects": ["brute"], "after": []},
-    {"title": "Brute thrown blocks and shield breaker",
-     "description": "When its target is far (assumed more than 8 blocks) the Brute picks up a nearby block and throws it; a hit applies Slowness for 5 seconds. It prefers to get close and fight in melee, and its melee attacks break shields: a blocked hit disables the shield for 5 seconds.",
-     "acceptance": ["A Brute with a target 12 blocks away throws a block at it",
-                    "A thrown block that hits applies Slowness",
-                    "A Brute with a target within 3 blocks attacks in melee instead of throwing",
-                    "A player blocking with a shield has the shield disabled by a Brute's melee hit"],
-     "affects": ["brute"], "after": []}
+    {
+      "title": "Infectious Poison and conversion",
+      "description": "A new status effect, Infectious Poison, is how the three variants infect. While it lasts (assumed 10 seconds) it deals 1 damage every second. A villager, vanilla zombie or pillager that dies while under Infectious Poison is replaced where it died by one of the three infectious zombies, chosen at random with equal chance. Infectious zombies are immune to it, and players are not converted.",
+      "acceptance": [
+        "A villager under Infectious Poison takes 1 damage every second for 10 seconds",
+        "A villager, a vanilla zombie and a pillager that die while under the effect are each replaced by a Runner, a Spitter or a Brute",
+        "A mob that dies without the effect is not converted",
+        "Over 30 conversions all three variants appear",
+        "A Runner, a Spitter and a Brute are not affected by Infectious Poison"
+      ],
+      "affects": [
+        "runner",
+        "spitter",
+        "brute"
+      ],
+      "after": []
+    },
+    {
+      "title": "Infectious melee and targeting",
+      "description": "Every melee hit of a Runner, a Spitter or a Brute applies Infectious Poison for 10 seconds to the mob it hits (never to another infectious zombie). The Runner attacks everything it can reach except infectious zombies and mobs already under Infectious Poison: players, animals, golems and other mobs.",
+      "acceptance": [
+        "A villager hit by a Runner gets Infectious Poison for 10 seconds",
+        "A pillager hit by a Brute and a vanilla zombie hit by a Spitter in melee get it too",
+        "A Runner attacks a player, a villager and a cow within range",
+        "A Runner ignores a Spitter, a Brute and a villager that is under Infectious Poison"
+      ],
+      "affects": [
+        "runner",
+        "spitter",
+        "brute"
+      ],
+      "after": [
+        "Infectious Poison and conversion"
+      ]
+    },
+    {
+      "title": "Spitter acid spit",
+      "description": "The Spitter attacks from range: when its target is within 16 blocks it spits an acid projectile that deals 4 damage on impact and applies Infectious Poison for 10 seconds. The acid never affects infectious zombies.",
+      "acceptance": [
+        "A Spitter with a target 10 blocks away shoots an acid projectile",
+        "A projectile that hits a mob deals 4 damage and applies Infectious Poison",
+        "The acid does not hit or poison a Runner, a Spitter or a Brute"
+      ],
+      "affects": [
+        "spitter"
+      ],
+      "after": [
+        "Infectious Poison and conversion"
+      ]
+    },
+    {
+      "title": "Brute breaks blocks and leaps",
+      "description": "The Brute breaks the blocks in its way to its target, as hard as deepslate and no harder: stone, dirt, wood and deepslate yes; obsidian and bedrock never. It can jump up to 4 blocks high to reach a target on a ledge. Its 80 health points and primate build are set in the mob itself.",
+      "acceptance": [
+        "A Brute with a target behind a stone wall and a deepslate block breaks both to reach it",
+        "A Brute does not break obsidian or bedrock",
+        "A Brute reaches a target standing on a ledge 4 blocks high"
+      ],
+      "affects": [
+        "brute"
+      ],
+      "after": []
+    },
+    {
+      "title": "Brute thrown blocks and shield breaker",
+      "description": "When its target is far (assumed more than 8 blocks) the Brute picks up a nearby block and throws it; a hit applies Slowness for 5 seconds. It prefers to get close and fight in melee, and its melee attacks break shields: a blocked hit disables the shield for 5 seconds.",
+      "acceptance": [
+        "A Brute with a target 12 blocks away throws a block at it",
+        "A thrown block that hits applies Slowness",
+        "A Brute with a target within 3 blocks attacks in melee instead of throwing",
+        "A player blocking with a shield has the shield disabled by a Brute's melee hit"
+      ],
+      "affects": [
+        "brute"
+      ],
+      "after": []
+    }
   ],
   "assumptions": [
     "Zombie baseline is 20 health, speed 0.23, damage 3: Runner 30 health and speed 0.38, Spitter 24 health, Brute 80 health (as asked) and damage 9.",
-    "Infection takes 10 seconds, picks each of the three variants with equal chance and does not affect players.",
-    "Infectious Poison deals 2 damage every second for 8 seconds; the Spitter spits within 16 blocks.",
+    "Infection is the Infectious Poison effect (10 seconds, 1 damage per second): every variant applies it when it hits, a mob that dies under it converts into a random variant with equal chance, and players are not converted.",
+    "The Spitter spits within 16 blocks and its acid deals 4 damage on impact.",
     "The Brute throws blocks beyond 8 blocks and fights in melee closer; shields stay disabled for 5 seconds.",
     "No natural spawning was asked for: the three variants come from spawn eggs and from infection."
   ]
