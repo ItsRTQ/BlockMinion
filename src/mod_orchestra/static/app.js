@@ -239,6 +239,18 @@ function renderSpec(p) {
   grid.append(box("Drops", (s.drops || []).map(d => `${d.block} → ${d.item} (${d.count_min}-${d.count_max}${d.fortune ? ", fortune" : ""}${d.silk_touch ? ", silk touch" : ""})`)));
   grid.append(box("Creative tab", s.tab ? [s.tab + (s.tab_icon ? " (icon: " + s.tab_icon + ")" : "")] : []));
   body.append(grid);
+  if ((s.behaviors || []).length) {
+    const wrap = el("div", null, "spec-box"); wrap.style.marginTop = "10px"; wrap.append(el("h4", `Behaviors the coder builds after generation (${s.behaviors.length})`));
+    wrap.append(el("div", "Each becomes a feature card with a coder task; every acceptance criterion becomes a GameTest. Say what to change in the answer box if one is wrong.", "muted"));
+    for (const b of s.behaviors) {
+      const d = el("div", null, "behavior"); d.append(el("b", b.title), el("div", b.description, "art-concept"));
+      const ul = el("ul"); for (const a of b.acceptance || []) ul.append(el("li", a)); d.append(ul);
+      const meta = []; if ((b.affects || []).length) meta.push("about: " + b.affects.join(", ")); if ((b.after || []).length) meta.push("after: " + b.after.join(", "));
+      if (meta.length) d.append(el("small", meta.join(" · "), "muted"));
+      wrap.append(d);
+    }
+    body.append(wrap);
+  }
   const idea = el("div", null, "spec-box"); idea.style.marginTop = "10px"; idea.append(el("h4", "Idea")); idea.append(el("div", s.idea)); body.append(idea);
   if (s.assumptions?.length) { const a = el("div", null, "spec-box"); a.style.marginTop = "10px"; a.append(el("h4", "Assumptions")); const ul = el("ul"); for (const x of s.assumptions) ul.append(el("li", x)); a.append(ul); body.append(a); }
   const qbox = qs("spec-questions"); qbox.replaceChildren();

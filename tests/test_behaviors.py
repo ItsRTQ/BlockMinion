@@ -1,0 +1,154 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from mod_orchestra import rigs, skin, workflow
+from mod_orchestra.interpreter import spec_from_proposal, SPEC_INSTRUCTIONS
+from mod_orchestra.spec import Behavior, behavior_id, coerce_behavior, read_spec
+from mod_orchestra.state import Store
+from mod_orchestra.validation import InputError
+
+FIX = Path(__file__).parent / "fixtures"
+IDEA = (FIX / "infectious_zombies.idea.txt").read_text(encoding="utf8").strip()
+PROPOSAL = json.loads((FIX / "infectious_zombies.proposal.json").read_text(encoding="utf8"))
+CURRENT = {"name": "Infectious Zombies", "mod_id": "infect", "package": "com.example.infect", "idea": IDEA, "profile": "fabric-1.21.1-candidate"}
+
+
+def proposal(**over):
+    p = json.loads(json.dumps(PROPOSAL)); p.update(over); return p
+
+
+class TestBehaviorSpec(unittest.TestCase):
+    def test_the_ideal_interpretation_is_a_valid_spec(self):
+        spec = spec_from_proposal(CURRENT, PROPOSAL)
+        self.assertEqual([(m.identifier, m.body_plan, m.health) for m in spec.mobs], [("runner", "biped", 30), ("spitter", "biped", 24), ("brute", "primate", 80)])
+        self.assertEqual([behavior_id(b.title) for b in spec.behaviors], ["infection_and_factions", "infectious_poison_and_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker"])
+        again = read_spec(json.loads(json.dumps(spec.to_dict())))
+        self.assertEqual(again.behaviors, spec.behaviors)
+
+    def test_coercion(self):
+        b = coerce_behavior({"title": " Acid ", "description": "d" * 30, "acceptance": "one criterion here", "affects": ["spitter"]})
+        self.assertEqual((b.title, b.acceptance, b.after), ("Acid", ("one criterion here",), ()))
+        with self.assertRaises(InputError):
+            coerce_behavior(["not", "a", "dict"])
+
+    def test_every_rule(self):
+        def with_behavior(**kw):
+            b = {"title": "Extra mechanic", "description": "x" * 40, "acceptance": ["something observable happens"], "affects": ["brute"], "after": []}; b.update(kw)
+            return spec_from_proposal(CURRENT, proposal(behaviors=PROPOSAL["behaviors"] + [b]))
+        with_behavior()
+        for bad, why in ((dict(title="ab"), "title"), (dict(description="short"), "description"), (dict(acceptance=[]), "acceptance"), (dict(acceptance=["x"]), "acceptance"),
+                         (dict(affects=["ghost"]), "unknown identifiers"), (dict(after=["No such behavior"]), "not other behaviors"), (dict(after=["Extra mechanic"]), "not other behaviors"),
+                         (dict(title="Brute"), "identifier of a mob"), (dict(title="Infection and factions"), "same card id")):
+            with self.assertRaisesRegex(InputError, why, msg=str(bad)):
+                with_behavior(**bad)
+        with self.assertRaisesRegex(InputError, "At most 12"):
+            spec_from_proposal(CURRENT, proposal(behaviors=[{"title": f"Mechanic number {i}", "description": "d" * 30, "acceptance": ["observable thing happens"], "affects": ["brute"]} for i in range(13)]))
+
+    def test_loops_are_rejected(self):
+        a = {"title": "Alpha mechanic", "description": "d" * 30, "acceptance": ["observable thing happens"], "affects": ["brute"], "after": ["Beta mechanic"]}
+        b = {"title": "Beta mechanic", "description": "d" * 30, "acceptance": ["observable thing happens"], "affects": ["brute"], "after": ["Alpha mechanic"]}
+        with self.assertRaisesRegex(InputError, "loop"):
+            spec_from_proposal(CURRENT, proposal(behaviors=[a, b]))
+
+    def test_a_spec_without_behaviors_still_reads(self):
+        raw = spec_from_proposal(CURRENT, proposal(behaviors=[])).to_dict(); raw.pop("behaviors")
+        self.assertEqual(read_spec(raw).behaviors, [])
+
+    def test_the_interpreter_is_told_about_behaviors_and_primates(self):
+        for needle in ('"behaviors"', "3-6 coherent behaviors", "EVERY number the user gave", "never one per sentence", "primate", "knuckle-walking primates", "write each as a `behavior`"):
+            self.assertIn(needle, SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}"))
+        self.assertNotIn("keep the user's wish in `unknowns`", SPEC_INSTRUCTIONS)                    # the old instruction that dropped custom AI
+
+
+class TestGenerationPlansBehaviors(unittest.TestCase):
+    def setUp(self):
+        from mod_orchestra.interpreter import apply_interpretation
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name); self.store = Store(base / "s.sqlite")
+        p = patch.object(workflow, "PROJECTS", base / "projects"); p.start(); self.addCleanup(p.stop); (base / "projects").mkdir()
+        # these tests are about behaviors: the icons task is covered in test_art.py
+        no_icons = patch("mod_orchestra.models.ensure_initial_sprites", lambda *a, **k: None); no_icons.start(); self.addCleanup(no_icons.stop)
+        workflow.new_project(self.store, name="Infectious Zombies", mod_id="infect", package="com.example.infect", idea=IDEA)
+        apply_interpretation(self.store, "infect", {"status": "WAITING_USER", "spec": PROPOSAL, "questions": []}, "run-1")
+        workflow.plan_project(self.store, "infect"); workflow.approve_spec(self.store, "infect")
+        self.out = workflow.generate_project(self.store, "infect")
+        self.tasks = {t["id"]: t for t in self.store.tasks("infect")}
+
+    def test_each_behavior_becomes_a_card_and_a_coder_task(self):
+        self.assertEqual(sorted(self.out["behavior_tasks"]), sorted(f"infect:FEATURE:{i}" for i in
+                         ("infection_and_factions", "infectious_poison_and_acid_spit", "brute_breaks_blocks_and_leaps", "brute_thrown_blocks_and_shield_breaker")))
+        for tid in self.out["behavior_tasks"]:
+            self.assertEqual(self.tasks[tid]["role"], "coder")
+        from mod_orchestra.modmap import custom_cards
+        cards = custom_cards(self.store, "infect")
+        self.assertEqual(cards["infection_and_factions"]["derived_from"], ["runner", "spitter", "brute"])
+        self.assertEqual(len(cards["infection_and_factions"]["acceptance"]), 5)
+
+    def test_dependencies_order_the_tasks(self):
+        self.assertEqual(self.tasks["infect:FEATURE:infection_and_factions"]["state"], "READY")
+        self.assertEqual(self.tasks["infect:FEATURE:infectious_poison_and_acid_spit"]["state"], "BACKLOG")      # waits for the infection system
+        self.assertEqual(self.tasks["infect:FEATURE:brute_breaks_blocks_and_leaps"]["state"], "READY")
+        with self.store.tx() as con:
+            edges = [tuple(r) for r in con.execute("SELECT predecessor, successor FROM task_edges WHERE successor LIKE 'infect:FEATURE:%'")]
+        self.assertEqual(edges, [("infect:FEATURE:infection_and_factions", "infect:FEATURE:infectious_poison_and_acid_spit")])
+
+    def test_the_coder_brief_has_the_description_the_criteria_and_the_gametests(self):
+        text = self.store.task_instructions("infect:FEATURE:brute_breaks_blocks_and_leaps")
+        for needle in ("Title: Brute breaks blocks and leaps", "obsidian and bedrock never", "up to 4 blocks high", "- A Brute does not break obsidian or bedrock",
+                       "Builds on: brute", "@GameTest per acceptance criterion"):
+            self.assertIn(needle, text)
+
+    def test_the_mobs_are_generated_with_their_rigs(self):
+        import json as _json
+        root = Path(self.store.project("infect")["root"]) / "src/main/resources/assets/infect"
+        brute = _json.loads((root / "geo/entity/brute.geo.json").read_text())["minecraft:geometry"][0]["bones"]
+        self.assertIn("left_arm_lower", [b["name"] for b in brute]); self.assertNotIn("held_item", [b["name"] for b in brute])
+        runner = _json.loads((root / "geo/entity/runner.geo.json").read_text())["minecraft:geometry"][0]["bones"]
+        self.assertIn("held_item", [b["name"] for b in runner])                                        # bipeds keep the weapon bone (nothing to hold here: no tool drops)
+
+    def test_planning_is_idempotent_and_the_map_shows_the_cards(self):
+        from mod_orchestra.modmap import plan_behaviors, mod_map
+        self.assertEqual(plan_behaviors(self.store, "infect"), [])
+        ids = {c["id"] for c in mod_map(self.store, "infect")["cards"]}
+        self.assertTrue({"infection_and_factions", "brute", "runner"} <= ids)
+
+
+class TestPrimateRig(unittest.TestCase):
+    def test_it_is_a_registered_plan_with_the_usual_clips(self):
+        self.assertIn("primate", rigs.BODY_PLANS)
+        rec = rigs.recipe("primate")
+        self.assertEqual([a["name"] for a in rec["animations"]], ["animation.primate.idle", "animation.primate.walk", "animation.primate.attack"])
+        self.assertEqual(rec["bones"][0], {"name": "root", "origin": [0, 0, 0]})
+
+    def test_the_torso_is_hunched_and_the_arms_are_long_front_legs(self):
+        bones = {b["name"]: b for b in rigs.recipe("primate")["bones"]}
+        self.assertLess(bones["body"]["rotation"][0], -20)                                               # pitched forward (negative X leans the top toward the front)
+        self.assertEqual((bones["left_arm_lower"]["parent"], bones["left_arm"]["parent"], bones["left_leg"]["parent"]), ("left_arm", "body", "root"))
+        reach = max(c["to"][1] for c in rigs.recipe("primate")["cubes"] if c["bone"] == "left_arm") - min(c["from"][1] for c in rigs.recipe("primate")["cubes"] if c["bone"] == "left_arm_lower")
+        leg = max(c["to"][1] for c in rigs.recipe("primate")["cubes"] if c["bone"] == "left_leg") - min(c["from"][1] for c in rigs.recipe("primate")["cubes"] if c["bone"] == "left_leg_shin")
+        self.assertGreater(reach, leg * 1.5)                                                             # the arms reach further than the legs: knuckle-walker
+        self.assertNotIn("held_item", bones)
+
+    def test_a_skin_with_a_readable_face_can_be_painted_on_it(self):
+        model = rigs.load_rig("primate", "bbmodel")
+        png, report = skin.paint_skin(model, palette={"base": "#5f7a3a", "metal": "#3d1f47"}, face={"tusks": True})
+        self.assertTrue(report["face_check"]["ok"], report["face_check"])
+        self.assertEqual(skin.decode_png(png)[:2], (128, 128))
+
+    def test_the_art_cues_know_the_plan(self):
+        from mod_orchestra.art import KIND_CUES
+        self.assertIn("knuckle-walking", KIND_CUES["primate"])
+
+    def test_the_plan_is_choosable_everywhere(self):
+        from mod_orchestra.specedit import set_body_plan
+        index = (Path(__file__).resolve().parents[1] / "src/mod_orchestra/static/index.html").read_text(encoding="utf8")
+        self.assertIn('<option value="primate">', index)
+        cli = (Path(__file__).resolve().parents[1] / "src/mod_orchestra/cli.py").read_text(encoding="utf8")
+        self.assertEqual(cli.count('"insect", "primate"'), 2)                                            # add-mob and set-body-plan
+
+
+if __name__ == "__main__":
+    unittest.main()

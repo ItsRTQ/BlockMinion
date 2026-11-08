@@ -22,7 +22,7 @@ KIND_CUES = {
     "helmet": ("head guard", "face opening"), "chestplate": ("chest plate", "shoulder line"), "leggings": ("hip and thigh plates",), "boots": ("toe cap", "sole"),
     "gem": ("faceted crystal",), "ingot": ("bar with bevelled ends",), "food": ("something edible",), "block": ("a tileable surface",), "item": ("a handheld object",),
     "biped": ("upright body", "two arms"), "quadruped": ("four legs", "head on a neck"), "bird": ("beak", "wings"), "fish": ("fins", "tail"),
-    "serpent": ("long body",), "insect": ("six legs", "segmented body"),
+    "serpent": ("long body",), "insect": ("six legs", "segmented body"), "primate": ("long arms", "knuckle-walking", "hunched torso"),
 }
 
 

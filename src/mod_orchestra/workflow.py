@@ -116,6 +116,13 @@ def generate_project(store: Store, pid: str) -> dict:
             output = {**output, "sprites_task": planned["task"]}
     except Exception as exc:   # icon planning must never fail a generation
         store.add_event(pid, "controller", "SPRITES_NOT_PLANNED", {"error": str(exc)[:300]})
+    try:   # the approved spec's behaviors become custom cards and coder tasks, in order
+        from .modmap import plan_behaviors
+        tasks = plan_behaviors(store, pid)
+        if tasks:
+            output = {**output, "behavior_tasks": tasks}
+    except Exception as exc:
+        store.add_event(pid, "controller", "BEHAVIORS_NOT_PLANNED", {"error": str(exc)[:300]})
     return output
 
 

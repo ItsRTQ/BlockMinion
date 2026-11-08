@@ -22,9 +22,9 @@ supports: items, blocks, a creative tab, crafting/smelting recipes, block drops,
 (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots with vanilla-like numbers), foods, and simple mobs (a GeckoLib
 entity with idle + walk animations, basic AI — passive wanders, neutral fights back when hurt, hostile attacks players —, spawn egg, loot on death with counts and chance). Preserve the user's
 intent and wording; do not add content they did not ask for; do not drop content they did ask for.
-If the idea mentions things the generator cannot build (bosses with phases, custom AI, biomes, dimensions,
-armor stats, tools with custom durability, GUIs, commands, sounds), keep the user's wish in `unknowns` and ask about it only
-if it blocks the rest; never fake it as an item.
+Mechanics the generator cannot express (a mob infecting or converting others, projectiles and spit attacks, new status effects, custom AI and targeting rules,
+mobs that break blocks or jump unusually high, bosses with phases, GUIs, commands, events) are NOT dropped and NOT faked as items: write each as a `behavior` (below), which
+the coder implements after generation and proves with GameTests. Use `unknowns` only for wishes that no behavior could describe, and ask about them only if they block the rest.
 
 Ask at most {MAX_QUESTIONS} questions, and only when the answer changes files the user DID ask for: ambiguous
 counts, missing ingredients for a recipe the user implied, or which block an ore should drop from. Never ask
@@ -43,7 +43,7 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
                "ingredients": ["identifier", "minecraft:id", "#minecraft:tag"], "experience": 0.7, "cooking_time": 200}}],
   "drops": [{{"block": "identifier", "item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "fortune": true, "silk_touch": true}}],
   "mobs": [{{"identifier": "snake_case", "label": "Display Name", "behavior": "passive|neutral|hostile", "health": 10, "speed": 0.25,
-            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831], "body_plan": "quadruped|biped|bird|fish|serpent|insect", "held_item": "",
+            "width": 0.8, "height": 0.9, "attack_damage": 3, "drops": [{{"item": "identifier or minecraft:id", "count_min": 1, "count_max": 1, "chance": 1.0}}], "egg_colors": [9075153, 15128831], "body_plan": "quadruped|biped|bird|fish|serpent|insect|primate", "held_item": "",
             "spawn": {{"biomes": ["overworld" or "#minecraft:is_forest" or "minecraft:plains"], "weight": 10, "min_group": 1, "max_group": 3}} or null for egg-only}}],
   "materials": [{{"identifier": "ruby", "label": "Ruby", "ingredient": "ruby or minecraft:diamond", "tools": ["sword","pickaxe","axe","shovel","hoe"],
                  "armor": ["helmet","chestplate","leggings","boots"], "durability": 1200, "mining_speed": 8.0, "attack_damage_bonus": 3.0,
@@ -74,7 +74,12 @@ Every block named "ore" gets an `ores` worldgen entry (reference: iron 9/10 per 
 Mobs the user describes as living somewhere ("in forests", "at night in caves") get a `spawn`; otherwise null (egg only).
 Every mob gets a `body_plan`, the base rig its model starts from: humanoids (orcs, goblins, zombies, villagers, golems, knights) biped;
 four-legged animals (wolves, deer, cows, cats) quadruped; birds and bats bird; fish, whales, sharks fish; snakes and worms serpent;
-spiders, beetles, crabs and other many-legged creatures insect. Pick by the creature's body, not its size; omit only when unsure (quadruped).
+spiders, beetles, crabs and other many-legged creatures insect; apes, gorillas, chimpanzees and other knuckle-walking primates primate. Pick by the creature's body, not its size; omit only when unsure (quadruped).
+Behaviors (`"behaviors"` in the spec, a list; empty when the idea has only content): each is `{{"title": "3-60 characters, plain", "description": "what must happen, in the user's terms, with EVERY number the user gave (80 health, 4 blocks, deepslate but not obsidian)",
+"acceptance": ["1-12 observable criteria, each provable by one server-side GameTest, e.g. 'a villager hit by a runner converts into one of the three variants after the infection time'"], "affects": ["identifiers of the mobs/items/sets it is about"], "after": ["titles of behaviors it builds on"]}}`.
+Group related mechanics into 3-6 coherent behaviors (a whole infection system in one, a ranged attack with its effect in another, one mob's block-breaking and jumping in another), never one per sentence and never one giant card.
+Order them so that foundations come first and use `after` for the rest. Do not invent mechanics the user did not describe; where the user left a number open (infection time, damage), pick a sensible one, put it in the description
+and list it under `assumptions`. Mobs a behavior is about must still be listed under `mobs` with their stats; a behavior never replaces the mob.
 Art direction (`art`): every feature, tool/armor set (material), food and mob takes an `"art"` object so the designer paints something specific to it, never a stock icon:
 `{{"concept": "one or two sentences: what it is and how it looks, in this mod's world", "tags": ["6-10 concrete visual cues"], "silhouette": "optional shape phrase"}}`.
 A material's `art` also carries `"pieces": {{"sword": "its own sentence", "pickaxe": "...", "helmet": "...", ...}}` with a different shape idea for every piece of the set.
@@ -103,6 +108,7 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "tab": proposal.get("tab"), "tab_icon": proposal.get("tab_icon"), "mobs": proposal.get("mobs", []),
         "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "sounds": proposal.get("sounds", []), "ores": proposal.get("ores", []), "enchantments": proposal.get("enchantments", []),
         "structures": proposal.get("structures", []), "biomes": proposal.get("biomes", []), "dimensions": proposal.get("dimensions", []),
+        "behaviors": proposal.get("behaviors", []),
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],
     }
     spec = read_spec(raw)

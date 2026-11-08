@@ -196,3 +196,19 @@ rig and tells the designer to feed `orchestra_paint_skin` from it; the armor lay
 `orchestra_check_sprites` tool and `install_sprites`: it is rejected when its silhouette overlaps the generator's own template for its kind by 85% or more, when it shares 85% of its pixels with another sprite of the
 batch, or when it has fewer than four colours, and the reason names the art direction it should have shown. The placeholders (tinted templates) are replaced automatically: `generate_project` ends by calling `models.ensure_initial_sprites`, which creates one `SPRITES:1` designer task covering every item, block, tool, armor piece and food (minus what the user uploaded) plus the worn-armor layers of textured sets, and Autopilot dispatches it like a MODEL task (`orchestrate` also plans it for projects generated before this existed). A SPRITES run that fails or is left half done never stops Autopilot: icons are cosmetic, the event `SPRITES_NOT_DONE` records it and the build and the game test go on. The guidance lists the icon step after models and approvals. The UI button is now **Redesign icons** (and a **Redesign** button per item row): the dialog asks what should change, `request_sprites` refuses to repaint icons the designer already painted without a note, and the designer receives the note, the previous sprites with `models/sprites/paint.py` to edit rather than start over, and every earlier note for those icons, newest first (the same loop as the mobs' feedback).
 
+## Behaviors: mechanics the generator cannot express
+
+The spec has a `behaviors` list. The interpreter writes one entry for every mechanic that is not content: a mob infecting or converting others, a projectile, a new status effect, custom targeting, mobs that break
+blocks, a boss phase. Each is `{title, description, acceptance[], affects[], after[]}`: the description carries every number the user gave, each acceptance criterion is something one server-side GameTest can prove,
+`affects` names the mobs/items/sets it is about and `after` the behaviors it builds on. The prompt asks for 3-6 coherent behaviors, never one per sentence. `validate_behaviors` enforces the shape (title 3-60
+characters, a description of 20-1500, 1-12 criteria, known identifiers, a card id that does not collide with an entity, no dependency loops, at most 12). The user reads them in the Spec tab and approves them with the rest.
+
+`generate_project` ends by calling `modmap.plan_behaviors`, which turns each one into the same custom card and `FEATURE:<id>` coder task that the Mod Map's "add a feature" creates (`request_feature`), in
+dependency order: the task of a behavior with `after` is BACKLOG until its predecessors are DONE. The coder gets the description, the criteria, the mobs it builds on, the instruction to write one GameTest per
+criterion, and its knowledge skills (events, effects, mixins, gametest). Autopilot dispatches them like any coder task. A behavior that fails to plan records `BEHAVIORS_NOT_PLANNED` and never fails the generation.
+`tests/fixtures/infectious_zombies.*` hold a real user prompt and the interpretation it should get; the tests check that this proposal is valid and plans correctly, and it is the yardstick for what a real
+interpreter returns.
+
+Body plans gained `primate`: a hunched torso (rest pitch on `body`), long arms that are front legs (`*_arm_lower` flexes in the swing, so the gait gate judges them like knees), short legs, a
+head set back, and a windup-and-slam attack. The gait check treats the highest point of a pendulum-like limb as a set of near-peak samples and passes a foot that is clearly higher while travelling forward.
+
