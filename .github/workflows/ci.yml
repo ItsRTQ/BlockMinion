@@ -57,8 +57,23 @@ jobs:
         run: npm ci
         working-directory: tests/ui
       - name: Dialogs, refresh safety, activity banner, Mobs and Items tours
-        run: npm test
+        run: npm run test:ci
         working-directory: tests/ui
+      - name: Show the failures as annotations
+        if: failure()
+        shell: bash
+        working-directory: tests/ui
+        run: |
+          python - <<'PY'
+          import re
+          lines = open("tap.log", encoding="utf8", errors="replace").read().splitlines() if __import__("os").path.exists("tap.log") else ["(no tap.log: the tests did not start)"]
+          shown = 0
+          for i, line in enumerate(lines):
+              if line.startswith("not ok") or re.search(r"^\s+(error|code|expected|actual):", line) or "timed out" in line or "did not start" in line or "exited" in line:
+                  print("::error title=ui test::" + line.strip()[:380].replace("%", "%25")); shown += 1
+              if shown >= 40: break
+          print("::error title=ui tap tail::" + " | ".join(l.strip() for l in lines[-12:])[:900].replace("%", "%25"))
+          PY
 
   fabric-build:
     name: Build examples/crystal_example (JDK 25, clean runner)

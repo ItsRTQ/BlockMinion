@@ -12,3 +12,4 @@ tests/v1/results/*
 
 # the UI tests' browser simulator
 tests/ui/node_modules/
+tests/ui/tap.log

@@ -10,18 +10,19 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 const STATIC = path.join(ROOT, 'src/mod_orchestra/static');
 const PY = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const SLOW = process.env.CI ? 4 : 1;   // a 2-CPU runner is several times slower than a laptop
 
 const freePort = () => new Promise((resolve, reject) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const {port} = s.address(); s.close(() => resolve(port)); }); s.on('error', reject); });
 
 export async function startServer() {
   const home = mkdtempSync(path.join(tmpdir(), 'orchestra-ui-'));
   const env = {...process.env, CRAFTCTL_HOME: home, BROWSER: 'true', PYTHONUNBUFFERED: '1'};
-  execFileSync(PY, [path.join(ROOT, 'tests/ui/seed.py')], {env, cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit']});
+  execFileSync(PY, [path.join(ROOT, 'tests/ui/seed.py')], {env, cwd: ROOT, stdio: ['ignore', 'inherit', 'inherit']});
   const port = await freePort();
   const child = spawn(PY, ['-m', 'mod_orchestra.cli', 'ui', '--port', String(port)], {env, cwd: ROOT});
   let log = '';
   const url = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('the UI server did not start:\n' + log)), 30000);
+    const timer = setTimeout(() => reject(new Error('the UI server did not start:\n' + log)), 30000 * SLOW);
     child.stdout.on('data', (d) => { log += d; const m = log.match(/Local app URL: (\S+)/); if (m) { clearTimeout(timer); resolve(m[1]); } });
     child.stderr.on('data', (d) => { log += d; });
     child.on('exit', (c) => { clearTimeout(timer); reject(new Error(`the UI server exited (${c}):\n${log}`)); });
@@ -63,7 +64,7 @@ export async function loadPage(server, {overrides = {}, settle = true} = {}) {
     hidden: (sel) => doc.querySelector(sel).classList.contains('hidden'),
     click: (el) => el.dispatchEvent(new w.MouseEvent('click', {bubbles: true, cancelable: true})),
     key: (el, key, extra = {}) => el.dispatchEvent(new w.KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...extra})),
-    waitFor: async (cond, what = 'the page', ms = 6000) => { const end = Date.now() + ms; for (;;) { const v = cond(); if (v) return v; if (Date.now() > end) throw new Error('timed out waiting for ' + what); await sleep(25); } },
+    waitFor: async (cond, what = 'the page', ms = 6000 * SLOW) => { const end = Date.now() + ms; for (;;) { const v = cond(); if (v) return v; if (Date.now() > end) throw new Error('timed out waiting for ' + what); await sleep(25); } },
     toasts: () => { const t = doc.getElementById('toast'); return t.classList.contains('hidden') ? '' : t.textContent; },
     close: () => w.close(),
   };
