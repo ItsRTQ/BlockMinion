@@ -23,3 +23,9 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 - Icons: design the icons of items added after generation automatically too (today they get the placeholder until Redesign is used), a per-project switch to turn the automatic first design off, and a before/after view of a redesign in the contact sheet.
 - Behaviors: edit or add a behavior from the Spec tab (today the answer box asks the interpreter to change it, and the Mod Map adds cards by hand after generation), a cost estimate per behavior before approving, and a spec with only behaviors (a mod with no generated content) once the generator supports an empty scaffold.
 
+## Creative freedom: what is left
+- Painter as a toolbox of generic operations (fill, noise, gradient, scatter, line) with no presets and no suggested values; today it is presets (`flesh`, `rotten`, `hide`, `cloth`) plus free hand painting.
+- Mood dials and reference images in the icons and armor redesign dialogs (today only mobs have them).
+- A way to measure how different two or three designs of the same prompt are (proportions, palette) so variety can be checked and not only hoped for.
+- Proportion dials (head size, shoulder and limb mass, hunch) over the existing body plans, if the scaffold turns out to be the main reason designs look alike.
+

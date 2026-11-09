@@ -283,3 +283,11 @@ button.danger{background:linear-gradient(135deg,#ff5c7a,#c2304f);color:#fff;bord
 .flash{animation:flashfocus 1.6s ease-out 1}@keyframes flashfocus{0%{box-shadow:0 0 0 2px var(--accent),0 0 24px rgba(var(--cyan-rgb),.5)}100%{box-shadow:0 0 0 0 transparent}}
 @media (prefers-reduced-motion:reduce){.activity-pill.running .act-dot,.proj .pwork.running,.flash{animation:none}}
 
+/* ---- redesign options of a mob (all optional) ---- */
+.redesign-options{margin:8px 0;border:1px dashed var(--line-2);border-radius:var(--radius-s);padding:6px 10px}.redesign-options summary{cursor:pointer;color:var(--info)}
+.opt-field{display:flex;flex-direction:column;gap:4px;margin:8px 0}.take-choice{display:flex;gap:6px;align-items:flex-start;margin:4px 0;cursor:pointer}.take-choice span{font-size:13px}
+.mood-dial{display:grid;grid-template-columns:130px 1fr 36px 28px;gap:8px;align-items:center;margin:4px 0}.mood-name{font-family:var(--mono);font-size:12px}.mood-dial output{font-family:var(--mono);font-size:12px;text-align:right}
+.mood-add{display:flex;gap:6px;margin-top:6px}.mood-add input{flex:1}
+.ref-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.ref-thumb{position:relative}.ref-thumb img{width:84px;height:84px;object-fit:cover;border:1px solid var(--line-2);border-radius:2px;cursor:zoom-in}.ref-thumb button{position:absolute;top:2px;right:2px}
+.design-notes{margin:8px 0}.design-notes ol{margin:6px 0 6px 18px;padding:0}.design-notes li{margin:3px 0;font-size:13px;color:var(--dim)}.design-notes li.chosen{color:var(--text);font-weight:600}
+
