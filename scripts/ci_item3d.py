@@ -25,5 +25,69 @@ anim = {"format_version": "1.8.0", "animations": {f"animation.{item}.idle": {"lo
 (d / f"{item}.png").write_bytes(png); (d / f"{item}_render.png").write_bytes(png); (d / f"{item}.bbmodel").write_text("{}")
 out = install_item3d(store, pid, task, item, run_id="ci-item3d", actor="ci")
 print("item3d installed:", out["installed"], "animated:", out["animated"], "coder:", out["wire_task"])
+# The coder's recipe for actions, filled in as a coder would (not registered): Gradle proves the helpers and the recipe compile.
+java = ws / "src/main/java/com/example/cimod/gear/CiActionItem.java"; java.parent.mkdir(parents=True, exist_ok=True)
+java.write_text("""package com.example.cimod.gear;
+
+import com.example.cimod.ModMain;
+import com.example.cimod.client.Item3DGeoRenderer;
+import com.example.cimod.model3d.Item3DActions;
+import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import software.bernie.geckolib.animatable.GeoItem;
+import software.bernie.geckolib.animatable.client.GeoRenderProvider;
+import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
+import software.bernie.geckolib.animation.AnimatableManager;
+import software.bernie.geckolib.util.GeckoLibUtil;
+import java.util.function.Consumer;
+
+public class CiActionItem extends Item implements GeoItem {
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
+    public CiActionItem(Properties properties) { super(properties); Item3DActions.init(this); }
+
+    @Override
+    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
+        Item3DActions.controllers(this, controllers, "ci_sword", true, "use", "attack");
+    }
+
+    @Override
+    public AnimatableInstanceCache getAnimatableInstanceCache() { return cache; }
+
+    @Override
+    public void createGeoRenderer(Consumer<GeoRenderProvider> consumer) {
+        consumer.accept(new GeoRenderProvider() {
+            private Item3DGeoRenderer<CiActionItem> renderer;
+            @Override
+            public BlockEntityWithoutLevelRenderer getGeoItemRenderer() {
+                if (renderer == null) renderer = new Item3DGeoRenderer<>(ModMain.MOD_ID, "ci_sword");
+                return renderer;
+            }
+        });
+    }
+
+    @Override
+    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+        ItemStack stack = player.getItemInHand(hand);
+        Item3DActions.trigger(this, player, stack, "use");
+        return InteractionResultHolder.success(stack);
+    }
+
+    @Override
+    public boolean hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
+        Item3DActions.trigger(this, attacker, stack, "attack");
+        return super.hurtEnemy(stack, target, attacker);
+    }
+}
+""")
+from mod_orchestra.fabric import accept_changes
+accept_changes(ws, run_id="ci-recipe", actor="ci", changed=[str(java.relative_to(ws)).replace("\\", "/")])
+print("recipe class written:", java.relative_to(ws))
 if out["wire_task"]:
     sys.exit("the controller could not wire a freshly generated project by itself")

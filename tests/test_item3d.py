@@ -169,6 +169,66 @@ class Install(Base):
         self.assertTrue(out["task"].startswith("m_mod:ITEM3D:moon_sword"))
 
 
+class Actions(Base):
+    def deliver_anims(self, anims):
+        self.deliver()
+        (self.ws / model3d.DIR / "moon_sword.animation.json").write_text(json.dumps({"format_version": "1.8.0", "animations": anims}))
+
+    KEY = {"blade": {"rotation": {"0.0": {"vector": [0, 0, 0]}, "0.2": {"vector": [-20, 0, 0]}}}}
+
+    def test_actions_are_found_and_named_or_refused(self):
+        self.deliver_anims({"animation.moon_sword.use": {"loop": False, "animation_length": 0.3, "bones": self.KEY},
+                            "animation.moon_sword.reload": {"animation_length": 1, "bones": self.KEY}})
+        info = model3d.validate_item3d(self.ws, "moon_sword")
+        self.assertEqual((info["actions"], info["animated"]), (["reload", "use"], False))
+        for anims, why in (({"animation.moon_sword.use": {"loop": True, "bones": self.KEY}}, "loops"),
+                           ({"animation.other.wobble": {"bones": self.KEY}}, "name it animation.moon_sword")):
+            with self.subTest(why=why):
+                self.deliver_anims(anims)
+                with self.assertRaisesRegex(InputError, why):
+                    model3d.validate_item3d(self.ws, "moon_sword")
+
+    def test_actions_go_to_a_coder_with_the_recipe(self):
+        tid = self.task(); self.deliver_anims({"animation.moon_sword.idle": {"loop": True, "bones": self.KEY},
+                                               "animation.moon_sword.attack": {"bones": self.KEY}, "animation.moon_sword.reload": {"bones": self.KEY}})
+        out = dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
+        self.assertEqual(out["task_state"], "DONE", out.get("error"))
+        anim = self.tasks("ITEM3DANIM")
+        self.assertEqual([(t["role"], t["state"]) for t in anim], [("coder", "READY")])
+        brief = self.store.task_instructions(anim[0]["id"])
+        self.assertIn('Item3DActions.controllers(this, controllers, "moon_sword", true, "attack", "reload");', brief)
+        self.assertIn('new Item3DGeoRenderer<>(ModMain.MOD_ID, "moon_sword")', brief)
+        self.assertIn('hurtEnemy(...)): Item3DActions.trigger(this, attacker, stack, "attack")', brief)
+        self.assertIn('at the moment its name describes', brief)
+        self.assertEqual(json.loads((self.assets / "model3d/index.json").read_text())["items"][0]["actions"], ["attack", "reload"])
+        for name in ("model3d/Item3DActions.java", "client/Item3DGeoRenderer.java"):
+            self.assertTrue((self.ws / "src/main/java/com/x/m" / name).is_file(), name)
+        self.assertIn("instanceof software.bernie.geckolib.animatable.GeoItem", (self.ws / "src/main/java/com/x/m/client/Model3DClient.java").read_text())
+        # a new model before the coder starts rewrites the same brief
+        tid = self.task(); self.deliver_anims({"animation.moon_sword.use": {"bones": self.KEY}})
+        dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
+        self.assertEqual(len(self.tasks("ITEM3DANIM")), 1)
+        self.assertIn('false, "use");', self.store.task_instructions(anim[0]["id"]))
+
+    def test_no_actions_no_coder(self):
+        tid = self.task(); self.deliver()
+        dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
+        self.assertEqual(self.tasks("ITEM3DANIM"), [])
+
+    def test_an_older_support_file_is_updated_unless_someone_edited_it(self):
+        tid = self.task(); self.deliver(); dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
+        client = self.ws / "src/main/java/com/x/m/client/Model3DClient.java"
+        old = client.read_text().replace("                if (item instanceof software.bernie.geckolib.animatable.GeoItem) continue;   // it draws itself (Item3DGeoRenderer) and plays its actions\n", "")
+        client.write_text(old); accept_changes(self.ws, run_id="older", actor="controller", changed=["src/main/java/com/x/m/client/Model3DClient.java"])
+        from mod_orchestra.spec import read_spec
+        written, coder = model3d.ensure_support(self.ws, read_spec(self.store.project("m_mod")["spec"]))
+        self.assertIn("src/main/java/com/x/m/client/Model3DClient.java", written); self.assertEqual(coder, [])
+        self.assertIn("instanceof", client.read_text())
+        client.write_text(old + "// hand edit\n")
+        written, coder = model3d.ensure_support(self.ws, read_spec(self.store.project("m_mod")["spec"]))
+        self.assertEqual(len(coder), 1); self.assertIn("// hand edit", client.read_text())
+
+
 class Projectile(Base):
     SPRITE = "src/main/resources/assets/m_mod/textures/item/acid_glob.png"
 

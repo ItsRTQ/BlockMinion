@@ -462,7 +462,7 @@ async function make3d(p, f) {
   const cost = est.runs ? `Your ${est.runs} earlier designer run(s) averaged $${est.avg_usd} and ${est.avg_minutes} min (the most expensive: $${est.max_usd}). A 3D model usually takes more than an icon.`
                         : "There are no earlier designer runs to estimate from yet; a 3D model takes more than an icon.";
   const notes = await formBox({ title: `3D model — ${f.label}`, message: (f.projectile ? `The designer builds a 3D model of ${f.label} that flies nose first; then a coder switches its renderer. ` : `The designer builds a 3D model of ${f.label}: in the hand, on the ground and in frames it replaces the flat icon; the inventory keeps the icon. `) + cost,
-    fields: [{ name: "notes", label: f.model3d ? "What should change in the current model?" : "Notes for the designer (optional)", value: "", multiline: true }], ok: "Ask the designer" });
+    fields: [{ name: "notes", label: f.model3d ? "What should change in the current model? (and what should animate when it is used, hits or is drawn)" : "Notes for the designer (optional): how it looks, and what should animate when it is used, hits or is drawn", value: "", multiline: true }], ok: "Ask the designer" });
   if (notes == null) return;
   const out = f.projectile ? await api(`/api/project/${p.id}/proj3d`, { projectile: f.identifier, notes: (notes.notes || "").trim() })
                            : await api(`/api/project/${p.id}/item3d`, { item: f.identifier, notes: (notes.notes || "").trim() });
