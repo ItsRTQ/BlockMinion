@@ -359,6 +359,102 @@ def set_mob_drops(store: Store, pid: str, mob_id: str, drops: list) -> dict:
     return out
 
 
+_SCALE_CALL = re.compile(r"\.add\(Attributes\.SCALE,\s*[^()]*\)")
+_SPEED_CALL = re.compile(r"\.add\(Attributes\.MOVEMENT_SPEED,\s*[^()]*\)")
+
+
+def patch_scale(java: str, scale: float) -> str | None:
+    """Set the scale in an entity's createAttributes() chain: change the existing `.add(Attributes.SCALE, …)`, insert one right
+    after `.add(Attributes.MOVEMENT_SPEED, …)` (inside the chain, so it works wherever the closing `;` is), or drop it for 1.0.
+    None when the file does not have exactly the shape the generator writes (then the coder does it)."""
+    from .geckolib import scale_attribute_line
+    existing = _SCALE_CALL.findall(java)
+    if len(existing) > 1:
+        return None
+    if existing:
+        if float(scale) == 1.0:
+            return re.sub(r"\r?\n[ \t]*" + _SCALE_CALL.pattern, "", java, count=1)
+        return _SCALE_CALL.sub(scale_attribute_line(scale).strip(), java, count=1)
+    if float(scale) == 1.0:
+        return java
+    if len(_SPEED_CALL.findall(java)) != 1:
+        return None
+    newline = "\r\n" if "\r\n" in java else "\n"
+    return _SPEED_CALL.sub(lambda mt: mt.group(0) + newline + scale_attribute_line(scale), java, count=1)
+
+
+def set_mob_scale(store: Store, pid: str, mob_id: str, scale: float) -> dict:
+    """Resize a mob without redesigning it: one value, vanilla's scale attribute, sizes the model (GeckoLib draws it with
+    getScale()) and the hitbox together; geometry and skin are not touched. Before generation it is a spec edit. After
+    generation the entity class is patched as a user revision, but only when it is exactly what the manifest records (the
+    generator's file or an accepted revision) and has the generated attribute chain: otherwise a coder task makes the
+    one-line change, so a coder's work on the class is never overwritten and an unreported edit is never laundered."""
+    from dataclasses import replace as _rep
+    import hashlib
+    from .spec import read_spec, validate_spec_content, SCALE_MIN, SCALE_MAX
+    from .geckolib import class_name, scale_attribute_line
+    from .content import GENERATED_STATUSES
+    from .fabric import current_hashes
+    try:
+        scale = round(float(scale), 4)
+    except (TypeError, ValueError):
+        raise InputError(f"Scale must be a number between {SCALE_MIN} and {SCALE_MAX}") from None
+    proj = store.project(pid)
+    spec = read_spec(proj["spec"])
+    mob = next((m for m in spec.mobs if m.identifier == mob_id), None)
+    if mob is None:
+        raise InputError(f"Unknown mob {mob_id!r}; the project has {[m.identifier for m in spec.mobs]}")
+    out = {"mob": mob_id, "scale": scale, "previous": float(mob.scale)}
+    if scale == float(mob.scale):
+        return out | {"changed": False}
+    new_mob = _rep(mob, scale=scale)
+    new_spec = _rep(spec, mobs=[new_mob if m.identifier == mob_id else m for m in spec.mobs])
+    validate_spec_content(new_spec)
+    if proj["status"] not in GENERATED_STATUSES:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"scale of {mob_id}: {mob.scale} -> {scale}")
+        return out | {"changed": True, "spec_state": "DRAFT", "how": "spec edit"}
+    with store.tx() as con:
+        con.execute("UPDATE projects SET spec_json=? WHERE id=?", (json.dumps(new_spec.to_dict(), sort_keys=True), pid))
+        store.event(con, pid, "user", "SPEC_CHANGED", {"reason": f"scale of {mob_id}: {mob.scale} -> {scale}"})
+    ws = Path(proj["root"])
+    rel = f"src/main/java/{spec.package.replace('.', '/')}/entity/{class_name(mob)}Entity.java"
+    target = ws / rel
+    manifest = json.loads((ws / ".mod-orchestra/generation-manifest.json").read_text(encoding="utf8"))
+    known = current_hashes(manifest).get(rel)
+    raw = target.read_bytes() if target.is_file() else None
+    patched = None
+    if raw is not None and known == hashlib.sha256(raw).hexdigest():
+        patched = patch_scale(raw.decode("utf8"), scale)
+    from .dispatch import _source_changed, _reopen_build
+    if patched is not None:
+        target.write_bytes(patched.encode("utf8"))
+        accepted = accept_changes(ws, run_id=f"scale:{mob_id}", actor="user", changed=[rel])
+        _source_changed(store, pid); _reopen_build(store, pid)
+        store.add_event(pid, "user", "MOB_SCALED", {"mob": mob_id, "scale": scale, "file": rel, "how": "patched"})
+        return out | {"changed": True, "file": rel, "accepted": accepted["accepted"], "how": "patched",
+                      "note": "Rebuild to apply. Mobs already in a world keep their old size (Minecraft saves it per mob); new spawns use the new one."}
+    reason = ("the file is missing" if raw is None else "it has edits the manifest does not record" if known != hashlib.sha256(raw).hexdigest()
+              else "its createAttributes() is not the generated chain")
+    change = ("remove the `.add(Attributes.SCALE, …)` call from the chain" if scale == 1.0 else
+              f"put `{scale_attribute_line(scale).strip()}` in the attribute builder chain (change the existing SCALE call if there is one)")
+    instructions = [f"Resize the mob {mob.label}: in {rel}, inside createAttributes(), {change}.",
+                    "Vanilla's scale attribute sizes the hitbox and GeckoLib draws the model with it: do not touch the renderer, ModMain, the geometry or the texture,",
+                    "and do not change anything else in the class.",
+                    "Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0; report the entity file as changed."]
+    base = f"{pid}:SCALE:{mob_id}"
+    tasks = [t for t in store.tasks(pid) if t["id"] == base or t["id"].startswith(base + ":")]
+    waiting = next((t for t in tasks if t["state"] in ("BACKLOG", "READY")), None)
+    task_id = waiting["id"] if waiting else (base if not tasks else f"{base}:{len(tasks) + 1}")
+    if waiting is None:
+        store.add_task(pid, task_id, "coder", f"Resize mob {mob.label} to scale {scale}")
+    with store.tx() as con:
+        con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
+    store.add_event(pid, "user", "MOB_SCALED", {"mob": mob_id, "scale": scale, "file": rel, "how": "coder task", "task": task_id, "why": reason})
+    return out | {"changed": True, "file": rel, "how": "coder task", "task": task_id, "why": f"the entity class was not patched: {reason}",
+                  "next": {"action": "dispatch", "payload": {"task": task_id}}}
+
+
 # ---------------------------------------------------------------------------------------------
 # SPRITES task: the designer paints 16x16 item/block sprites by script (path A). The controller
 # validates (size, transparency, not flat) and installs them over the tinted placeholders.

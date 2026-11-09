@@ -39,6 +39,12 @@ def held_item_for(spec: Spec, m: Mob) -> str | None:
     return None
 
 
+def scale_attribute_line(scale: float) -> str:
+    """The one line that sizes a mob: vanilla scales the hitbox from it and GeckoLib's renderer draws the model with
+    LivingEntity.getScale(), so nothing else (renderer, ModMain, geometry, texture) changes."""
+    return f"            .add(Attributes.SCALE, {float(scale)})"
+
+
 def entity_java(spec: Spec, m: Mob) -> str:
     cls = class_name(m) + "Entity"
     hostile = m.behavior == "hostile"
@@ -46,6 +52,8 @@ def entity_java(spec: Spec, m: Mob) -> str:
     base = "Monster" if hostile else "PathfinderMob"
     attrs = ("Monster.createMonsterAttributes()" if hostile else "Mob.createMobAttributes()")
     attr_lines = [f"            .add(Attributes.MAX_HEALTH, {float(m.health)})", f"            .add(Attributes.MOVEMENT_SPEED, {float(m.speed)})"]
+    if float(m.scale) != 1.0:   # right after the speed: the same place models.patch_scale puts it in a generated project
+        attr_lines.append(scale_attribute_line(m.scale))
     if hostile or neutral:
         attr_lines.append(f"            .add(Attributes.ATTACK_DAMAGE, {float(m.attack_damage)})")
     goals = ["        this.goalSelector.addGoal(0, new FloatGoal(this));"]

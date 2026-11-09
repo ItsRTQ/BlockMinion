@@ -109,6 +109,9 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--behavior", required=True, help="the behavior's card id, e.g. infection"); a.add_argument("--mobs", nargs="+", required=True)
     a = sub.add_parser("paint-skin", help="USER-ONLY, no agent: paint models/<mob>.png from a skin recipe file (palette, zones, surface, face); --install also makes it the mob's texture in the game")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--recipe", required=True, type=Path, help="a JSON file: {palette, zones?, surface?, face?, scale?, seed?}"); a.add_argument("--install", action="store_true")
+    a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
+                       "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
     a = sub.add_parser("show-art", help="The effective art direction of every entity of a project (written or derived from the theme)"); a.add_argument("project")
     a = sub.add_parser("set-body-plan", help="USER-ONLY (before generate): change the base rig of existing mobs (all when --mobs is omitted); the spec returns to DRAFT")
     a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect", "primate"]); a.add_argument("--mobs", nargs="*", default=None)
@@ -331,6 +334,9 @@ def dispatch(args: argparse.Namespace) -> object:
         from .content import paint_mob_skin
         import json as _json
         return paint_mob_skin(store, args.project, args.mob, _json.loads(args.recipe.read_text(encoding="utf8")), install=args.install)
+    if args.command == "edit-model":
+        from .models import set_mob_scale
+        return set_mob_scale(store, args.project, args.mob, args.scale)
     if args.command == "show-art":
         from .content import list_art
         return list_art(store, args.project)

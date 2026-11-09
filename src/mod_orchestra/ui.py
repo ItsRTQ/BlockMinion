@@ -349,6 +349,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "open-model":
                         from .feedback import open_in_blockbench
                         return open_in_blockbench(store, pid, str(payload.get("mob", "")))
+                    if op == "mob-scale":
+                        from .models import set_mob_scale
+                        return set_mob_scale(store, pid, str(payload.get("mob", "")), payload.get("scale"))
                     if op == "mob-drops":
                         from .models import set_mob_drops
                         return set_mob_drops(store, pid, str(payload.get("mob", "")), list(payload.get("drops") or []))
