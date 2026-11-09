@@ -134,11 +134,12 @@ class TestPainter(unittest.TestCase):
         self.assertTrue(any(x < x0 + 5 for x, _ in bright) and any(x > x1 - 6 for x, _ in bright))   # one on each side
         self.assertTrue(report["face_check"]["ok"])
 
-    def test_feature_colours_are_pushed_away_from_the_skin(self):
+    def test_feature_colours_are_pushed_away_from_what_surrounds_them(self):
         png, report = self.paint(face={"eyes": "#5c8040", "mouth": "#5a7a3c"})                      # both almost the skin colour
         self.assertIn("eyes", report["adjusted"]); self.assertIn("mouth", report["adjusted"])
         self.assertTrue(report["face_check"]["ok"], report["face_check"])
-        self.assertGreater(abs(skin.luminance(skin.parse_color(report["face"]["eyes"])) - skin.luminance(skin.parse_color("#5c7f3a"))), 0.4)
+        socket = skin.scale_color(skin.parse_color(report["face"]["mouth"]), 0.9)                    # the eyes sit in a dark socket made of the mouth colour
+        self.assertGreaterEqual(skin.luminance(skin.parse_color(report["face"]["eyes"])) - skin.luminance(socket), 0.44)
 
     def test_face_can_be_skipped_and_calm_works(self):
         self.assertIsNone(self.paint(face=False)[1]["face"])
@@ -152,6 +153,14 @@ class TestPainter(unittest.TestCase):
                 self.paint(**kw)
         with self.assertRaises(InputError):
             skin.paint_skin({"resolution": {"width": 64, "height": 64}, "elements": [], "groups": [], "outliner": []}, palette=PALETTE)
+
+    def test_ensure_contrast_goes_where_the_feature_belongs(self):
+        mid = (92, 127, 58)                                                                              # a mid-tone skin: both directions have room
+        mouth, _ = skin.ensure_contrast((90, 122, 60), mid, 0.35, "dark"); eyes, _ = skin.ensure_contrast((90, 122, 60), mid, 0.35, "light")
+        self.assertLess(skin.luminance(mouth), skin.luminance(mid) - 0.34); self.assertGreater(skin.luminance(eyes), skin.luminance(mid) + 0.34)
+        very_dark = (20, 16, 18)                                                                         # no room to go darker: a "dark" request falls back to light
+        self.assertGreater(skin.luminance(skin.ensure_contrast((22, 18, 20), very_dark, 0.35, "dark")[0]), 0.35)
+        self.assertEqual(skin.ensure_contrast((10, 10, 10), (240, 240, 240), 0.35, "light")[0][0] < 100, True)  # and the same for a very light background
 
     def test_ensure_contrast(self):
         col, changed = skin.ensure_contrast((90, 128, 60), (92, 127, 58), 0.4)
@@ -250,3 +259,91 @@ class TestInstallReportsTheFace(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOrganicSurfaces(unittest.TestCase):
+    """Skin that looks like skin: mottling, veins, growths, scars, grime and a tone ramp, derived from each zone's own colour."""
+    FLESH = {"base": "#9d8878", "rags": "#4b4944"}
+
+    def paint(self, **kw):
+        kw.setdefault("palette", self.FLESH); kw.setdefault("seed", "x")
+        return skin.paint_skin(BIPED, **kw)
+
+    def hue(self, rgb):
+        import colorsys
+        return colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
+
+    def zone_pixels(self, png, bone, report=None):
+        w, h, rgba = skin.decode_png(png)
+        out = []
+        for c in [c for c in skin.box_cubes(BIPED) if c["bone"] == bone]:
+            for (x0, y0, x1, y1) in (tuple(n * 2 for n in r) for r in skin.face_rects(c).values()):
+                out += [tuple(rgba[(y * w + x) * 4:(y * w + x) * 4 + 3]) for y in range(y0, y1) for x in range(x0, x1)]
+        return out
+
+    def test_without_a_surface_nothing_changes_and_with_one_only_its_zone_does(self):
+        plain, _ = self.paint(face=False)
+        again, _ = self.paint(face=False)
+        self.assertEqual(plain, again)
+        organic, report = self.paint(face=False, zones=[{"bones": ["body"], "color": "base", "surface": "rotten"}])
+        self.assertNotEqual(plain, organic)
+        self.assertEqual(self.zone_pixels(plain, "left_leg"), self.zone_pixels(organic, "left_leg"))        # other zones are untouched
+        self.assertNotEqual(self.zone_pixels(plain, "body"), self.zone_pixels(organic, "body"))
+
+    def test_a_surface_brings_no_hue_of_its_own(self):
+        """Veins, undertones and growths come from the zone's colour: pale flesh stays flesh, green stays green."""
+        for base in ("#9d8878", "#5c7f3a", "#8a6f9c"):
+            png, _ = self.paint(palette={"base": base}, face=False, zones=[{"bones": ["body"], "color": "base", "surface": {"preset": "rotten", "blotches": 0.4}}])
+            hues = [self.hue(p) for p in self.zone_pixels(png, "body") if self.hue(p)[1] > 0.12]
+            want = self.hue(skin.parse_color(base))[0]
+            drift = sorted(min(abs(h[0] - want), 1 - abs(h[0] - want)) * 360 for h in hues)
+            self.assertLess(drift[len(drift) // 2], 40, f"{base}: the median hue moved {drift[len(drift) // 2]:.0f} degrees")
+
+    def test_the_surface_is_uneven_not_flat(self):
+        png, _ = self.paint(face=False, zones=[{"bones": ["body"], "color": "base", "surface": "flesh"}])
+        flat, _ = self.paint(face=False)
+        self.assertGreater(len(set(self.zone_pixels(png, "body"))), len(set(self.zone_pixels(flat, "body"))) * 2)
+
+    def test_the_ramp_shades_toward_violet_instead_of_plain_black(self):
+        ramp, _ = self.paint(face=False, zones=[{"bones": ["body"], "color": "base", "surface": {"ramp": True}}])
+        plain, _ = self.paint(face=False)
+        lean = lambda px: sum(p[2] / max(1, p[0]) for p in px) / len(px)                                   # blue against red
+        dark = lambda png: [p for p in self.zone_pixels(png, "body") if skin.luminance(p) < 0.38]
+        self.assertGreater(lean(dark(ramp)), lean(dark(plain)))
+
+    def test_deterministic_per_seed(self):
+        zones = [{"bones": ["body"], "color": "base", "surface": "rotten"}]
+        a, _ = self.paint(zones=zones); b, _ = self.paint(zones=zones); c, _ = self.paint(zones=zones, seed="other")
+        self.assertEqual(a, b); self.assertNotEqual(a, c)
+
+    def test_the_global_surface_and_the_per_zone_one(self):
+        png, _ = self.paint(face=False, surface="flesh", zones=[{"bones": ["*_leg*"], "color": "rags", "surface": "cloth"}])
+        plain, _ = self.paint(face=False)
+        self.assertNotEqual(self.zone_pixels(png, "head"), self.zone_pixels(plain, "head"))                  # head: no zone, the global default applies
+        self.assertNotEqual(self.zone_pixels(png, "left_leg"), self.zone_pixels(plain, "left_leg"))
+
+    def test_bad_surfaces_are_refused_with_the_options(self):
+        for bad, why in (("granite", "preset must be one of"), ({"mottle": 3}, "0 to 1"), ({"scars": 20}, "0 to 8"), ({"scars": 1.5}, "whole number"),
+                         ({"sparkle": 1}, "unknown option"), (42, "preset name"), ({"vein_color": "nope"}, "hex colour")):
+            with self.assertRaisesRegex(InputError, why, msg=str(bad)):
+                self.paint(face=False, surface=bad)
+
+    def test_a_grim_face_keeps_its_eyes_visible_on_pale_skin(self):
+        """Regression: eyes were compared with the skin, which pushed them toward black on pale flesh and swallowed them in their own sockets."""
+        png, report = self.paint(zones=[{"bones": ["body", "head"], "color": "base", "surface": "flesh"}], face={"style": "grim", "eyes": "#d6c46a", "mouth": "#1c1012"})
+        asked, got = skin.parse_color("#d6c46a"), skin.parse_color(report["face"]["eyes"])
+        self.assertGreaterEqual(skin.luminance(got), skin.luminance(asked) - 0.001)                                # lightened where there is room, never darkened
+        self.assertGreaterEqual(skin.luminance(got) - skin.luminance(skin.parse_color("#9d8878")), 0.29)           # and clear of the skin as well as of the socket
+        self.assertTrue(report["face_check"]["ok"], report["face_check"]); self.assertGreaterEqual(report["face_check"]["features"], 5)
+        self.assertEqual(report["face"]["style"], "grim")
+
+    def test_the_default_eyes_are_bright_on_any_skin(self):
+        for base in ("#f0d9c8", "#9d8878", "#2a2024"):
+            _, report = self.paint(palette={"base": base}, zones=[{"bones": ["head"], "color": "base"}], face={"style": "angry"})
+            eyes = skin.parse_color(report["face"]["eyes"]); socket = skin.scale_color(skin.parse_color(report["face"]["mouth"]), 0.9)
+            self.assertGreaterEqual(skin.luminance(eyes) - skin.luminance(socket), 0.4, base)
+
+    def test_the_tool_passes_surfaces_and_the_grim_face_through(self):
+        from mod_orchestra.mcp import TOOLS
+        props = next(t for t in TOOLS if t["name"] == "orchestra_paint_skin")["inputSchema"]["properties"]
+        self.assertIn("surface", props); self.assertIn("grim", props["face"]["description"])

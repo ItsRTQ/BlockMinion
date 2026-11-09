@@ -331,7 +331,8 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-art":
                         from .content import set_art
                         return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),
-                                       tags=payload.get("tags") or [], silhouette=str(payload.get("silhouette", "")))
+                                       tags=payload.get("tags") or [], silhouette=str(payload.get("silhouette", "")),
+                                       reference=str(payload.get("reference", "")), avoid=payload.get("avoid") or [])
                     if op == "rename-feature":
                         from .content import rename_feature
                         return rename_feature(store, pid, str(payload.get("identifier", "")), str(payload.get("label", "")))

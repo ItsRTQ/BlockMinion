@@ -459,6 +459,8 @@ function artLine(a) {
   for (const t of (a.tags || []).slice(0, 8)) tags.append(el("span", t, "art-tag"));
   tags.append(el("span", a.source === "derived" ? "auto from theme" : "written", "art-source " + a.source));
   wrap.append(tags);
+  if (a.reference) wrap.append(el("div", "like: " + a.reference, "art-ref"));
+  if ((a.avoid || []).length) wrap.append(el("div", "not: " + a.avoid.join(", "), "art-ref art-avoid"));
   return wrap;
 }
 // kind: item | block | food | mob | set (concept + visual cues) | tool | armor (one piece: its own concept)
@@ -468,11 +470,14 @@ async function editArt(pid, kind, identifier, onDone) {
   const fields = [{ name: "concept", label: "What it looks like, and why", multiline: true, rows: 4, value: a.source === "derived" ? "" : a.concept,
                     help: "One or two sentences, concrete: shapes, materials, wear. Empty = derive from the theme." }];
   if (!pieceOnly) fields.push({ name: "tags", label: "Visual cues", multiline: true, rows: 2, value: a.source === "derived" ? "" : (a.tags || []).join(", "),
-                                help: "Comma separated, e.g. serrated edge, bone teeth, hammered iron, rust red. Empty = derive from the theme." });
+                                help: "Comma separated, e.g. serrated edge, bone teeth, hammered iron, rust red. Empty = derive from the theme." },
+                              { name: "reference", label: "It should resemble", value: a.reference || "", help: "A creature or character the designer cannot see, e.g. the Tank from Left 4 Dead, a vanilla pig." },
+                              { name: "avoid", label: "It must NOT look like", value: (a.avoid || []).join(", "), help: "Comma separated, e.g. cartoon, bright saturated colours, stripes. This wins over every default." });
   const out = await formBox({ title: `Art direction: ${a.label || identifier}`, fields, ok: "Save art direction" });
   if (out === null) return;
   const tags = pieceOnly ? [] : (out.tags || "").split(",").map(x => x.trim()).filter(Boolean);
-  await api(`/api/project/${pid}/set-art`, { kind, identifier, concept: out.concept.trim(), tags, silhouette: a.silhouette || "" });
+  const avoid = pieceOnly ? [] : (out.avoid || "").split(",").map(x => x.trim()).filter(Boolean);
+  await api(`/api/project/${pid}/set-art`, { kind, identifier, concept: out.concept.trim(), tags, silhouette: a.silhouette || "", reference: pieceOnly ? "" : (out.reference || "").trim(), avoid });
   toast("Art direction saved", "ok");
   if (onDone) await onDone();
 }

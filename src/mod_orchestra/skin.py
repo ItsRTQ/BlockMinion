@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import math
+import random
 import re
 import struct
 import zlib
@@ -55,12 +57,15 @@ def scale_color(rgb, f: float):
     return tuple(max(0.0, min(255.0, c * f)) for c in rgb)
 
 
-def ensure_contrast(color, against, min_delta: float):
-    """Push `color` toward white or black (whichever is farther from `against`) until the lightness differs by >= min_delta."""
+def ensure_contrast(color, against, min_delta: float, prefer: str | None = None):
+    """Push `color` toward white or black until its lightness differs from `against` by >= min_delta. `prefer` ("light" or "dark") is the direction a feature
+    belongs in (eyes and teeth light, mouths and brows dark) and is used whenever there is room for it; without one, or without room, the farther end wins."""
     delta = luminance(color) - luminance(against)
     if abs(delta) >= min_delta:
         return tuple(color), False
-    target = (255, 255, 255) if luminance(against) < 0.5 else (12, 8, 8)
+    room_light, room_dark = 1.0 - luminance(against) >= min_delta, luminance(against) >= min_delta
+    go_light = (prefer == "light" and room_light) or (prefer == "dark" and not room_dark) or (prefer is None and luminance(against) < 0.5)
+    target = (255, 255, 255) if go_light else (12, 8, 8)
     for step in range(1, 21):
         candidate = mix(color, target, step / 20)
         if abs(luminance(candidate) - luminance(against)) >= min_delta:
@@ -243,6 +248,143 @@ def _noise(seed: str, *key) -> float:
     return int.from_bytes(h, "big") / 0x7FFFFFFF - 1.0
 
 
+# ---------------------------------------------------------------------------------------------------- organic surfaces
+# A zone can ask for a `surface`: what its material looks like up close. Every secondary colour (the undertone of the mottling, the veins, the growths, the grime)
+# is derived from the zone's own colour, so a surface never brings a hue of its own: a pale flesh gets violet veins, a green hide gets darker green ones.
+SURFACES = {
+    "flesh":  {"mottle": 0.35, "veins": 0.35, "blotches": 0.12, "scars": 1, "grime": 0.15, "ramp": True},      # living skin: uneven tone, thin veins, a few marks
+    "rotten": {"mottle": 0.55, "veins": 0.55, "blotches": 0.30, "scars": 2, "grime": 0.25, "ramp": True},      # diseased: strong mottling, dark veins, growths and sores
+    "hide":   {"mottle": 0.30, "streaks": 0.55, "scars": 1, "grime": 0.25, "ramp": True},                      # fur and leather: streaks along the body, scuffs
+    "cloth":  {"weave": 0.5, "mottle": 0.25, "tears": 2, "grime": 0.55, "ramp": False},                        # rags: thread, stains, holes, dirt rising from the bottom
+}
+SURFACE_UNIT = ("mottle", "veins", "blotches", "grime", "streaks", "weave")        # 0..1
+SURFACE_COUNT = ("scars", "tears")                                                 # 0..8 per face
+SURFACE_COLOUR = ("mottle_color", "vein_color", "blotch_color", "grime_color")
+
+
+def surface_options(spec, pal: dict):
+    """Validate a `surface` request (a preset name, or a dict with an optional `preset` and overrides) into plain options, or None."""
+    if spec in (None, False, ""):
+        return None
+    if isinstance(spec, str):
+        spec = {"preset": spec}
+    if not isinstance(spec, dict):
+        raise InputError(f"surface must be a preset name ({', '.join(SURFACES)}) or an object, got {spec!r}")
+    unknown = set(spec) - {"preset", "ramp", *SURFACE_UNIT, *SURFACE_COUNT, *SURFACE_COLOUR}
+    if unknown:
+        raise InputError(f"surface: unknown option(s) {sorted(unknown)}; the options are preset, ramp, {', '.join(SURFACE_UNIT + SURFACE_COUNT + SURFACE_COLOUR)}")
+    preset = spec.get("preset")
+    if preset is not None and preset not in SURFACES:
+        raise InputError(f"surface preset must be one of {', '.join(SURFACES)}, got {preset!r}")
+    opts = dict(SURFACES.get(preset, {}))
+    for key in SURFACE_UNIT:
+        if key in spec:
+            if not isinstance(spec[key], (int, float)) or not 0 <= spec[key] <= 1:
+                raise InputError(f"surface.{key} is a number from 0 to 1")
+            opts[key] = float(spec[key])
+    for key in SURFACE_COUNT:
+        if key in spec:
+            if not isinstance(spec[key], int) or isinstance(spec[key], bool) or not 0 <= spec[key] <= 8:
+                raise InputError(f"surface.{key} is a whole number from 0 to 8")
+            opts[key] = spec[key]
+    if "ramp" in spec:
+        opts["ramp"] = bool(spec["ramp"])
+    for key in SURFACE_COLOUR:
+        if key in spec:
+            opts[key] = _resolve(pal, spec[key], f"surface.{key}")
+    return opts
+
+
+def _rng(*key) -> random.Random:
+    return random.Random(int(hashlib.blake2b("|".join(map(str, key)).encode(), digest_size=8).hexdigest(), 16))
+
+
+def _lattice(key: str, ix: int, iy: int) -> float:
+    return int.from_bytes(hashlib.blake2b(f"{key}|{ix}|{iy}".encode(), digest_size=4).digest(), "big") / 0xFFFFFFFF
+
+
+def _vnoise(key: str, x: float, y: float, cx: float, cy: float | None = None) -> float:
+    """Smooth value noise in 0..1; the cell is cx wide and cy tall (streaks use a tall cell)."""
+    gx, gy = x / cx, y / (cy or cx)
+    ix, iy = math.floor(gx), math.floor(gy)
+    fx, fy = gx - ix, gy - iy
+    fx, fy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+    a, b, c, d = _lattice(key, ix, iy), _lattice(key, ix + 1, iy), _lattice(key, ix, iy + 1), _lattice(key, ix + 1, iy + 1)
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+
+
+def _ramp_colour(color, f: float):
+    """Shade with a hue shift instead of plain darkening: shadows lean cold and violet, lights lean warm."""
+    shadow = mix(scale_color(color, 0.52), (42, 34, 72), 0.34)
+    light = mix(scale_color(color, 1.12), (255, 226, 190), 0.16)
+    t = max(0.0, min(1.0, (f - 0.62) / (1.22 - 0.62)))
+    return mix(shadow, color, t / 0.5) if t < 0.5 else mix(color, light, (t - 0.5) / 0.5)
+
+
+def _blend(buf, x: int, y: int, color, alpha: float) -> None:
+    if 0 <= y < len(buf) and 0 <= x < len(buf[0]):
+        buf[y][x] = mix(buf[y][x], color, max(0.0, min(1.0, alpha)))
+
+
+def _decorate(buf, color, opts: dict, key: str, scale: int) -> None:
+    """Paint the surface details of one cube face into its pixel buffer (rows of RGB), deterministically for the key."""
+    h, w = len(buf), len(buf[0])
+    rng = _rng(key)
+    area = (w * h) / (scale * scale)                                               # in UV units
+    undertone = opts.get("mottle_color") or mix(color, (116, 72, 98), 0.38)
+    vein = opts.get("vein_color") or mix(scale_color(color, 0.6), (70, 56, 120), 0.45)
+    growth = opts.get("blotch_color") or mix(color, (128, 66, 84), 0.5)
+    grime = opts.get("grime_color") or mix(scale_color(color, 0.35), (34, 28, 20), 0.6)
+    for y in range(h):
+        for x in range(w):
+            c = buf[y][x]
+            if opts.get("mottle"):
+                n = 0.6 * _vnoise(key + "m1", x, y, 3 * scale) + 0.4 * _vnoise(key + "m2", x, y, 1.5 * scale)
+                c = mix(c, undertone, min(0.8, opts["mottle"] * max(0.0, n - 0.42) * 1.8))
+                c = scale_color(c, 1 + (n - 0.5) * 0.18 * opts["mottle"])
+            if opts.get("streaks"):
+                c = scale_color(c, 1 + (_vnoise(key + "s", x, y, 1.3 * scale, 7 * scale) - 0.5) * 0.4 * opts["streaks"])
+            if opts.get("weave") and scale >= 2:
+                c = scale_color(c, 1 - (0.06 if y % 3 == 0 else 0.0) * opts["weave"] - (0.04 if x % 3 == 0 else 0.0) * opts["weave"])
+            if opts.get("grime"):
+                g = opts["grime"] * ((y / h) ** 1.5) * (0.45 + 0.9 * _vnoise(key + "g", x, y, 2.5 * scale))
+                c = mix(c, grime, min(0.85, g))
+            buf[y][x] = c
+    for _ in range(round(opts.get("veins", 0) * area / 14)):                       # thin branching lines
+        x, y, a, length = rng.uniform(0, w), rng.uniform(0, h * 0.7), rng.uniform(0.9, 2.2), rng.randint(5, 12) * scale
+        branches = [(x, y, a, length, False)]
+        while branches:
+            x, y, a, length, forked = branches.pop()
+            for step in range(length):
+                _blend(buf, int(x), int(y), vein, 0.7)
+                x, y, a = x + math.cos(a), y + math.sin(a), a + rng.uniform(-0.45, 0.45)
+                if not forked and step == length // 2 and rng.random() < 0.6:
+                    branches.append((x, y, a + rng.choice((-0.8, 0.8)), length // 2, True))
+    for _ in range(round(opts.get("blotches", 0) * area / 9)):                     # growths: a darker rim, a body, a lit pixel
+        cx, cy, rx = rng.uniform(1, w - 1), rng.uniform(1, h - 1), max(1.3, rng.uniform(0.9, 2.0) * scale * 0.75)
+        ry = rx * 0.8
+        for yy in range(int(cy - ry) - 1, int(cy + ry) + 2):
+            for xx in range(int(cx - rx) - 1, int(cx + rx) + 2):
+                d = ((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2
+                if d <= 1:
+                    _blend(buf, xx, yy, growth if d < 0.55 else scale_color(growth, 0.7), 0.78 if d < 0.55 else 0.55)
+        _blend(buf, int(cx - rx * 0.3), int(cy - ry * 0.3), mix(growth, (255, 220, 210), 0.35), 0.7)
+    if opts.get("scars") and rng.random() < 0.55:                                  # pale ridges with a shadow on each side
+        for _ in range(rng.randint(1, opts["scars"])):
+            x, y, a, length = rng.uniform(1, w - 5), rng.uniform(1, h - 2), rng.uniform(-0.45, 0.45) + rng.choice((0, 1.1)), rng.randint(4, 8) * max(1, scale // 2)
+            for _step in range(length):
+                _blend(buf, int(x), int(y) - 1, scale_color(color, 0.55), 0.35); _blend(buf, int(x), int(y) + 1, scale_color(color, 0.55), 0.35)
+                _blend(buf, int(x), int(y), mix(color, (214, 176, 164), 0.55), 0.6)
+                x, y = x + math.cos(a), y + math.sin(a)
+    if opts.get("tears") and rng.random() < 0.7:                                   # holes in the rags
+        for _ in range(rng.randint(1, opts["tears"])):
+            tx, ty, tw, th = rng.randint(0, max(0, w - 4)), rng.randint(0, max(0, h - 3)), rng.randint(2, 4) * max(1, scale // 2), rng.randint(1, 2) * max(1, scale // 2)
+            for yy in range(ty, ty + th):
+                for xx in range(tx, tx + tw):
+                    if rng.random() < 0.85:
+                        _blend(buf, xx, yy, scale_color(grime, 0.6), 0.85)
+
+
 class Canvas:
     def __init__(self, width: int, height: int):
         self.w, self.h = width, height
@@ -282,7 +424,7 @@ def _resolve(pal: dict, value, label: str):
     return pal[value] if isinstance(value, str) and value in pal else parse_color(value, label)
 
 
-def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: dict | None = None, scale: int = 2, seed: str = "") -> tuple[bytes, dict]:
+def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: dict | None = None, scale: int = 2, seed: str = "", surface=None) -> tuple[bytes, dict]:
     """Paint a skin for the model's box-UV cubes. Returns (PNG bytes, report).
 
     palette: {"base": "#hex", ...named colours}; zones: [{"bones": ["torso", "*_arm*"], "color": "cloth", "bands": {"color": "metal", "every": 4, "thickness": 1}}]
@@ -299,20 +441,23 @@ def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: d
         if not isinstance(z, dict) or not isinstance(z.get("bones"), list) or "color" not in z:
             raise InputError("each zone needs `bones` (a list of names or * patterns) and `color`")
         zone_list.append({"bones": [str(b) for b in z["bones"]], "color": _resolve(pal, z["color"], "zone colour"),
-                          "bands": z.get("bands")})
+                          "bands": z.get("bands"), "surface": surface_options(z["surface"], pal) if "surface" in z else surface_options(surface, pal)})
     cubes = box_cubes(model)
     if not cubes:
         raise InputError("the model has no box-UV cubes to paint")
     canvas = Canvas(rw * scale, rh * scale)
     base = pal["base"]
+    default_surface = surface_options(surface, pal)
     for ci, c in enumerate(cubes):
         zone = _zone_color(zone_list, pal, c["bone"])
         color = zone["color"] if zone else base
+        opts = zone["surface"] if zone else default_surface
         bands = zone["bands"] if zone else None
         band_color = _resolve(pal, bands["color"], "band colour") if bands else None
         for side, (ux0, uy0, ux1, uy1) in face_rects(c).items():
             shade = FACE_SHADE[side]
             x0, y0, x1, y1 = ux0 * scale, uy0 * scale, ux1 * scale, uy1 * scale
+            buf = [[None] * (x1 - x0) for _ in range(y1 - y0)]
             for y in range(y0, y1):
                 for x in range(x0, x1):
                     ux, uy = (x - x0) // scale, (y - y0) // scale
@@ -326,7 +471,12 @@ def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: d
                         f *= 0.84
                     elif side in ("north", "south", "east", "west") and y - y0 < max(1, scale // 2) and edge > 0:
                         f *= 1.07          # a lit lip along the top of every side face
-                    canvas.set(x, y, scale_color(px_color, f))
+                    buf[y - y0][x - x0] = _ramp_colour(px_color, f) if opts and opts.get("ramp") else scale_color(px_color, f)
+            if opts:
+                _decorate(buf, color, opts, f"{seed}|{ci}|{side}", scale)
+            for y in range(y0, y1):
+                for x in range(x0, x1):
+                    canvas.set(x, y, buf[y - y0][x - x0])
     report = {"size": [canvas.w, canvas.h], "scale": scale, "cubes": len(cubes), "zones": len(zone_list), "face": None, "adjusted": []}
     head = head_cube(cubes)
     if head and face is not False:
@@ -345,42 +495,59 @@ def _paint_face(canvas: Canvas, head: dict, pal: dict, face: dict, scale: int, z
     skin = zone["color"] if zone else pal["base"]
     adjusted = []
 
-    def pick(key, default, against, delta):
+    def pick(key, default, against, delta, prefer=None):
         raw = _resolve(pal, face[key], f"face.{key}") if key in face else parse_color(default)
-        col, changed = ensure_contrast(raw, against, delta)
+        col, changed = ensure_contrast(raw, against, delta, prefer)
         if changed:
             adjusted.append(key)
         return col
-    eyes = pick("eyes", "#ffd23f", skin, 0.45)
-    dark = pick("mouth", "#140a0a", skin, 0.35)
-    brow = pick("brow", "#140a0a", skin, 0.30)
+    dark = pick("mouth", "#140a0a", skin, 0.35, "dark")
+    eyes = pick("eyes", "#ffd23f", scale_color(dark, 0.9), 0.45, "light")    # judged against the dark socket that surrounds them, not against the skin
+    if 1.0 - luminance(skin) >= 0.30 and luminance(eyes) - luminance(skin) < 0.30:             # they must also stand out from the skin where there is room to be lighter
+        lighter, changed = ensure_contrast(eyes, skin, 0.30, "light")
+        eyes = lighter
+        if changed and "eyes" not in adjusted:
+            adjusted.append("eyes")
+    brow = pick("brow", "#140a0a", skin, 0.30, "dark")
     pupil = _resolve(pal, face["pupil"], "face.pupil") if "pupil" in face else (16, 8, 8)
-    teeth = pick("teeth", "#ece4cf", dark, 0.45)
+    teeth = pick("teeth", "#ece4cf", dark, 0.45, "light")
     style = face.get("style", "angry")
-    if style not in ("angry", "calm"):
-        raise InputError("face.style must be angry or calm")
-    ew, eh = max(3, round(fw * 0.22)), max(2, round(fh * 0.18))
-    ey = y0 + round(fh * 0.40) - eh // 2
-    for side, cx in (("left", 0.28), ("right", 0.72)):
+    if style not in ("angry", "calm", "grim"):
+        raise InputError("face.style must be angry, calm or grim (small deep-set eyes in dark sockets, a heavy brow and a ragged mouth)")
+    grim = style == "grim"
+    ew, eh = (max(2, round(fw * 0.13)), max(2, round(fh * 0.10))) if grim else (max(3, round(fw * 0.22)), max(2, round(fh * 0.18)))
+    ring = 2 if grim and fw >= 24 else 1                                                      # a grim face sinks its eyes into a thicker shadow, when the face is big enough to afford it
+    ey = y0 + round(fh * (0.43 if grim else 0.40)) - eh // 2
+    for side, cx in (("left", 0.30 if grim else 0.28), ("right", 0.70 if grim else 0.72)):
         ex = x0 + round(fw * cx) - ew // 2
-        canvas.rect(ex - 1, ey - 1, ex + ew + 1, ey + eh + 1, scale_color(dark, 0.9))        # socket: a dark ring so the eye pops
+        canvas.rect(ex - ring, ey - ring, ex + ew + ring, ey + eh + ring, scale_color(dark, 0.9))   # socket: a dark ring so the eye pops
         canvas.rect(ex, ey, ex + ew, ey + eh, eyes)
-        pw = max(1, scale // 2)
-        px = ex + ew - pw if side == "left" else ex                                           # pupils look toward the nose
-        canvas.rect(px, ey, px + pw, ey + eh, pupil)
-        for i in range(ew + 2):                                                               # brow: one row, one step lower toward the nose when angry
+        if ew >= 3:
+            pw = max(1, scale // 2)
+            px = ex + ew - pw if side == "left" else ex                                       # pupils look toward the nose
+            canvas.rect(px, ey, px + pw, ey + eh, pupil)
+        for i in range(ew + 2 * (ring - 1) + 2):                                              # brow: one row (two when grim), one step lower toward the nose when angry
             inner = (i > (ew + 1) // 2) if side == "left" else (i < (ew + 1) // 2)
-            drop = 1 if style == "angry" and inner else 0
-            canvas.rect(ex - 1 + i, ey - 2 + drop - (1 if scale >= 4 else 0), ex + i, ey - 1 + drop, brow)
+            drop = 1 if style in ("angry", "grim") and inner else 0
+            top = ey - ring - 1 + drop - (1 if scale >= 4 else 0)
+            canvas.rect(ex - ring + i, top - (1 if grim else 0), ex - ring + i + 1, ey - ring + drop, brow)
     if face.get("nose", True):
         ny, nw = y0 + round(fh * 0.60), max(1, scale // 2 + 1)
         for dx in (-scale, scale - nw + 1):
             canvas.rect(x0 + fw // 2 + dx - (0 if dx > 0 else nw - 1), ny, x0 + fw // 2 + dx + (nw if dx > 0 else 1), ny + max(2, scale), scale_color(dark, 1.4))
-    mw, mh = max(4, round(fw * (0.66 if face.get("tusks") else 0.52))), max(2, round(fh * 0.10))
+    mw, mh = max(4, round(fw * (0.66 if face.get("tusks") or grim else 0.52))), max(2, round(fh * (0.12 if grim else 0.10)))
     mx, my = x0 + (fw - mw) // 2, y0 + round(fh * 0.80)
     canvas.rect(mx, my, mx + mw, my + mh, dark)
-    for i in range(1, mw - 1, max(2, scale + 1)):                                             # teeth along the top edge of the mouth
-        canvas.set(mx + i, my, teeth)
+    if grim:                                                                                  # ragged teeth: uneven widths and heights, some missing
+        rng, i = _rng("teeth", mx, my), 1
+        while i < mw - 1:
+            tw = rng.choice((1, 1, 2)) * max(1, scale // 2)
+            if rng.random() < 0.7:
+                canvas.rect(mx + i, my, mx + min(mw - 1, i + tw), my + rng.choice((1, 1, 2)), teeth)
+            i += tw + rng.choice((0, 1))
+    else:
+        for i in range(1, mw - 1, max(2, scale + 1)):                                         # teeth along the top edge of the mouth
+            canvas.set(mx + i, my, teeth)
     if face.get("tusks"):
         for tx in (mx, mx + mw - max(1, scale // 2 + 1)):
             canvas.rect(tx, my - max(2, round(fh * 0.14)), tx + max(1, scale // 2 + 1), my + mh, teeth)

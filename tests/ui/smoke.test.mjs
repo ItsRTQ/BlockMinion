@@ -29,14 +29,18 @@ test('the Mobs tab shows each mob with its body plan, its art direction and a wo
 test('Art opens one form in the page style; Cancel changes nothing and Save writes it', async () => {
   const brute = page.$('[data-focus="mob:brute"]'); const before = post('/set-art').length;
   page.click(buttonOf(brute, 'Art')); await page.waitFor(dlgOpen, 'the art form');
-  assert.match(page.$('#dlg-title').textContent, /Art direction: Brute/); assert.equal(page.$$('#dlg-body .dlg-field').length, 2);
+  assert.match(page.$('#dlg-title').textContent, /Art direction: Brute/); assert.equal(page.$$('#dlg-body .dlg-field').length, 4);
   page.click(buttonOf(page.$('#dlg'), 'Cancel')); await page.waitFor(() => !dlgOpen()); assert.equal(post('/set-art').length, before);
   page.click(buttonOf(brute, 'Art')); await page.waitFor(dlgOpen);
   page.$('#dlg-f-0').value = 'A hulking chimpanzee zombie with a cracked tusk'; page.$('#dlg-f-1').value = 'knuckle-walking, cracked tusk, scarred hide';
+  page.$('#dlg-f-2').value = 'the Tank from Left 4 Dead'; page.$('#dlg-f-3').value = 'cartoon, bright saturated colours';
   page.click(buttonOf(page.$('#dlg'), 'Save art direction')); await page.waitFor(() => post('/set-art').length === before + 1, 'the save');
   const sent = post('/set-art').at(-1).body; assert.deepEqual([sent.kind, sent.identifier, sent.tags], ['mob', 'brute', ['knuckle-walking', 'cracked tusk', 'scarred hide']]);
+  assert.equal(sent.reference, 'the Tank from Left 4 Dead'); assert.deepEqual(sent.avoid, ['cartoon', 'bright saturated colours']);
   await page.waitFor(() => /cracked tusk/.test(page.$('[data-focus="mob:brute"] .art-tags')?.textContent || ''), 'the card to show the new art');
   assert.match(page.$('[data-focus="mob:brute"] .art-source').textContent, /written/);
+  await page.waitFor(() => /like: the Tank from Left 4 Dead/.test(page.$('[data-focus="mob:brute"] .art-line')?.textContent || ''), 'the reference under the art line');
+  assert.match(page.$('[data-focus="mob:brute"] .art-avoid').textContent, /not: cartoon, bright saturated colours/);
 });
 
 test('running an agent asks in the page style, names the runtime in use, and Cancel starts nothing', async () => {

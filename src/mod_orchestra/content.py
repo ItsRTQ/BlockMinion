@@ -78,17 +78,18 @@ def list_art(store: Store, pid: str) -> dict:
     out = {}
     for kind, ident, label in keys:
         a = effective_art(spec, kind, ident)
-        out[f"{kind}:{ident}"] = {"label": label, "kind": kind, "identifier": ident, "concept": a["concept"], "tags": a["tags"], "silhouette": a["silhouette"], "source": a["source"]}
+        out[f"{kind}:{ident}"] = {"label": label, "kind": kind, "identifier": ident, "concept": a["concept"], "tags": a["tags"], "silhouette": a["silhouette"], "source": a["source"],
+                                  "reference": a["reference"], "avoid": a["avoid"]}
     return out
 
 
-def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "") -> dict:
+def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "", reference: str = "", avoid=None) -> dict:
     """Write the art direction of one entity. kind: item | block | food | mob | set (a whole tool/armor set: concept, tags, silhouette) | tool | armor (one piece of a set:
     its own concept sentence only). Empty fields clear it. Before generation this resets the spec approval like any spec edit; afterwards it is cosmetic."""
     from .spec import Art, coerce_art
     proj = store.project(pid); spec = read_spec(proj["spec"])
     tags = [t.strip() for t in (tags if isinstance(tags, (list, tuple)) else re.split(r"[,;\n]", str(tags or ""))) if t.strip()]
-    new_art = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette})
+    new_art = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette, "reference": reference, "avoid": avoid or []})
     if kind in ("item", "block"):
         if not any(f.identifier == identifier and f.kind == kind for f in spec.features):
             raise InputError(f"Unknown {kind} {identifier!r}")
@@ -106,7 +107,7 @@ def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str 
         if mat is None:
             raise InputError(f"Unknown material {identifier!r}")
         keep = mat.art.pieces if mat.art else {}
-        merged = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette, "pieces": keep})
+        merged = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette, "pieces": keep, "reference": reference, "avoid": avoid or []})
         new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == identifier else m for m in spec.materials])
     elif kind in ("tool", "armor"):
         mat = next((m for m in spec.materials if identifier.startswith(m.identifier + "_") and identifier[len(m.identifier) + 1:] in tuple(m.tools) + tuple(m.armor)), None)
@@ -118,7 +119,7 @@ def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str 
         if concept.strip():
             pieces[piece] = concept.strip()
         merged = replace(base, pieces=pieces)
-        merged = None if not (merged.concept or merged.tags or merged.silhouette or merged.pieces) else merged
+        merged = None if not (merged.concept or merged.tags or merged.silhouette or merged.pieces or merged.reference or merged.avoid) else merged
         new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == mat.identifier else m for m in spec.materials])
     else:
         raise InputError("kind must be item, block, food, mob, set, tool or armor")
@@ -413,6 +414,29 @@ TEXTURE_TARGETS = {
     "entity": ("textures/entity/{id}.png", None), "armor_layer_1": ("textures/models/armor/{id}_layer_1.png", (64, 32)),
     "armor_layer_2": ("textures/models/armor/{id}_layer_2.png", (64, 32)),
 }
+
+
+def paint_mob_skin(store: Store, pid: str, mob: str, recipe: dict, *, install: bool = False) -> dict:
+    """USER-ONLY, no agent: paint models/<mob>.png from a skin recipe (what the designer's orchestra_paint_skin takes: palette, zones, surface, face, scale, seed),
+    and with `install` put it in the game as the mob's texture. This is how an already installed mob gets a new look for the price of nothing."""
+    from . import skin
+    from .models import MODEL_DIR
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", mob):
+        raise InputError("mob must be the mob identifier (snake_case)")
+    if not isinstance(recipe, dict) or "palette" not in recipe:
+        raise InputError("the recipe is an object with at least a `palette` ({\"base\": \"#rrggbb\", ...}); it may also have zones, surface, face, scale and seed")
+    models = Path(store.project(pid)["root"]) / MODEL_DIR
+    source = models / f"{mob}.bbmodel"
+    if not source.is_file():
+        raise StateError(f"models/{mob}.bbmodel does not exist: the mob's MODEL task stages its model there")
+    png, report = skin.paint_skin(json.loads(source.read_text(encoding="utf8")), palette=recipe["palette"], zones=recipe.get("zones") or [], face=recipe.get("face", {}),
+                                  scale=int(recipe.get("scale", 2)), seed=str(recipe.get("seed") or mob)[:64], surface=recipe.get("surface"))
+    (models / f"{mob}.png").write_bytes(png)
+    out = {"file": f"{MODEL_DIR}/{mob}.png", "size": report["size"], "face_check": report["face_check"], "adjusted": report["adjusted"], "installed": False}
+    if install:
+        installed = set_texture(store, pid, kind="entity", identifier=mob, png_base64=_b64.b64encode(png).decode())
+        out["installed"] = True; out["texture"] = installed
+    return out
 
 
 def set_texture(store: Store, pid: str, *, kind: str, identifier: str, png_base64: str) -> dict:

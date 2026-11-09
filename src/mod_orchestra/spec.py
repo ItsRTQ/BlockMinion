@@ -30,6 +30,8 @@ class Art:
     tags: tuple = ()             # concrete cues: shapes, materials, colours, wear ("serrated edge", "bone teeth", "rust red"), not "cool" or "epic"
     silhouette: str = ""         # optional: the shape in a phrase ("cleaver", "crescent blade", "spiked club")
     pieces: dict = field(default_factory=dict)   # material sets only: tool/armor kind -> its own concept ({"sword": "...", "helmet": "..."})
+    reference: str = ""          # what it should resemble, named by the user ("the Tank from Left 4 Dead", "a vanilla pig"); the designer cannot see it, so the cues spell it out
+    avoid: tuple = ()            # what it must not look like ("cartoon", "bright saturated colours", "stripes"): honoured over every default
 
 
 ART_TEXT = re.compile(r"^[^\x00-\x1f<>{}\[\]\\]+$")
@@ -51,9 +53,13 @@ def coerce_art(value) -> "Art | None":
     pieces = value.get("pieces") or {}
     if not isinstance(pieces, dict):
         raise InputError("art.pieces must map a tool/armor kind to a sentence")
+    avoid = value.get("avoid") or ()
+    if isinstance(avoid, str):
+        avoid = [t for t in re.split(r"[,;\n]", avoid)]
     art = Art(concept=str(value.get("concept") or "").strip(), tags=tuple(str(t).strip() for t in tags if str(t).strip()),
-              silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()})
-    return art if (art.concept or art.tags or art.silhouette or art.pieces) else None      # all fields empty is no art, not an empty sheet
+              silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()},
+              reference=str(value.get("reference") or "").strip(), avoid=tuple(str(t).strip() for t in avoid if str(t).strip()))
+    return art if (art.concept or art.tags or art.silhouette or art.pieces or art.reference or art.avoid) else None      # all fields empty is no art, not an empty sheet
 
 
 def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None:
@@ -65,6 +71,10 @@ def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None
         raise InputError(f"{label}: art.tags are at most 16 phrases of 2-48 characters")
     if len(art.silhouette) > 60 or (art.silhouette and not ART_TEXT.match(art.silhouette)):
         raise InputError(f"{label}: art.silhouette is a short phrase (up to 60 characters)")
+    if len(art.reference) > 120 or (art.reference and not ART_TEXT.match(art.reference)):
+        raise InputError(f"{label}: art.reference is a short phrase naming what it should resemble (up to 120 characters)")
+    if len(art.avoid) > 8 or any(not (2 <= len(t) <= 48) or not ART_TEXT.match(t) for t in art.avoid):
+        raise InputError(f"{label}: art.avoid is at most 8 phrases of 2-48 characters")
     for kind, text in art.pieces.items():
         if kind not in piece_kinds:
             raise InputError(f"{label}: art.pieces has {kind!r}, which is not one of this set's pieces {list(piece_kinds)}")
