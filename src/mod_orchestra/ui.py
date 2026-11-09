@@ -332,7 +332,8 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .content import set_art
                         return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),
                                        tags=payload.get("tags") or [], silhouette=str(payload.get("silhouette", "")),
-                                       reference=str(payload.get("reference", "")), avoid=payload.get("avoid") or [])
+                                       reference=str(payload.get("reference", "")), avoid=payload.get("avoid") or [],
+                                       mood=payload.get("mood") if isinstance(payload.get("mood"), dict) else None)
                     if op == "rename-feature":
                         from .content import rename_feature
                         return rename_feature(store, pid, str(payload.get("identifier", "")), str(payload.get("label", "")))

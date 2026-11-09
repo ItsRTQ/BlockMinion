@@ -238,7 +238,7 @@ class TestIntegration(unittest.TestCase):
     def test_rig_block_stages_source_once(self):
         from mod_orchestra.models import rig_block, MODEL_DIR
         text = rig_block(self.store, "r_mod", "cave_golem", self.root)
-        self.assertIn("Base rig: biped", text); self.assertIn("placed now", text); self.assertIn("left_arm (child of body)", text)
+        self.assertIn("Optional scaffold: biped", text); self.assertIn("placed now", text); self.assertIn("left_arm (child of body)", text)
         src = self.root / MODEL_DIR / "cave_golem.bbmodel"
         m = json.loads(src.read_text())
         self.assertEqual((m["model_identifier"], m["mod_id"], m["meta"]["model_format"]), ("cave_golem", "r_mod", "geckolib_model"))

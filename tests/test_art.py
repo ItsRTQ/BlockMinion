@@ -171,7 +171,7 @@ class TestBriefs(Project):
 
     def test_interpreter_is_told_to_write_art(self):
         from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
-        for needle in ('"art"', "visual cues", "pieces", "never mood words", "serrated edge"):
+        for needle in ('"art"', "visual cues", "pieces", "never mood words", "stock fantasy vocabulary", "the cues describe, they do not dictate"):
             self.assertIn(needle, SPEC_INSTRUCTIONS.replace("6-10 concrete visual cues", "visual cues"))
 
 
@@ -403,7 +403,7 @@ class TestReferenceAndAvoid(Project):
     def test_the_interpreter_is_told_to_keep_the_users_style_words(self):
         from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
         text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
-        for needle in ("The user's style words are the art direction", "belong in the concept AND in the tags", "never default to green because something is infected", "art.reference",
+        for needle in ("The user's style words are the art direction", "belong in the concept AND in the tags", "not green because something is infected", "art.reference",
                        "the designer cannot see it", "a small head and enormous shoulders and arms", "list it in `art.avoid`", "art.reference 120, at most 8 art.avoid phrases"):
             self.assertIn(needle, text)
 
@@ -456,3 +456,129 @@ class TestPaintWithoutAnAgent(Project):
         env = {**os.environ, "CRAFTCTL_HOME": self.tmp.name}
         r = subprocess.run([sys.executable, "-m", "mod_orchestra.cli", "paint-skin", "--help"], env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr); self.assertIn("--install", r.stdout); self.assertIn("--recipe", r.stdout)
+
+
+class TestCreativeFreedom(Project):
+    """No templates and no anchors: the user's words come first, the scaffold is optional, the artist explores before building."""
+
+    def packet(self, idea=None):
+        from mod_orchestra.models import rig_block
+        if idea is not None:
+            self.set_idea(idea)
+        return rig_block(self.store, "g_mod", "brute", self.root)
+
+    def set_idea(self, idea):
+        raw = self.store.project("g_mod")["spec"]; raw["idea"] = idea
+        with self.store.tx() as con:
+            con.execute("UPDATE projects SET spec_json=? WHERE id=?", (json.dumps(raw), "g_mod"))
+
+    def test_the_users_words_come_first_verbatim_and_win(self):
+        idea = "hostile mobs: brute. The Brute is grotesque, human skin tone, a mutated infected primate, a bit like the Tank from Left 4 Dead, not a cartoon."
+        text = self.packet(idea)
+        self.assertLess(text.index("What the user wrote, in their own words"), text.index("Optional scaffold"))
+        self.assertIn(idea, text); self.assertIn("it wins over every summary below", text); self.assertIn("Where they disagree, follow the words", text)
+        self.assertRegex(text, r"Look for what they said about [\w ]+ \(`brute`\)")
+
+    def test_a_long_idea_is_cut_at_a_word_and_an_empty_one_adds_nothing(self):
+        from mod_orchestra.models import USER_WORDS_LIMIT
+        text = self.packet("word " * 2000)
+        self.assertIn("word ...", text); self.assertLess(len(text), USER_WORDS_LIMIT + 6000)
+        self.assertNotIn("What the user wrote", self.packet("   "))
+
+    def test_the_sprite_and_armor_packets_carry_the_words_too(self):
+        from mod_orchestra.models import request_sprites, request_armor_design
+        self.set_idea("items: groko sword. Crude and brutal, nothing shiny.")
+        self.assertIn("Crude and brutal, nothing shiny.", self.store.task_instructions(request_sprites(self.store, "g_mod", ["groko_sword"])["task"]))
+        self.assertIn("Crude and brutal, nothing shiny.", self.store.task_instructions(request_armor_design(self.store, "g_mod", "groko")["task"]))
+
+    def test_the_scaffold_is_optional_and_never_a_recolour(self):
+        text = self.packet()
+        for needle in ("Optional scaffold", "use it, reshape it heavily, or ignore it and build your own from scratch", "not to decide the design"):
+            self.assertIn(needle, text)
+        from mod_orchestra.models import MODEL_INSTRUCTIONS
+        for needle in ("optional scaffold", "yours to use, reshape heavily or ignore", "Never deliver the scaffold with only a recolour", "Explore before you build",
+                       "three deliberately different takes", "most typical version", '"design_notes"', "the user sees it and may ask for another take"):
+            self.assertIn(needle, MODEL_INSTRUCTIONS)
+        self.assertNotIn("Only start a fresh", MODEL_INSTRUCTIONS); self.assertNotIn("Start from `models/<mob>.bbmodel`", MODEL_INSTRUCTIONS)
+
+    def test_nothing_in_what_the_agents_read_teaches_a_look(self):
+        """Examples anchor: every concrete one we ever shipped came back in the output. The prompts, the skill and the designer's instructions carry none."""
+        import re
+        from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
+        from mod_orchestra.models import MODEL_INSTRUCTIONS, SPRITES_INSTRUCTIONS, ARMOR_INSTRUCTIONS
+        root = Path(__file__).resolve().parents[1]
+        texts = {"interpreter": SPEC_INSTRUCTIONS, "model": MODEL_INSTRUCTIONS, "sprites": SPRITES_INSTRUCTIONS, "armor": ARMOR_INSTRUCTIONS,
+                 "skill": (root / ".claude/skills/blockbench/SKILL.md").read_text(encoding="utf8"), "designer": (root / ".claude/agents/designer.md").read_text(encoding="utf8")}
+        anchors = [r"\bork", r"\borc\b", r"serrated", r"bone teeth", r"hammered iron", r"rust red", r"horned", r"armour plates", r"a hunch", r"#5c7f3a", r"#d9cfb8", r"#8c2d19", r"skull knob", r"leather lashing"]
+        for name, text in texts.items():
+            for pattern in anchors:
+                self.assertIsNone(re.search(pattern, text, re.I), f"{name} still teaches a look: {pattern}")
+
+
+class TestMood(Project):
+    """Mood dials are an open vocabulary of suggestions: written by the interpreter alone, shown to the artists as sentences, editable at redesign."""
+
+    def test_coercion_is_strict_for_what_people_type_and_open_in_vocabulary(self):
+        from mod_orchestra.spec import coerce_mood
+        self.assertEqual(coerce_mood({" Grotesque ": 0.8, "Toon": 0, "eerie  calm": 0.333}), {"grotesque": 0.8, "toon": 0.0, "eerie calm": 0.33})
+        self.assertEqual(coerce_mood(None), {}); self.assertEqual(coerce_mood({}), {})
+        for bad, why in (({"x": 1}, "2-24 letters"), ({"grotesque": 2}, "0 to 1"), ({"grotesque": "high"}, "0 to 1"), ({"grotesque": True}, "0 to 1"), ({f"dial {chr(97 + i)}x": 0.5 for i in range(13)}, "at most 12"), ([1], "object of dials")):
+            with self.assertRaisesRegex(InputError, why):
+                coerce_mood(bad)
+
+    def test_the_spec_keeps_them_for_the_mod_and_per_entity(self):
+        raw = self.store.project("g_mod")["spec"]; raw["mood"] = {"grotesque": 0.8}
+        raw["mobs"][0]["art"] = {"concept": "a brute", "mood": {"gore": 0.2, "grotesque": 1}}
+        spec = read_spec(raw); self.assertEqual((spec.mood, spec.mobs[0].art.mood), ({"grotesque": 0.8}, {"gore": 0.2, "grotesque": 1.0}))
+        again = read_spec(spec.to_dict()); self.assertEqual((again.mood, again.mobs[0].art.mood), (spec.mood, spec.mobs[0].art.mood))
+        self.assertEqual(read_spec(self.store.project("g_mod")["spec"] | {"mood": None}).mood, {})                  # older specs have none
+
+    def test_an_agents_dials_are_fitted_not_rejected(self):
+        from mod_orchestra.interpreter import fit_proposal
+        fitted, notes = fit_proposal({"mood": {"Grotesque!": 1.7, "x": 0.5, "cute": -3, "menace": "high", **{f"dial {chr(97 + i)}x": 0.5 for i in range(14)}},
+                                      "mobs": [{"identifier": "b", "art": {"concept": "c", "mood": {"gore": 5}}}]})
+        self.assertEqual(fitted["mood"]["grotesque"], 1.0); self.assertEqual(fitted["mood"]["cute"], 0.0); self.assertNotIn("x", fitted["mood"]); self.assertNotIn("menace", fitted["mood"])
+        self.assertLessEqual(len(fitted["mood"]), 12); self.assertEqual(fitted["mobs"][0]["art"]["mood"], {"gore": 1.0})
+        self.assertTrue(any("mood dial" in n and "dropped" in n for n in notes)); self.assertTrue(any("mood to 12 dials" in n for n in notes))
+        from mod_orchestra.interpreter import spec_from_proposal
+        full = json.loads((Path(__file__).parent / "fixtures" / "infectious_zombies.proposal.json").read_text(encoding="utf8"))
+        spec = spec_from_proposal(self.store.project("g_mod")["spec"], dict(full, mood={"Bad Key!!": 9}))          # the whole proposal still goes through
+        self.assertEqual(spec.mood, {"bad key": 1.0})
+
+    def test_prose_reads_like_a_person_and_zero_is_a_decision(self):
+        from mod_orchestra.art import mood_prose
+        self.assertEqual(mood_prose({"toon": 0, "grotesque": 0.8, "gore": 0.2, "cute": 0.5, "dread": 0.95, "worn": 0.1}),
+                         "extremely dread (0.95), strongly grotesque (0.8), moderately cute (0.5), a hint of gore (0.2), barely worn (0.1), not at all toon (0)")
+        self.assertEqual(mood_prose({}), "")
+
+    def test_the_entity_overrides_the_mod_one_dial_at_a_time_and_the_brief_says_so(self):
+        raw = self.store.project("g_mod")["spec"]; raw["mood"] = {"grotesque": 0.4, "toon": 0.0}
+        raw["mobs"][0]["art"] = {"concept": "a hulking mutant", "mood": {"grotesque": 0.85, "gore": 0.3}}
+        spec = read_spec(raw)
+        a = art.effective_art(spec, "mob", "brute"); self.assertEqual(a["mood"], {"grotesque": 0.85, "toon": 0.0, "gore": 0.3})
+        text = art.brief(spec, "mob", "brute")
+        self.assertIn("mood, as suggestions to feel your way with, not rules: strongly grotesque (0.85), a hint of gore (0.3), not at all toon (0)", text)
+        self.assertNotIn("mood, as suggestions", art.brief(read_spec(self.store.project("g_mod")["spec"]), "mob", "brute"))   # nothing is said when nothing was inferred
+        self.assertEqual(art.effective_art(spec, "tool", "groko_sword")["mood"], {"grotesque": 0.4, "toon": 0.0})              # items inherit the mod's
+
+    def test_editing_art_keeps_the_dials_unless_they_are_sent(self):
+        from mod_orchestra.content import list_art, set_art
+        set_art(self.store, "g_mod", "mob", "brute", concept="a brute", mood={"grotesque": 0.8})
+        set_art(self.store, "g_mod", "mob", "brute", concept="a bigger brute", tags=["scarred"])                   # the Art form never sends mood
+        self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {"grotesque": 0.8})
+        set_art(self.store, "g_mod", "mob", "brute", concept="x", mood={"grotesque": 0.1, "cute": 0.0}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {"cute": 0.0, "grotesque": 0.1})
+        set_art(self.store, "g_mod", "mob", "brute", concept="x", mood={}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {})
+        set_art(self.store, "g_mod", "set", "groko", concept="crude", mood={"crude": 0.9}); set_art(self.store, "g_mod", "set", "groko", concept="very crude")
+        self.assertEqual(list_art(self.store, "g_mod")["set:groko"]["mood"], {"crude": 0.9})
+
+    def test_the_designer_packet_carries_them(self):
+        from mod_orchestra.content import set_art
+        from mod_orchestra.models import rig_block
+        set_art(self.store, "g_mod", "mob", "brute", concept="a hulking mutant", mood={"grotesque": 0.85, "toon": 0})
+        self.assertIn("strongly grotesque (0.85), not at all toon (0)", rig_block(self.store, "g_mod", "brute", self.root))
+
+    def test_the_interpreter_infers_them_alone_and_treats_them_as_suggestions(self):
+        from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
+        text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
+        for needle in ('"mood": {"<dial>": 0.0}', "open-vocabulary dials from 0 to 1", "including explicit 0 for what they rule out", "infer them from the\nidea without asking", "suggestions the artists feel their way with, not rules"):
+            self.assertIn(needle, text)

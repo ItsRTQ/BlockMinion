@@ -104,6 +104,7 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--kind", required=True, choices=["item", "block", "food", "mob", "set", "tool", "armor"]); a.add_argument("--id", required=True)
     a.add_argument("--concept", default=""); a.add_argument("--tags", nargs="*", default=[]); a.add_argument("--silhouette", default="")
     a.add_argument("--reference", default="", help="what it should resemble, e.g. 'the Tank from Left 4 Dead'"); a.add_argument("--avoid", nargs="*", default=[], help="what it must not look like, e.g. cartoon 'bright colours'")
+    a.add_argument("--mood", nargs="*", default=None, help="dials 0..1 as name=value, e.g. grotesque=0.8 toon=0 (omit to keep the current ones; pass none to clear)")
     a = sub.add_parser("set-carriers", help="USER-ONLY: change which mobs carry a capability behavior (before generate it resets the spec approval; after, the coder wires the change)")
     a.add_argument("project"); a.add_argument("--behavior", required=True, help="the behavior's card id, e.g. infection"); a.add_argument("--mobs", nargs="+", required=True)
     a = sub.add_parser("paint-skin", help="USER-ONLY, no agent: paint models/<mob>.png from a skin recipe file (palette, zones, surface, face); --install also makes it the mob's texture in the game")
@@ -321,7 +322,8 @@ def dispatch(args: argparse.Namespace) -> object:
                        width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn, body_plan=args.body_plan, held_item=args.held_item)
     if args.command == "set-art":
         from .content import set_art
-        return set_art(store, args.project, args.kind, args.id, concept=args.concept, tags=args.tags, silhouette=args.silhouette, reference=args.reference, avoid=args.avoid)
+        return set_art(store, args.project, args.kind, args.id, concept=args.concept, tags=args.tags, silhouette=args.silhouette, reference=args.reference, avoid=args.avoid,
+                       mood=None if args.mood is None else {k.strip(): float(v) for k, v in (p.split("=", 1) for p in args.mood)})
     if args.command == "set-carriers":
         from .content import set_behavior_carriers
         return set_behavior_carriers(store, args.project, args.behavior, args.mobs)

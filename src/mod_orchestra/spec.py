@@ -30,11 +30,34 @@ class Art:
     tags: tuple = ()             # concrete cues: shapes, materials, colours, wear ("serrated edge", "bone teeth", "rust red"), not "cool" or "epic"
     silhouette: str = ""         # optional: the shape in a phrase ("cleaver", "crescent blade", "spiked club")
     pieces: dict = field(default_factory=dict)   # material sets only: tool/armor kind -> its own concept ({"sword": "...", "helmet": "..."})
+    mood: dict = field(default_factory=dict)     # open-vocabulary dials 0..1 (grotesque, gore, toon, cute, menace, worn ...): suggestions in prose for the artists, never rules
     reference: str = ""          # what it should resemble, named by the user ("the Tank from Left 4 Dead", "a vanilla pig"); the designer cannot see it, so the cues spell it out
     avoid: tuple = ()            # what it must not look like ("cartoon", "bright saturated colours", "stripes"): honoured over every default
 
 
 ART_TEXT = re.compile(r"^[^\x00-\x1f<>{}\[\]\\]+$")
+
+
+MOOD_KEY = re.compile(r"^[a-z][a-z '\-]{1,23}$")
+
+
+def coerce_mood(value) -> dict:
+    """Mood dials: {"grotesque": 0.8, "toon": 0.0, ...}. The vocabulary is open (any word the user's description needs), the values are 0 to 1."""
+    if value in (None, "", {}):
+        return {}
+    if not isinstance(value, dict):
+        raise InputError("mood is an object of dials, e.g. {\"grotesque\": 0.8, \"toon\": 0}")
+    if len(value) > 12:
+        raise InputError("mood has at most 12 dials")
+    out = {}
+    for key, v in value.items():
+        k = re.sub(r"\s+", " ", str(key).strip().lower())
+        if not MOOD_KEY.match(k):
+            raise InputError(f"mood dial {key!r}: a word or two of 2-24 letters")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1:
+            raise InputError(f"mood dial {k!r} is a number from 0 to 1, got {v!r}")
+        out[k] = round(float(v), 2)
+    return out
 
 
 def coerce_art(value) -> "Art | None":
@@ -58,8 +81,8 @@ def coerce_art(value) -> "Art | None":
         avoid = [t for t in re.split(r"[,;\n]", avoid)]
     art = Art(concept=str(value.get("concept") or "").strip(), tags=tuple(str(t).strip() for t in tags if str(t).strip()),
               silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()},
-              reference=str(value.get("reference") or "").strip(), avoid=tuple(str(t).strip() for t in avoid if str(t).strip()))
-    return art if (art.concept or art.tags or art.silhouette or art.pieces or art.reference or art.avoid) else None      # all fields empty is no art, not an empty sheet
+              reference=str(value.get("reference") or "").strip(), avoid=tuple(str(t).strip() for t in avoid if str(t).strip()), mood=coerce_mood(value.get("mood")))
+    return art if (art.concept or art.tags or art.silhouette or art.pieces or art.reference or art.avoid or art.mood) else None      # all fields empty is no art, not an empty sheet
 
 
 def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None:
@@ -392,6 +415,7 @@ class Spec:
     materials: list[Material] = field(default_factory=list)
     foods: list[Food] = field(default_factory=list)
     theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
+    mood: dict = field(default_factory=dict)     # the same dials for the whole mod; an entity's own art.mood overrides them one by one
     sounds: list[Sound] = field(default_factory=list)
     ores: list[Ore] = field(default_factory=list)
     enchantments: list[Enchantment] = field(default_factory=list)
@@ -813,7 +837,7 @@ def read_spec(raw: dict) -> Spec:
         tab=raw.get("tab"), tab_icon=raw.get("tab_icon"),
         materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2))), "art": coerce_art(m.get("art"))}) for m in raw.get("materials", [])],
         foods=[Food(**{**f, "effects": tuple(f.get("effects", ())), "art": coerce_art(f.get("art"))}) for f in raw.get("foods", [])],
-        theme=str(raw.get("theme") or "")[:600],
+        theme=str(raw.get("theme") or "")[:600], mood=coerce_mood(raw.get("mood")),
         sounds=[Sound(**x) for x in raw.get("sounds", [])],
         ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
         enchantments=[Enchantment(**e) for e in raw.get("enchantments", [])],

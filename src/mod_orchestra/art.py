@@ -97,9 +97,20 @@ def effective_art(spec: Spec, kind: str, identifier: str) -> dict:
         tags = shared + [t for t in own if t not in shared]
     authored_concept = piece_text or (art.concept if art and art.concept else "")
     concept = authored_concept or (f"{label}: " + (f"{', '.join(cues)}; " if cues else "") + (f"showing {', '.join(tags[:4])}" if tags else "designed to fit this mod")).strip()
-    return {"concept": concept, "tags": tags, "silhouette": art.silhouette if art else "", "palette": theme_palette(spec.theme),
+    mood = {**(getattr(spec, "mood", None) or {}), **((art.mood if art else None) or {})}
+    return {"concept": concept, "tags": tags, "silhouette": art.silhouette if art else "", "palette": theme_palette(spec.theme), "mood": mood,
             "reference": art.reference if art else "", "avoid": list(art.avoid) if art else [],
             "source": "authored" if authored_concept or (art and art.tags) or (art and (art.reference or art.avoid)) else "derived", "cues": list(cues)}
+
+
+def mood_prose(mood: dict) -> str:
+    """Dials as sentences an artist can feel: 'strongly grotesque (0.8), a hint of gore (0.2), not at all toon (0)'. Suggestions, never rules."""
+    def phrase(name, v):
+        if v <= 0:
+            return f"not at all {name} ({v:g})"
+        word = "barely" if v < 0.15 else "a hint of" if v < 0.35 else "moderately" if v < 0.65 else "strongly" if v < 0.9 else "extremely"
+        return f"{word} {name} ({v:g})"
+    return ", ".join(phrase(k, v) for k, v in sorted(mood.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 def brief(spec: Spec, kind: str, identifier: str, *, palette: bool = True) -> str:
@@ -110,6 +121,8 @@ def brief(spec: Spec, kind: str, identifier: str, *, palette: bool = True) -> st
         lines.append("visual cues: " + ", ".join(a["tags"]))
     if a["silhouette"]:
         lines.append(f"silhouette: {a['silhouette']}")
+    if a["mood"]:
+        lines.append("mood, as suggestions to feel your way with, not rules: " + mood_prose(a["mood"]))
     if a["reference"]:
         lines.append(f"it should resemble: {a['reference']} (you cannot see it: follow the cues, which spell out what it means)")
     if a["avoid"]:

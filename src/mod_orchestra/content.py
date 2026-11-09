@@ -79,35 +79,39 @@ def list_art(store: Store, pid: str) -> dict:
     for kind, ident, label in keys:
         a = effective_art(spec, kind, ident)
         out[f"{kind}:{ident}"] = {"label": label, "kind": kind, "identifier": ident, "concept": a["concept"], "tags": a["tags"], "silhouette": a["silhouette"], "source": a["source"],
-                                  "reference": a["reference"], "avoid": a["avoid"]}
+                                  "reference": a["reference"], "avoid": a["avoid"], "mood": a["mood"]}
     return out
 
 
-def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "", reference: str = "", avoid=None) -> dict:
+def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "", reference: str = "", avoid=None, mood=None) -> dict:
     """Write the art direction of one entity. kind: item | block | food | mob | set (a whole tool/armor set: concept, tags, silhouette) | tool | armor (one piece of a set:
     its own concept sentence only). Empty fields clear it. Before generation this resets the spec approval like any spec edit; afterwards it is cosmetic."""
     from .spec import Art, coerce_art
     proj = store.project(pid); spec = read_spec(proj["spec"])
     tags = [t.strip() for t in (tags if isinstance(tags, (list, tuple)) else re.split(r"[,;\n]", str(tags or ""))) if t.strip()]
-    new_art = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette, "reference": reference, "avoid": avoid or []})
+    base_art = {"concept": concept, "tags": tags, "silhouette": silhouette, "reference": reference, "avoid": avoid or []}
+
+    def make(existing, extra=None):
+        """The new sheet; the mood dials are kept as they are unless the caller sends some (an empty object clears them)."""
+        return coerce_art({**base_art, **(extra or {}), "mood": mood if mood is not None else (existing.mood if existing else {})})
     if kind in ("item", "block"):
         if not any(f.identifier == identifier and f.kind == kind for f in spec.features):
             raise InputError(f"Unknown {kind} {identifier!r}")
-        new_spec = replace(spec, features=[replace(f, art=new_art) if f.identifier == identifier else f for f in spec.features])
+        new_spec = replace(spec, features=[replace(f, art=make(f.art)) if f.identifier == identifier else f for f in spec.features])
     elif kind == "food":
         if not any(f.identifier == identifier for f in spec.foods):
             raise InputError(f"Unknown food {identifier!r}")
-        new_spec = replace(spec, foods=[replace(f, art=new_art) if f.identifier == identifier else f for f in spec.foods])
+        new_spec = replace(spec, foods=[replace(f, art=make(f.art)) if f.identifier == identifier else f for f in spec.foods])
     elif kind == "mob":
         if not any(m.identifier == identifier for m in spec.mobs):
             raise InputError(f"Unknown mob {identifier!r}")
-        new_spec = replace(spec, mobs=[replace(m, art=new_art) if m.identifier == identifier else m for m in spec.mobs])
+        new_spec = replace(spec, mobs=[replace(m, art=make(m.art)) if m.identifier == identifier else m for m in spec.mobs])
     elif kind == "set":
         mat = next((m for m in spec.materials if m.identifier == identifier), None)
         if mat is None:
             raise InputError(f"Unknown material {identifier!r}")
         keep = mat.art.pieces if mat.art else {}
-        merged = coerce_art({"concept": concept, "tags": tags, "silhouette": silhouette, "pieces": keep, "reference": reference, "avoid": avoid or []})
+        merged = make(mat.art, {"pieces": keep})
         new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == identifier else m for m in spec.materials])
     elif kind in ("tool", "armor"):
         mat = next((m for m in spec.materials if identifier.startswith(m.identifier + "_") and identifier[len(m.identifier) + 1:] in tuple(m.tools) + tuple(m.armor)), None)
@@ -119,7 +123,7 @@ def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str 
         if concept.strip():
             pieces[piece] = concept.strip()
         merged = replace(base, pieces=pieces)
-        merged = None if not (merged.concept or merged.tags or merged.silhouette or merged.pieces or merged.reference or merged.avoid) else merged
+        merged = None if not (merged.concept or merged.tags or merged.silhouette or merged.pieces or merged.reference or merged.avoid or merged.mood) else merged
         new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == mat.identifier else m for m in spec.materials])
     else:
         raise InputError("kind must be item, block, food, mob, set, tool or armor")

@@ -17,7 +17,7 @@ write must pass it as `expected_revision`. Tool names are `mcp__blockbench__<nam
    - `{"op":"add_cube","name":"body_cube","group_uuid":<uuid>,"from":[-4,6,-6],"to":[4,12,6],"uv_offset":[0,0]}` (`mirror:true`, `inflate` optional)
    Coordinates are Blockbench units (16 = one block); y up; pivots (`origin`) are what animations rotate around.
 3. Texture: do not paint pixels by hand; `mcp__minecraft-orchestra__orchestra_paint_skin {project, mob, palette, zones, surface, face}` paints `models/<mob>.png` from the `.bbmodel` (run it once the cubes are final, and again after any reshape).
-   **The colours are never given here and never yours to invent: they come from the task packet** (the creature's art direction: concept, visual cues, `reference`, `avoid`, and the palette taken from the theme). Nothing below carries a colour on purpose; if you catch yourself reaching for a stock green, a bone white or a rust red, stop and reread the art direction.
+   **The colours are never given here and never yours to invent: they come from the task packet** (the creature's art direction: concept, visual cues, `reference`, `avoid`, and the palette taken from the theme). Nothing below carries a colour on purpose; if you catch yourself reaching for a colour out of habit, stop and reread the art direction.
    - `palette`: `{"base": "<the skin, fur or shell colour of the art direction>", "<name>": "<hex>", ...}`, one name per material (cloth, metal, bone, growth ...). Living things are desaturated and uneven in value; at most one saturated accent (eyes, glow, blood).
    - `zones`: `[{"bones": ["<bone or pattern>", ...], "color": "<palette name>", "surface": "<preset>"}]`; the first match wins, `*` is allowed, unmatched bones use `base`. Skin, cloth and armour are different zones.
    - `surface` (what the material looks like up close; per zone, or for the whole skin): `flesh` (skin: uneven tone, thin veins, a few marks), `rotten` (diseased: strong mottling, dark veins, growths, sores), `hide` (fur and leather: streaks and scuffs), `cloth` (rags: thread, stains, holes, dirt rising from the hem), or an object `{preset, mottle, veins, blotches, scars, grime, streaks, weave, tears, ramp}` (numbers 0-1; scars and tears 0-8). Every extra colour is derived from the zone's own, so a surface never brings a hue of its own, and shadows lean cold and lights warm. A zone without a surface is for things that really are flat (a painted shield).
@@ -42,15 +42,22 @@ this profile are in `knowledge/blockbench/formats-java-1.21.1.md` (`orchestra_kn
 Authoring rules: cubes only, unique snake_case bone names with `left_`/`right_` prefixes, pivots at the joints before
 animating, keyframe times in multiples of 0.05, looping clips end where they start.
 
-## Base rigs (MODEL tasks start from one)
-On MODEL tasks the controller places `models/<mob>.bbmodel` already built from the mob's body plan: an empty `root`,
-bones with pivots at the joints (two-joint limbs: `left_leg` → `left_leg_shin`), cubes, box UV packed without overlaps,
-`animation.<mob>.idle` / `.walk` (loop) and `.attack` (one-shot) valid. Edit it (resize and move cubes, add detail cubes
-to existing bones, add child bones such as `left_horn` under `head`, retune the clips with `replace: true`); keep the
-bone names so the clip patterns keep applying. Rebuild from scratch with `bbmodel_geckolib_create` only when no plan
-fits. Loops keep their seam; one-shots start and end at rest; times on multiples of 0.05.
+## Optional scaffolds (a MODEL task gets one to use, reshape or ignore)
+On MODEL tasks the controller places `models/<mob>.bbmodel`, a plain rig for the mob's body plan that already passes the validator: an empty
+`root`, bones with pivots at the joints (two-joint limbs: `left_leg` → `left_leg_shin`), box UV packed without overlaps, and
+`animation.<mob>.idle` / `.walk` (loop) and `.attack` (one-shot). It exists to save you the technical conventions, not to decide the design.
+Use it, reshape it heavily (resize and move cubes, add detail cubes, add child bones such as horns or a tail, retune the clips with
+`replace: true`) or ignore it and build your own creature from scratch with `bbmodel_geckolib_create`. Never deliver the scaffold with only a
+recolour. Whatever you choose, the game needs: a single empty `root` bone with every other bone under it, the three clips named exactly
+`animation.<mob>.idle`, `.walk` and `.attack`, loops that keep their seam, one-shots that start and end at rest, times on multiples of 0.05,
+and the validator passing.
 
-| plan | texture | bones | how to adapt |
+**Explore before you build**, the way a painter starts a new piece: write three deliberately different takes on the creature (a different
+silhouette, a different signature feature, a different colour story, not three variations of the first idea), avoid its most typical version
+unless the description demands it, pick one, and record all three and your choice in the handoff as
+`"design_notes": {"takes": ["...", "...", "..."], "chosen": 1, "why": "one sentence"}`. The user sees it and may ask for another take.
+
+| plan | texture | bones | notes on the scaffold (optional) |
 |---|---|---|---|
 | `quadruped` | 64x64 | root, body, head, tail, left_front_leg, left_front_leg_lower, left_back_leg, left_back_leg_lower, right_front_leg, right_front_leg_lower, right_back_leg, right_back_leg_lower | Diagonal gait: left_front with right_back, right_front with left_back; the *_lower joints bend one way (knee/hock). `root` is empty: animate it for whole-body moves (slam, collapse) and keep `body` for the torso. Head pivot is the neck, tail pivot the rump. Longer lower legs for deer, longer body for dachshund. Attack: Lunge: rear up (windup 0.3), bite forward with the front legs down (impact 0.5), settle. |
 | `biped` | 64x64 | root, body, head, left_arm, left_arm_forearm, left_leg, left_leg_shin, right_arm, right_arm_forearm, held_item, right_leg, right_leg_shin | Vanilla humanoid pivots (head 24, shoulders ±5/22, hips ±2/12): armor and held items line up. Elbows at y 18, knees at y 6. Arms swing opposite to the leg on the same side; forearms follow through. The empty `held_item` bone at the right palm carries the weapon the entity holds: keep it, move it to the grip if the hand moves. Shrink to 3/4 for a child, widen torso for a brute, add a third joint (hand) for a boss. Attack: Overhead right-arm swing: windup 0.3 (arm back, torso twists), impact 0.5 (arm down, torso follows), recovery 0.65, rest 1.0. |
