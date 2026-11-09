@@ -380,6 +380,7 @@ async function renderGallery(p) {
       for (const f of m.feedback) ul.append(el("li", "you: " + [f.text, f.scope && f.scope !== "all" ? `(only the ${f.scope})` : "", f.take ? `(take ${f.take})` : "", f.mood ? `(mood: ${moodText(f.mood)})` : ""].filter(Boolean).join(" ")));
       card.append(el("div", "Feedback sent to the designer:", "muted")); card.append(ul);
     }
+    card.append(modifyPanel(p, m), ownModelPanel(p, m));
     const fb = el("form", null, "feedback"); const ta = el("textarea");
     ta.placeholder = m.placeholder ? "Describe the creature you want, in your own words. It goes to the designer's first run, exactly as you write it" : "What should change? Leave it empty if the options below say it";
     fb.append(ta);
@@ -442,9 +443,68 @@ async function renderGallery(p) {
       await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer started with your feedback.", "ok"); await openProject(p.id);
     }, "primary"));
     if (m.task_state === "READY") row.append(btn("Run designer as is", async () => { await api(`/api/project/${p.id}/dispatch`, { task: m.task }); toast("Designer started.", "ok"); await openProject(p.id); }));
-    if (m.bbmodel) { row.append(btn("Open in Blockbench", async () => { const out = await api(`/api/project/${p.id}/open-model`, { mob: m.mob }); toast(out.note || `Opening ${out.opened.split(/[\\/]/).pop()} in ${out.app ? "Blockbench" : "the default app"}…`, "ok"); }, "secondary")); row.append(el("span", `models/${m.mob}.bbmodel — edit it there; the controller keeps using this file as the source`, "muted")); }
+    if (m.bbmodel) {
+      row.append(btn("Open in Blockbench", async () => { const out = await api(`/api/project/${p.id}/open-model`, { mob: m.mob }); toast(out.note || `Opening ${out.opened.split(/[\\/]/).pop()} in ${out.app ? "Blockbench" : "the default app"}…`, "ok"); }, "secondary"));
+      row.append(btn("Install my Blockbench edits", async () => {
+        if (!await confirmBox(`Install what you saved to models/${m.mob}.bbmodel as this mob's model? It is checked like a designer's model first; nothing changes if it does not pass.`, { title: "Install your edits", ok: "Install" })) return;
+        const out = await api(`/api/project/${p.id}/model-reinstall`, { mob: m.mob }); toast(out.note, "ok"); await refreshProject(p.id);
+      }, "secondary"));
+      row.append(el("span", `models/${m.mob}.bbmodel: edit and save it in Blockbench, then install your edits`, "muted"));
+    }
     fb.append(row); card.append(fb); g.append(card);
   }
+}
+
+// ---------- modify an existing model / use your own ----------
+// A modification keeps the model and changes only what is asked; the controller refuses the result if it touched a part that
+// was not ticked here. Nothing is ticked by default: the designer may only add.
+function modifyPanel(p, m) {
+  const box = document.createElement("details"); box.className = "modify-panel";
+  box.append(el("summary", "Modify this model (keep everything else)"));
+  if (m.placeholder || !m.geo) { box.append(el("div", "There is no finished model yet: the first design comes from the designer, or use your own model.", "placeholder-note")); return box; }
+  if (m.modification) {
+    box.open = true;
+    const pend = el("div", null, "modify-pending");
+    pend.append(el("span", `Pending: “${m.modification.text}”` + (m.modification.may_change.length ? ` (may change: ${m.modification.may_change.join(", ")})` : " (it only adds)"), "art-ref"));
+    pend.append(btn("Run designer", async () => { await api(`/api/project/${p.id}/dispatch`, { task: m.task }); toast("Designer started on the modification.", "ok"); await refreshProject(p.id); }, "mini"));
+    pend.append(btn("Cancel modification", async () => { await api(`/api/project/${p.id}/model-edit-cancel`, { mob: m.mob }); toast("Modification cancelled. The model stays as it is.", "ok"); await refreshProject(p.id); }, "mini secondary"));
+    box.append(pend);
+    return box;
+  }
+  const ta = el("textarea"); ta.placeholder = "What to change, in your words: add a tail, a horn on the forehead, longer claws..."; ta.maxLength = 2000;
+  const parts = el("div", null, "modify-parts"); parts.append(el("span", "Parts it may also change (leave all unticked and it only adds; everything unticked is protected)", "dlg-label"));
+  for (const b of m.bones || []) { const l = el("label", null, "part-choice"); const c = el("input"); c.type = "checkbox"; c.value = b; l.append(c, el("span", " " + b)); parts.append(l); }
+  const go = btn("Modify", async () => {
+    const text = ta.value.trim(); if (!text) throw new Error("Write what to change on the model");
+    const may_change = [...parts.querySelectorAll("input:checked")].map((c) => c.value);
+    const out = await api(`/api/project/${p.id}/model-edit`, { mob: m.mob, text, may_change });
+    if (await confirmBox("Modification saved. Start the designer now? It works on this model and only on what you asked.", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) {
+      await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer started on the modification.", "ok");
+    }
+    await refreshProject(p.id);
+  }, "primary");
+  box.append(ta, parts, go);
+  return box;
+}
+
+const readBase64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(new Error("Could not read " + file.name)); r.readAsDataURL(file); });
+
+function ownModelPanel(p, m) {
+  const box = document.createElement("details"); box.className = "own-model";
+  box.append(el("summary", "Use your own model"));
+  box.append(el("div", "A Blockbench model you made or downloaded (.bbmodel, box UV). It replaces this mob's model after the same checks as a designer's model; then you can modify it like any other. No agent runs.", "muted"));
+  const bb = el("input"); bb.type = "file"; bb.accept = ".bbmodel,application/json"; bb.className = "own-bbmodel";
+  const png = el("input"); png.type = "file"; png.accept = "image/png"; png.className = "own-png";
+  const field = (label, input) => { const w = el("label", null, "opt-field"); w.append(el("span", label, "dlg-label"), input); return w; };
+  box.append(field(".bbmodel", bb), field("Its texture (PNG), only if it is not inside the .bbmodel", png));
+  box.append(btn("Install this model", async () => {
+    const f = bb.files && bb.files[0]; if (!f) throw new Error("Choose the .bbmodel file first");
+    const body = { mob: m.mob, bbmodel_base64: await readBase64(f) };
+    if (png.files && png.files[0]) body.png_base64 = await readBase64(png.files[0]);
+    if (!m.placeholder && !await confirmBox(`Replace ${m.label}'s current model with ${f.name}?`, { title: "Use your own model", ok: "Replace" })) return;
+    const out = await api(`/api/project/${p.id}/model-import`, body); toast(out.note, "ok"); await refreshProject(p.id);
+  }, "secondary"));
+  return box;
 }
 
 // ---------- drop picker ----------

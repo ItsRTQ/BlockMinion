@@ -24,6 +24,15 @@ store.add_event("infect", "agent:designer", "DESIGN_NOTES", {"mob": "brute", "ta
 from mod_orchestra.content import set_mood
 set_mood(store, "infect", "mob", "brute", {"grotesque": 0.8, "toon": 0.0})
 
+# the Spitter has a finished model (rig exported and painted): it can be modified; own.bbmodel is a model the user could bring
+from mod_orchestra import modeledit, skin
+import shutil
+models = Path(store.project("infect")["root"]) / "models"
+rigs.stage_rig(models.parent, "biped", "spitter", "infect", "models")
+modeledit.export_bbmodel(models / "spitter.bbmodel", models, "spitter", "infect"); (models / "out.bbmodel").unlink()
+(models / "spitter.png").write_bytes(skin.paint_skin(json.loads((models / "spitter.bbmodel").read_text(encoding="utf8")), palette={"base": "#6a8a4a"}, scale=2, seed="seed")[0])
+modeledit._embed_texture(models / "spitter.bbmodel", models / "spitter.png", HOME / "own.bbmodel")
+
 workflow.new_project(store, name="Quiet Gems", mod_id="quiet", package="com.example.quiet", idea="items: ruby, sapphire")
 workflow.plan_project(store, "quiet"); workflow.approve_spec(store, "quiet"); workflow.generate_project(store, "quiet")
 workflow.new_project(store, name="Draft Opal", mod_id="draft", package="com.example.draft", idea="items: opal, jade")   # not generated: its items can still be removed

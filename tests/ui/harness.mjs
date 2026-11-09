@@ -27,7 +27,7 @@ export async function startServer() {
     child.stderr.on('data', (d) => { log += d; });
     child.on('exit', (c) => { clearTimeout(timer); reject(new Error(`the UI server exited (${c}):\n${log}`)); });
   });
-  return {base: `http://127.0.0.1:${port}`, token: url.split('#')[1], stop: () => child.kill()};
+  return {base: `http://127.0.0.1:${port}`, token: url.split('#')[1], home, stop: () => child.kill()};
 }
 
 // Loads the page. `overrides` maps an API path to a JSON body (or a function returning one) and is read on every request, so a test can change it later;

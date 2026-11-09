@@ -112,6 +112,14 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
                        "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("modify-model", help="USER-ONLY: ask the designer to change a mob's existing model (add a tail...) and keep everything else; the install is refused if it "
+                       "touched a part you did not open for change. --cancel drops a pending modification")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--request", default="", help="what to change, in your words")
+    a.add_argument("--may-change", nargs="*", default=[], help="existing bones it may also change (default: none, it only adds)"); a.add_argument("--cancel", action="store_true")
+    a = sub.add_parser("import-model", help="USER-ONLY, no agent: install your own .bbmodel as a mob's model (exported, validated and installed like a designer delivery); "
+                       "--from-blockbench installs the edits you saved to models/<mob>.bbmodel")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--bbmodel", type=Path); a.add_argument("--png", type=Path, help="its texture, if not embedded")
+    a.add_argument("--from-blockbench", action="store_true")
     a = sub.add_parser("show-art", help="The effective art direction of every entity of a project (written or derived from the theme)"); a.add_argument("project")
     a = sub.add_parser("set-body-plan", help="USER-ONLY (before generate): change the base rig of existing mobs (all when --mobs is omitted); the spec returns to DRAFT")
     a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect", "primate"]); a.add_argument("--mobs", nargs="*", default=None)
@@ -337,6 +345,18 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "edit-model":
         from .models import set_mob_scale
         return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "modify-model":
+        from . import modeledit
+        if args.cancel:
+            return modeledit.cancel_model_edit(store, args.project, args.mob)
+        return modeledit.request_model_edit(store, args.project, args.mob, args.request, may_change=args.may_change)
+    if args.command == "import-model":
+        from . import modeledit
+        if args.from_blockbench:
+            return modeledit.reinstall_from_blockbench(store, args.project, args.mob)
+        if not args.bbmodel:
+            raise InputError("give --bbmodel <file> (or --from-blockbench)")
+        return modeledit.import_model(store, args.project, args.mob, {"bbmodel": args.bbmodel.read_bytes(), "png": args.png.read_bytes() if args.png else b""})
     if args.command == "show-art":
         from .content import list_art
         return list_art(store, args.project)

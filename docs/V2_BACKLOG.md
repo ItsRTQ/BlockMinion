@@ -31,5 +31,8 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 
 ## Editing models after generation: what is left
 - More edits without an agent next to `edit-model --scale`: per-bone scale (above), separate width/height scale (`withScale(w, h)` in the renderer plus `EntityDimensions`), and the interpreter reading sizes from the user's words ("a giant", "tiny").
+- Bring back an earlier version of a model: every version now keeps its `.bbmodel`, geo and animation; a "use this version" button would reinstall one (and a side-by-side render of before and after a modification).
+- Recolour without an agent: the texture's real palette as chips, change one colour and keep each pixel's lightness (shading and detail stay).
+- Use my model, later: per-face UV models, Molang expressions in keyframes, and a model whose bones the entity code expects under other names (held_item).
 - A general `regenerate` for projects made by an older generator: rewrite only the files whose hash is still the generator's, and hand the rest to the coder as a diff. `edit-model` applies that rule to one line of one file.
 

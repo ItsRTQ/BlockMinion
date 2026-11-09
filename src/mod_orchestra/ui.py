@@ -349,6 +349,21 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "open-model":
                         from .feedback import open_in_blockbench
                         return open_in_blockbench(store, pid, str(payload.get("mob", "")))
+                    if op in ("model-edit", "model-edit-cancel", "model-import", "model-reinstall"):
+                        from . import modeledit
+                        import base64 as _b64m
+                        mob = str(payload.get("mob", ""))
+                        if op == "model-edit":
+                            return modeledit.request_model_edit(store, pid, mob, str(payload.get("text", "")), may_change=[str(b) for b in payload.get("may_change") or []])
+                        if op == "model-edit-cancel":
+                            return modeledit.cancel_model_edit(store, pid, mob)
+                        if op == "model-reinstall":
+                            return modeledit.reinstall_from_blockbench(store, pid, mob)
+                        try:
+                            files = {k: _b64m.b64decode(str(payload.get(k + "_base64") or ""), validate=True) for k in ("bbmodel", "png")}
+                        except ValueError:
+                            raise InputError("the files must be base64") from None
+                        return modeledit.import_model(store, pid, mob, files)
                     if op == "mob-scale":
                         from .models import set_mob_scale
                         return set_mob_scale(store, pid, str(payload.get("mob", "")), payload.get("scale"))
