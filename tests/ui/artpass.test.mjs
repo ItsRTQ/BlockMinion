@@ -41,3 +41,13 @@ test('vanilla and spec-derived cards do not offer it', async () => {
   await page.waitFor(() => side() && /Request a change/.test(side().textContent), 'the runner card');
   assert.equal(btnOf(side(), 'Give it its own art'), undefined);
 });
+
+test('a projectile with its own art can be made 3D from its feature card', async () => {
+  await page.waitFor(() => side().querySelector('.card-projectiles .proj-line'), 'the projectile line');
+  const line = side().querySelector('.card-projectiles .proj-line'); assert.match(line.textContent, /bile_glob: a glob of bile/);
+  page.click(btnOf(line, 'Make it 3D')); await page.waitFor(dlgOpen, 'the dialog');
+  assert.match(page.$('#dlg').textContent, /flies nose first/); assert.match(page.$('#dlg').textContent, /earlier designer run|no earlier designer runs/);
+  press('Ask the designer'); await page.waitFor(() => posts('/proj3d').length === 1, 'the request');
+  assert.equal(posts('/proj3d')[0].body.projectile, 'bile_glob');
+  await page.waitFor(dlgOpen, 'start now?'); press('Not now'); await page.waitFor(() => !dlgOpen());
+});

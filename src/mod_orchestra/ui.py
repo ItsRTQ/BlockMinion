@@ -161,6 +161,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "art":
                         from .content import list_art
                         return list_art(store, pid)
+                    if op == "projectiles":
+                        from .model3d import projectile_assets
+                        return projectile_assets(store, pid)
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
@@ -294,6 +297,15 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "item3d":
+                        from .model3d import request_item3d
+                        return request_item3d(store, pid, str(payload.get("item", "")), str(payload.get("notes", "")))
+                    if op == "proj3d":
+                        from .model3d import request_proj3d
+                        return request_proj3d(store, pid, str(payload.get("projectile", "")), str(payload.get("notes", "")))
+                    if op == "item3d-estimate":
+                        from .model3d import designer_cost
+                        return designer_cost(store)
                     if op == "art-pass":
                         from .artreq import request_art_pass
                         return request_art_pass(store, pid, str(payload.get("card", "")))

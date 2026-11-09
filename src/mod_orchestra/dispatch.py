@@ -174,6 +174,34 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"armor": ad}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ad["installed"]))
+    if ":PROJ3D:" in task["id"] and status == "DONE":
+        from .model3d import install_proj3d
+        from .validation import InputError
+        ident = task["id"].split(":PROJ3D:")[1].split(":")[0]
+        try:
+            p3 = install_proj3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D projectile model rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"proj3d": p3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(p3["installed"]))
+    if ":ITEM3D:" in task["id"] and status == "DONE":
+        from .model3d import install_item3d
+        from .validation import InputError
+        ident = task["id"].split(":ITEM3D:")[1].split(":")[0]
+        try:
+            i3 = install_item3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D item model rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"item3d": i3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(i3["installed"]))
     if ":ART:" in task["id"] and status == "DONE":
         from .artreq import install_art
         from .validation import InputError
