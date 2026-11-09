@@ -18,7 +18,8 @@ test.before(async () => {
   await page.waitFor(() => card(), 'the Brute card');
 });
 test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
-test.beforeEach(() => { page.overrides['/api/project/infect/dispatch'] = {started: true}; });
+// the page redraws after every action; a test must never start while it is still doing so (a slow runner shows it)
+test.beforeEach(async () => { page.overrides['/api/project/infect/dispatch'] = {started: true}; await ready(); });
 
 test('the card shows the designer\'s notes (the built take highlighted) and the mood', () => {
   const notes = card().querySelector('.design-notes'); assert.ok(notes);
