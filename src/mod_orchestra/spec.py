@@ -270,6 +270,8 @@ class Mob:
     art: object = None                # Art direction: concept, tags and silhouette; feeds the skin's palette, zones and face
     held_item: str = ""               # what the mob carries in its main hand and draws on the model's `held_item` bone: "" = the best tool/weapon in
                                       # its drops (biped plan only), "none" = empty-handed, or an item id (local or minecraft:...)
+    scale: float = 1.0                # overall size: vanilla's Attributes.SCALE, so the hitbox, eye height and step grow with it and GeckoLib
+                                      # draws the model at that size (geometry and texture untouched). 1.0 = as modeled
 
 
 TOOL_KINDS = ("sword", "pickaxe", "axe", "shovel", "hoe")
@@ -439,6 +441,7 @@ class Spec:
 
 
 SCHEMA_VERSION = 2
+SCALE_MIN, SCALE_MAX = 0.0625, 16.0   # vanilla clamps Attributes.SCALE to this range
 RECIPE_KINDS = ("shaped", "shapeless", "smelting", "blasting", "smoking", "campfire_cooking")
 INGREDIENT_RE = re.compile(r"^#?[a-z0-9_.-]+:[a-z0-9_./-]+$")
 
@@ -546,6 +549,8 @@ def validate_mob(spec: "Spec", m: Mob) -> None:
         raise InputError("Mob health 1-1024, speed 0.05-1.5, width/height 0.1-4")
     if not (0 <= m.attack_damage <= 100):
         raise InputError("Mob attack_damage 0-100")
+    if not (SCALE_MIN <= float(m.scale) <= SCALE_MAX):
+        raise InputError(f"Mob scale {SCALE_MIN}-{SCALE_MAX} (the range of Minecraft's scale attribute)")
     for d in m.drops:
         d = coerce_mob_drop(d)
         resolve_result(spec.local_ids(), spec.mod_id, d.item)

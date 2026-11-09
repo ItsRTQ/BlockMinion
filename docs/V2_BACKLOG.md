@@ -27,5 +27,9 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 - Painter as a toolbox of generic operations (fill, noise, gradient, scatter, line) with no presets and no suggested values; today it is presets (`flesh`, `rotten`, `hide`, `cloth`) plus free hand painting.
 - Mood dials and reference images in the icons and armor redesign dialogs (today only mobs have them).
 - A way to measure how different two or three designs of the same prompt are (proportions, palette) so variety can be checked and not only hoped for.
-- Proportion dials (head size, shoulder and limb mass, hunch) over the existing body plans, if the scaffold turns out to be the main reason designs look alike.
+- Proportion dials (head size, shoulder and limb mass, hunch) over the existing body plans, if the scaffold turns out to be the main reason designs look alike. Per-bone scale (GeckoLib `GeoBone.setScaleX/Y/Z` at render time) is the cheap way in: like `Mob.scale`, it touches neither the geometry nor the skin.
+
+## Editing models after generation: what is left
+- More edits without an agent next to `edit-model --scale`: per-bone scale (above), separate width/height scale (`withScale(w, h)` in the renderer plus `EntityDimensions`), and the interpreter reading sizes from the user's words ("a giant", "tiny").
+- A general `regenerate` for projects made by an older generator: rewrite only the files whose hash is still the generator's, and hand the rest to the coder as a diff. `edit-model` applies that rule to one line of one file.
 

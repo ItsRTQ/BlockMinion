@@ -357,6 +357,17 @@ async function renderGallery(p) {
     for (const d of drops) { const chip = el("span", null, "drop-chip"); const img = el("img"); img.src = dropIcon(p.id, d.item); img.alt = ""; chip.append(img, el("span", `${d.item} ×${d.count_min}${d.count_max !== d.count_min ? "–" + d.count_max : ""}${d.chance < 1 ? " @" + Math.round(d.chance * 100) + "%" : ""}`)); dl.append(chip); }
     dl.append(btn("Edit drops", () => openPicker(p.id, drops, `Drops on death — ${m.label}`, async (table) => { const out = await api(`/api/project/${p.id}/mob-drops`, { mob: m.mob, drops: table }); toast(out.note || "Drops saved.", "ok"); await openProject(p.id); }), "mini secondary"));
     card.append(dl);
+    const size = el("div", null, "drops-inline size-inline"); size.append(el("span", "Size:", "muted"));
+    size.append(el("span", m.scale && m.scale !== 1 ? `${m.scale}× the model` : "as modeled", m.scale && m.scale !== 1 ? "drop-chip" : "dim"));
+    size.append(btn("Resize", async () => {
+      const v = await promptBox("How big, compared with the model as it is? 1 = as modeled, 2 = twice as big, 0.5 = half (0.0625 to 16). The hitbox grows with it; the shape, skin and animations stay as they are, and no agent runs.",
+                                String(m.scale || 1), { title: `Size — ${m.label}`, ok: "Resize", multiline: false, required: true });
+      if (v == null) return;
+      const out = await api(`/api/project/${p.id}/mob-scale`, { mob: m.mob, scale: Number(v) });
+      toast(!out.changed ? "Same size: nothing to change." : out.how === "patched" ? out.note : out.how === "coder task" ? `Resize sent to the coder (${out.why}). Dispatch it from Now.` : "Size saved. The spec is back to draft: approve it again to generate.", "ok");
+      await refreshProject(p.id);
+    }, "mini secondary"));
+    card.append(size);
     const moodText = (mood) => Object.entries(mood || {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(" · ");
     if (moodText(m.mood)) card.append(el("div", "mood: " + moodText(m.mood), "art-ref"));
     if (m.design_notes) {   // what the designer explored before building: a record, and a menu for a redesign
