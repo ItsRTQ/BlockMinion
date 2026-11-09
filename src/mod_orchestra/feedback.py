@@ -10,6 +10,9 @@ from .validation import safe_inside, InputError
 PREVIEW_SUFFIXES = ("_rest.png", "_walk.png", "_face.png", "_front.png", "_iso.png", "_preview.png")
 
 
+from .references import list_references
+
+
 def model_gallery(store: Store, pid: str) -> list[dict]:
     """Per mob: source/export presence, installed state, previews and texture as UI-servable paths."""
     proj = store.project(pid)
@@ -41,7 +44,8 @@ def model_gallery(store: Store, pid: str) -> list[dict]:
                     "previews": [f"models/{n}" for n in previews],
                     "task_state": task["state"] if task else None, "task": task["id"] if task else None,
                     "feedback": feedback[:10], "placeholder": not (models / f"{mid}.bbmodel").is_file(),
-                    "design_notes": latest_design_notes(store, pid, mid), "mood": effective_art(spec_obj, "mob", mid)["mood"]})
+                    "design_notes": latest_design_notes(store, pid, mid), "mood": effective_art(spec_obj, "mob", mid)["mood"],
+                    "references": list_references(store, pid, mid)})
     return out
 
 
@@ -49,12 +53,12 @@ def file_for_ui(store: Store, pid: str, relative: str) -> tuple[Path, str]:
     """Only PNG/JSON under models/ or assets/<mod>/ may be served to the local UI."""
     root = Path(store.project(pid)["root"])
     rel = relative.replace("\\", "/")
-    if not (rel.startswith("models/") or rel.startswith(f"src/main/resources/assets/{pid}/") or rel.startswith(".mod-orchestra/previews/")):
+    if not (rel.startswith("models/") or rel.startswith(f"src/main/resources/assets/{pid}/") or rel.startswith(".mod-orchestra/previews/") or rel.startswith("references/")):
         raise InputError("Not a servable path")
     path = safe_inside(root, rel)
-    if not path.is_file() or path.suffix.lower() not in (".png", ".json"):
+    if not path.is_file() or path.suffix.lower() not in (".png", ".json", ".jpg", ".webp") or (path.suffix.lower() in (".jpg", ".webp") and not rel.startswith("references/")):
         raise InputError("Not a servable file")
-    return path, ("image/png" if path.suffix.lower() == ".png" else "application/json")
+    return path, {".png": "image/png", ".json": "application/json", ".jpg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
 
 
 def record_design_notes(store: Store, pid: str, mob: str, handoff: dict, run_id: str) -> dict | None:

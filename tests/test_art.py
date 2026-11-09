@@ -669,3 +669,64 @@ class TestDesignNotesAndRedesign(Project):
         give_model_feedback(self.store, "g_mod", "brute", "x", scope="skin", mood={"grotesque": 0.5})
         g = next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")
         self.assertEqual(g["mood"], {"grotesque": 0.5}); self.assertEqual((g["feedback"][0]["scope"], g["feedback"][0]["mood"]), ("skin", {"grotesque": 0.5}))
+
+
+class TestReferenceImages(Project):
+    """Optional pictures the user attaches to say 'like this'. The designer is told they exist; the tool never needs them."""
+    PNG = skin.encode_png(2, 2, bytes([200, 100, 50, 255] * 4))
+    JPG = b"\xff\xd8\xff\xe0" + b"0" * 64
+    WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"0" * 24
+
+    def b64(self, raw):
+        import base64
+        return base64.b64encode(raw).decode()
+
+    def test_three_kinds_are_accepted_and_named_by_their_bytes(self):
+        from mod_orchestra.references import add_reference, list_references
+        names = [add_reference(self.store, "g_mod", "brute", self.b64(raw))["file"] for raw in (self.PNG, self.JPG, self.WEBP)]
+        self.assertEqual(names, ["references/brute/ref-1.png", "references/brute/ref-2.jpg", "references/brute/ref-3.webp"])
+        self.assertEqual(list_references(self.store, "g_mod", "brute"), names); self.assertEqual((self.root / names[1]).read_bytes(), self.JPG)
+
+    def test_bad_input_is_refused_with_a_reason(self):
+        from mod_orchestra.references import add_reference, remove_reference, MAX_PER_MOB
+        for raw, why in ((b"not an image at all", "PNG, JPEG or WebP"), (b"\xff\xd8\xff" + b"0" * 3_100_000, "at most 3 MB"), (b"GIF89a" + b"0" * 30, "PNG, JPEG or WebP")):
+            with self.assertRaisesRegex(InputError, why):
+                add_reference(self.store, "g_mod", "brute", self.b64(raw))
+        with self.assertRaisesRegex(InputError, "valid base64"):
+            add_reference(self.store, "g_mod", "brute", "!!!not base64!!!")
+        with self.assertRaisesRegex(InputError, "Unknown mob"):
+            add_reference(self.store, "g_mod", "ghost", self.b64(self.PNG))
+        for _ in range(MAX_PER_MOB):
+            add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        with self.assertRaisesRegex(InputError, f"at most {MAX_PER_MOB}"):
+            add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        for name in ("../../etc/passwd", "ref-1.exe", "", "ref-1.png/../x"):
+            with self.assertRaises(InputError):
+                remove_reference(self.store, "g_mod", "brute", name)
+
+    def test_removing_frees_a_slot_and_numbers_do_not_repeat(self):
+        from mod_orchestra.references import add_reference, remove_reference
+        add_reference(self.store, "g_mod", "brute", self.b64(self.PNG)); add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        self.assertEqual(remove_reference(self.store, "g_mod", "brute", "ref-1.png")["references"], ["references/brute/ref-2.png"])
+        self.assertEqual(add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))["file"], "references/brute/ref-3.png")
+        with self.assertRaisesRegex(InputError, "No such reference"):
+            remove_reference(self.store, "g_mod", "brute", "ref-1.png")
+
+    def test_the_designer_is_told_and_told_not_to_trace(self):
+        from mod_orchestra.models import rig_block
+        from mod_orchestra.references import add_reference
+        self.assertNotIn("Reference images", rig_block(self.store, "g_mod", "brute", self.root))
+        add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        text = rig_block(self.store, "g_mod", "brute", self.root)
+        for needle in ("Reference images the user attached (optional inspiration)", "`references/brute/ref-1.png`", "Do not trace or copy them", "make your own creature"):
+            self.assertIn(needle, text)
+
+    def test_the_ui_may_serve_them_but_no_other_jpeg(self):
+        from mod_orchestra.feedback import file_for_ui, model_gallery
+        from mod_orchestra.references import add_reference
+        add_reference(self.store, "g_mod", "brute", self.b64(self.JPG))
+        self.assertEqual(file_for_ui(self.store, "g_mod", "references/brute/ref-1.jpg")[1], "image/jpeg")
+        (self.root / "models").mkdir(exist_ok=True); (self.root / "models/x.jpg").write_bytes(self.JPG)
+        with self.assertRaises(InputError):
+            file_for_ui(self.store, "g_mod", "models/x.jpg")
+        self.assertEqual(next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")["references"], ["references/brute/ref-1.jpg"])

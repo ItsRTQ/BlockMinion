@@ -77,7 +77,8 @@ def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
     from .art import brief as art_brief
     art_text = ("\n## Art direction for this creature\n" + art_brief(spec, "mob", mob_id) + "\nIt describes; it does not dictate every detail. Reshape and detail the model "
                 "so it shows these cues in a way of your own, and feed `orchestra_paint_skin` from it (palette, zones, surfaces, face). Do not paint a generic creature.\n") if mob else ""
-    words = user_words(store, pid, f"{mob.label} (`{mob_id}`)" if mob else "") if mob else ""
+    from .references import references_block
+    words = (user_words(store, pid, f"{mob.label} (`{mob_id}`)") + references_block(store, pid, mob_id)) if mob else ""
     held = held_item_for(spec, mob) if mob else None
     held_text = (f" The entity holds `{held}` in its main hand and draws it on the empty `held_item` bone at the right palm: keep that bone "
                  f"(a child of the forearm), keep it at the grip when you reshape the arm, and give it a rotation if the weapon points the wrong way.") if held else ""

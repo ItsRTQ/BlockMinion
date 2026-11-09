@@ -325,6 +325,12 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
+                    if op == "reference":
+                        from .references import add_reference
+                        return add_reference(store, pid, str(payload.get("mob", "")), str(payload.get("data", "")))
+                    if op == "remove-reference":
+                        from .references import remove_reference
+                        return remove_reference(store, pid, str(payload.get("mob", "")), str(payload.get("name", "")))
                     if op == "behavior-carriers":
                         from .content import set_behavior_carriers
                         return set_behavior_carriers(store, pid, str(payload.get("behavior", "")), list(payload.get("carriers") or []))
