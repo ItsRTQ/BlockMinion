@@ -58,7 +58,8 @@ Put the proposal in the handoff under `spec` with EXACTLY this shape (schema_ver
   "biomes": [{{"identifier": "gem_fields", "label": "Gem Fields", "base": "plains|forest|desert|taiga|snowy_plains|swamp", "temperature": 0.8, "downfall": 0.4, "sky_color": "#78A7FF", "fog_color": "#C0D8FF", "water_color": "#3F76E4", "grass_color": "", "foliage_color": "", "mobs": ["local mob ids"]}}],
   "dimensions": [{{"identifier": "gem_realm", "label": "Gem Realm", "biomes": ["gem_fields"], "sky": "overworld|nether|end", "fixed_time": -1, "noise": "minecraft:overworld|minecraft:floating_islands|minecraft:caves|minecraft:amplified"}}],
   "ores": [{{"block": "crystal_ore", "vein_size": 9, "veins_per_chunk": 8, "min_y": -64, "max_y": 64, "biomes": ["overworld"], "discard_on_air": 0.0}}],
-  "theme": "2-4 sentences: visual brief for all art in this mod — era/culture, palette (3-5 colours with hex), materials, motifs, mood (e.g. 'Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial')",
+  "theme": "2-4 sentences: visual brief for all art in this mod, taken from the user's own words: the era or culture if any, a palette of 3-5 colours with hex that fits what they described, materials, motifs and the feeling",
+  "mood": {{"<dial>": 0.0}},
   "assumptions": ["..."]}}
 ```
 Material reference numbers: iron = durability 250 / speed 6 / bonus 2 / level iron / ench 14 / defense 2,6,5,2 / armor dur 15;
@@ -91,8 +92,10 @@ consequence in ONE foundation behavior, then give every member the user says can
 without the capability, and never let a member bypass the effect with a shortcut of your own. List every inference like this under `assumptions`, so the user can see how far you went.
 If the idea allows two readings that would build different things (infect on hit versus convert on death), state the reading you chose as the FIRST assumption. When the user says something happens "at random", add a criterion that over many trials every outcome appears. Do not invent mechanics the user did not describe; where the user left a number open (infection time, damage), pick a sensible one, put it in the description
 and list it under `assumptions`. Mobs a behavior is about must still be listed under `mobs` with their stats; a behavior never replaces the mob.
-The user's style words are the art direction: "grotesque", "human skin tone", "mutant", "cute", "metallic", "ancient" belong in the concept AND in the tags, and the theme's colours must follow them (a mutated human is flesh-toned, an ice golem is
-pale and cold; never default to green because something is infected, and never to a saturated palette). When the user names something it should resemble ("like the Tank from Left 4 Dead", "like a vanilla pig"), put it in `art.reference`
+The user's style words are the art direction: whatever adjectives they use about how a thing should look or feel belong in the concept AND in the tags, and the theme's colours must follow them: derive the palette from what they described,
+never from habit (not green because something is infected, not a saturated palette because it is a game).
+`mood` holds open-vocabulary dials from 0 to 1 that tell the artists how the user wants it to FEEL (the words are yours, taken from the user's: whatever their description needs), including explicit 0 for what they rule out; infer them from the
+idea without asking, put the ones that hold for the whole mod in the top-level `mood` and use an entity's `art.mood` only where it differs. They are suggestions the artists feel their way with, not rules: do not set one the user's words do not imply. When the user names something it should resemble ("like the Tank from Left 4 Dead", "like a vanilla pig"), put it in `art.reference`
 and spell out in the concept and the tags what that means in proportions, silhouette, palette family and surface, because the designer cannot see it; for a hulking brute that means a small head and enormous shoulders and arms. When the user rules
 something out ("not cartoon", "no bright colours"), or the style implies it (grotesque rules out cute), list it in `art.avoid` (up to 8 short phrases).
 Field limits (a proposal that breaks a structural one is rejected and you are asked to resend it; cosmetic text is trimmed to fit): art.concept 320 characters, art.silhouette 60 (a short phrase, not a sentence), art.reference 120, at most 8 art.avoid phrases of 2-48 characters,
@@ -100,9 +103,9 @@ each tag 2-48 characters and at most 16 tags, each art.pieces text 320; behavior
 Art direction (`art`): every feature, tool/armor set (material), food and mob takes an `"art"` object so the designer paints something specific to it, never a stock icon:
 `{{"concept": "one or two sentences: what it is and how it looks, in this mod's world", "tags": ["6-10 concrete visual cues"], "silhouette": "optional shape phrase"}}`.
 A material's `art` also carries `"pieces": {{"sword": "its own sentence", "pickaxe": "...", "helmet": "...", ...}}` with a different shape idea for every piece of the set.
-Draw the cues from the user's idea and from your `theme`: shapes (serrated edge, hooked beak), materials (hammered iron, bone, leather lashing), colours (rust red, ash grey),
-wear (chipped, patched, soot-stained) and symbols; never mood words (epic, cool, powerful) and never generic ones (shiny, nice). Things in one set share palette and motifs but not silhouette.
-Example, tool set of an ork warband: `"art": {{"concept": "crude black-iron weapons beaten out in a hurry, wrapped in leather and decorated with the bones of past victims", "tags": ["serrated edge", "bone teeth", "hammered iron", "leather lashing", "rust red", "chipped"], "pieces": {{"sword": "a notched cleaver with bone teeth lashed along the edge", "axe": "a slab of iron on a gnarled haft with a skull knob", "helmet": "a dented bucket helm with a horn bolted on one side"}}}}`.
+Draw the cues from the user's own words and from your `theme`: the shapes, materials, colours, wear and symbols that belong to THIS thing, never mood words (epic, cool, powerful)
+and never generic ones (shiny, nice). Things in one set share palette and motifs but not silhouette. Do not reach for stock fantasy vocabulary: if the user's words are plain, the cues are plain.
+Leave room: the cues describe, they do not dictate every detail, because the artists who read them are expected to bring ideas of their own.
 A biped carries the best weapon or tool among its drops (sword, axe, pickaxe, shovel, hoe) in its right hand, drawn on the model; leave `held_item` "" for that,
 "none" for empty hands, or an item id to choose which item it holds.
 Also put the questions (if any) under `questions`, as a list of plain sentences addressed to the user.
@@ -126,6 +129,22 @@ def _fit(text, limit: int) -> tuple[str, bool]:
     if " " in cut and cut.rfind(" ") >= int(limit * 0.6):
         cut = cut[:cut.rfind(" ")]
     return cut.rstrip(" ,;:-"), True
+
+
+def _fit_mood(raw, label: str, notes: list[str]) -> dict:
+    """An agent's mood dials, fitted instead of rejected: bad words are dropped, values are clamped to 0..1, at most 12 are kept."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, v in raw.items():
+        k = re.sub(r"\s+", " ", re.sub(r"[^a-z '\-]", "", str(key).strip().lower())).strip()
+        if len(k) < 2 or len(k) > 24 or isinstance(v, bool) or not isinstance(v, (int, float)):
+            notes.append(f"{label} mood dial {str(key)[:20]!r} dropped")
+            continue
+        out[k] = round(max(0.0, min(1.0, float(v))), 2)
+    if len(out) > 12:
+        notes.append(f"{label} mood to 12 dials")
+    return dict(list(out.items())[:12])
 
 
 def _fit_art(art, label: str, notes: list[str], piece_kinds: tuple = ()):
@@ -152,6 +171,8 @@ def _fit_art(art, label: str, notes: list[str], piece_kinds: tuple = ()):
         if len(tags) > 16:
             notes.append(f"{label} art.tags to 16 tags")
         out["tags"] = tags[:16]
+    if "mood" in out:
+        out["mood"] = _fit_mood(out["mood"], label, notes)
     if "avoid" in out:
         raw_avoid = out["avoid"] if isinstance(out["avoid"], (list, tuple)) else re.split(r"[,;\n]", str(out["avoid"]))
         avoid, seen_a = [], set()
@@ -180,6 +201,8 @@ def fit_proposal(proposal: dict) -> tuple[dict, list[str]]:
     Structure, identifiers, numbers and titles are never touched: a real mistake there is still rejected, with its reason, for the agent to fix."""
     import copy
     p, notes = copy.deepcopy(proposal), []
+    if "mood" in p:
+        p["mood"] = _fit_mood(p["mood"], "the mod", notes)
     for key, label in (("features", "item"), ("foods", "food"), ("mobs", "mob")):
         for e in p.get(key) or []:
             if isinstance(e, dict) and e.get("art") is not None:
@@ -218,7 +241,7 @@ def spec_from_proposal(current: dict, proposal: dict) -> Spec:
         "idea": current["idea"], "profile": current["profile"],
         "features": proposal.get("features", []), "recipes": proposal.get("recipes", []), "drops": proposal.get("drops", []),
         "tab": proposal.get("tab"), "tab_icon": proposal.get("tab_icon"), "mobs": proposal.get("mobs", []),
-        "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "sounds": proposal.get("sounds", []), "ores": proposal.get("ores", []), "enchantments": proposal.get("enchantments", []),
+        "materials": proposal.get("materials", []), "foods": proposal.get("foods", []), "theme": proposal.get("theme", ""), "mood": proposal.get("mood", {}), "sounds": proposal.get("sounds", []), "ores": proposal.get("ores", []), "enchantments": proposal.get("enchantments", []),
         "structures": proposal.get("structures", []), "biomes": proposal.get("biomes", []), "dimensions": proposal.get("dimensions", []),
         "behaviors": proposal.get("behaviors", []),
         "questions": [], "assumptions": [str(a) for a in proposal.get("assumptions", [])][:12],

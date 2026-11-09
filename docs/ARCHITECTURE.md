@@ -261,3 +261,19 @@ brows go dark and eyes and teeth light (`ensure_contrast(prefer=...)`), and the 
 `craftctl set-art` and the spec. `craftctl paint-skin <project> --mob <id> --recipe skin.json [--install]` repaints a mob with no agent from a recipe file (`docs/examples/skin-recipes/`), and installs it as the mob's texture.
 What this does not do: change a silhouette. A slender ape stays slender under any skin; proportions are the rig's job.
 
+### Freedom for the artists, automation for the user
+
+Presets and gates make every creature of a kind look alike, and that is the opposite of what an artist is for: ask for a horse three times and you should get three horses. So the tool separates what must be strict (the files work in
+the game: valid geometry, UVs inside the texture, loops that close) from taste (how it looks), which is never gated, templated or exemplified, only inspired. The user does nothing by default; options appear when they redesign.
+What the designers receive: (1) **the user's own words, verbatim, first** (`models.user_words`: the whole idea with every answer, in the MODEL, SPRITES and ARMOR packets), with the rule that they win over our summary of them, which is made by a program that may
+drop nuance. (2) **Mood dials**, open vocabulary and 0..1 (`grotesque`, `gore`, `toon`, `eerie`... whatever the description needs), inferred by the interpreter without asking, at the mod level and per entity (`Spec.mood`, `Art.mood`, the entity
+overriding one dial at a time), told to the artist as sentences ("strongly grotesque (0.8), not at all toon (0)") and explicitly as suggestions, never as code paths or checks. (3) **Explore before building**: three deliberately different takes, avoiding
+the most typical one, one chosen and recorded as `design_notes` in the handoff; it is stored (`DESIGN_NOTES`), shown on the mob's card, and is the menu for "try another of its ideas". (4) **The rig is an optional scaffold**, there to save the technical
+conventions; the designer may reshape it heavily or build from scratch, and must never deliver it recoloured. (5) **No example colour, shape or style anywhere in what an agent reads**: a test scans every prompt, instruction and skill for the stock
+words we ever shipped and fails if one returns.
+The redesign of a mob (`feedback.give_model_feedback`) takes, all optional and enough on their own: `scope` (everything, only the shape, only the skin), `take` (build another of its explored ideas), `mood` (new dial values, saved to the
+mob's art direction without turning derived art into written) and reference images (`references.py`: PNG, JPEG or WebP up to 3 MB, four per mob, typed by their bytes, listed in the designer's packet as inspiration "not to trace").
+`feedback_context` turns each into a sentence for the designer. The UI folds them under "Redesign options (all optional)".
+Also fixed here: the mob card's "Start the designer now?" question was not awaited, so "Not now" still started a paid run. A static test now fails the build on any dialog call that is not awaited.
+Not done yet (see V2_BACKLOG): the painter is still presets plus hand painting, not a toolbox of generic operations; icons and armor redesigns do not offer dials or references; proportions are still decided by the scaffold and the designer, with no build dials.
+

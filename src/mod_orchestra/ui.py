@@ -325,6 +325,12 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
+                    if op == "reference":
+                        from .references import add_reference
+                        return add_reference(store, pid, str(payload.get("mob", "")), str(payload.get("data", "")))
+                    if op == "remove-reference":
+                        from .references import remove_reference
+                        return remove_reference(store, pid, str(payload.get("mob", "")), str(payload.get("name", "")))
                     if op == "behavior-carriers":
                         from .content import set_behavior_carriers
                         return set_behavior_carriers(store, pid, str(payload.get("behavior", "")), list(payload.get("carriers") or []))
@@ -332,7 +338,8 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .content import set_art
                         return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),
                                        tags=payload.get("tags") or [], silhouette=str(payload.get("silhouette", "")),
-                                       reference=str(payload.get("reference", "")), avoid=payload.get("avoid") or [])
+                                       reference=str(payload.get("reference", "")), avoid=payload.get("avoid") or [],
+                                       mood=payload.get("mood") if isinstance(payload.get("mood"), dict) else None)
                     if op == "rename-feature":
                         from .content import rename_feature
                         return rename_feature(store, pid, str(payload.get("identifier", "")), str(payload.get("label", "")))
@@ -345,7 +352,8 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "mob-drops":
                         from .models import set_mob_drops
                         return set_mob_drops(store, pid, str(payload.get("mob", "")), list(payload.get("drops") or []))
-                    if op == "feedback": return give_model_feedback(store, pid, str(payload.get("mob", "")), str(payload.get("text", "")))
+                    if op == "feedback": return give_model_feedback(store, pid, str(payload.get("mob", "")), str(payload.get("text", "")), scope=str(payload.get("scope") or "all"),
+                                                   take=payload.get("take"), mood=payload.get("mood") if isinstance(payload.get("mood"), dict) else None)
                     if op == "decide":
                         store.decide_approval(payload["approval_id"], bool(payload.get("grant", True)))
                         return {"id": payload["approval_id"], "status": "GRANT" if payload.get("grant", True) else "DENY"}

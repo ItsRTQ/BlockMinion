@@ -46,6 +46,22 @@ def model_task_id(pid: str, mob_id: str) -> str:
     return f"{pid}:MODEL:{mob_id}"
 
 
+USER_WORDS_LIMIT = 3500
+
+
+def user_words(store: Store, pid: str, subject: str = "") -> str:
+    """The user's own text, verbatim, as the first thing an artist reads. Everything else in a packet is our interpretation of these words, made by a
+    program that may have dropped nuance ("grotesque", "human skin", "like the Tank"); where they disagree the words win."""
+    idea = str((store.project(pid)["spec"] or {}).get("idea") or "").strip()
+    if not idea:
+        return ""
+    shown = idea if len(idea) <= USER_WORDS_LIMIT else idea[:USER_WORDS_LIMIT].rsplit(" ", 1)[0] + " ..."
+    where = f" Look for what they said about {subject}." if subject else ""
+    return ("\n## What the user wrote, in their own words (read this first: it wins over every summary below)\n" + shown + "\n"
+            f"The art direction, mood and notes that follow are our interpretation of these words.{where} Where they disagree, follow the words: take what the user asks "
+            "for seriously, and make it your own.\n")
+
+
 def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
     """Stage the mob's base rig in models/ (if no source exists yet) and describe it to the designer."""
     from .rigs import stage_rig, load_rig, DEFAULT_BODY_PLAN
@@ -59,14 +75,17 @@ def rig_block(store: Store, pid: str, mob_id: str, workspace: Path) -> str:
     state = "placed now" if staged["staged"] else "already present (edited before; keep working on it)"
     from .geckolib import held_item_for
     from .art import brief as art_brief
-    art_text = ("\n## Art direction for this creature\n" + art_brief(spec, "mob", mob_id) + "\nUse it: reshape and detail the model so it shows these cues (horns, "
-                "armour plates, scars, a hunch), and feed `orchestra_paint_skin` from it: palette colours as `base` and zones, the rest as `face` and bands. Do not paint a generic creature.\n") if mob else ""
+    art_text = ("\n## Art direction for this creature\n" + art_brief(spec, "mob", mob_id) + "\nIt describes; it does not dictate every detail. Reshape and detail the model "
+                "so it shows these cues in a way of your own, and feed `orchestra_paint_skin` from it (palette, zones, surfaces, face). Do not paint a generic creature.\n") if mob else ""
+    from .references import references_block
+    words = (user_words(store, pid, f"{mob.label} (`{mob_id}`)") + references_block(store, pid, mob_id)) if mob else ""
     held = held_item_for(spec, mob) if mob else None
     held_text = (f" The entity holds `{held}` in its main hand and draws it on the empty `held_item` bone at the right palm: keep that bone "
                  f"(a child of the forearm), keep it at the grip when you reshape the arm, and give it a rotation if the weapon points the wrong way.") if held else ""
-    return (f"\n## Base rig: {plan} — `{staged['path']}` {state}\n"
-            f"Bones: {bones}. Texture {rec['texture_width']}x{rec['texture_height']}, box UV already packed without overlaps "
-            f"(`bbmodel_geckolib_validate` passes, `bbmodel_quality_gates` clean). {rec['notes']}{held_text}\n{art_text}")
+    return (f"{words}\n## Optional scaffold: {plan} — `{staged['path']}` {state}\n"
+            f"A plain {plan} rig, there to save you the technical conventions, not to decide the design: use it, reshape it heavily, or ignore it and build your own from scratch. "
+            f"Bones: {bones}. Texture {rec['texture_width']}x{rec['texture_height']}, box UV already packed without overlaps (`bbmodel_geckolib_validate` passes, "
+            f"`bbmodel_quality_gates` clean). Notes on it, optional: {rec['notes']}{held_text}\n{art_text}")
 
 
 MODEL_INSTRUCTIONS = """
@@ -75,15 +94,18 @@ Author the Blockbench/GeckoLib model for the mob named in the task using the `bl
 prefixed `mcp__blockbench__bbmodel_*`). Its root is `models/` inside this workspace; only top-level files there.
 Deliver, in `models/`: `<mob>.bbmodel` (format geckolib_model, identifier = the mob id, mod id = this mod),
 `<mob>.geo.json`, `<mob>.animation.json` and `<mob>.png` (the texture: the model resolution or a 2x/4x multiple of it).
-Start from `models/<mob>.bbmodel`: the controller places the base rig of the mob's body plan there (see the
-"Base rig" section below) with bones, pivots, box-UV layout and idle/walk clips already valid. Edit it with
-`bbmodel_edit` (move/resize cubes, add detail cubes to existing bones, add child bones for horns/ears/tails) and
-`bbmodel_geckolib_upsert_animation` with `replace: true` to tune the clips; keep the bone names. Only start a fresh
-`bbmodel_geckolib_create` when the creature's body plan is genuinely different from every base rig.
+The controller also places an optional scaffold at `models/<mob>.bbmodel` (see "Optional scaffold" below): a plain rig that already passes
+validation. It is yours to use, reshape heavily or ignore: you may build a creature of your own from scratch with `bbmodel_geckolib_create`
+(your bones, your cubes, your UV, your clips). Never deliver the scaffold with only a recolour, and do not let it decide what the creature is:
+the user's description does.
+Explore before you build, the way a painter starts a new piece. First write three deliberately different takes on this creature (a
+different silhouette, a different signature feature, a different colour story: not three variations of the first idea that came to mind), and
+avoid the most typical version of it unless the description demands it. Pick one and record the three and your choice in your handoff as
+`"design_notes": {"takes": ["...", "...", "..."], "chosen": 1, "why": "one sentence"}`; the user sees it and may ask for another take.
 Required: a readable rig (body/head/limbs as bones with sensible pivots), animations named exactly
 `animation.<mob>.idle` and `animation.<mob>.walk` (loop) — plus `animation.<mob>.attack` (one-shot, `loop: once`,
 windup → impact → recovery → rest) for hostile and neutral mobs, which the entity triggers on every hit; the staged rig
-already carries all three, retune rather than drop them — `bbmodel_geckolib_validate` with
+already carries all three; if you build your own, write all three — `bbmodel_geckolib_validate` with
 `require_idle_walk: true` passing, `bbmodel_render` used at least once to look at the result (rest + a walk frame),
 and both exports written with `overwrite: true` when re-exporting.
 Texture: do not paint pixels by hand. Call `mcp__minecraft-orchestra__orchestra_paint_skin {project, mob, palette, zones, surface, face}`
@@ -351,7 +373,7 @@ Rules: transparent background (blocks are the exception: fully opaque 16x16 tile
 is a diagonal blade with a guard; a gem is a faceted lozenge; food is a round shape with a stem/leaf).
 Minecraft's own style is 16x16 with soft shading, no anti-aliasing.
 Art direction: every item comes with a concept, visual cues and sometimes a silhouette. Paint what they describe: invent a shape that carries
-the cues (a serrated bone-toothed cleaver is not a straight sword with a guard; a chipped horned helmet is not a gem), use the palette hues, and
+the cues (an item that is described as unusual must not come out as the stock icon of its kind), use the palette hues, and
 put at least two of the cues where they can be seen at 1x. Pieces of one set share palette and motifs but each has its own silhouette.
 The controller REJECTS a sprite whose silhouette is 85% or more the stock template of its kind, one that is a copy of another sprite of the batch
 (85% identical pixels), and one with fewer than 4 colours. Before you finish, call `mcp__minecraft-orchestra__orchestra_check_sprites {project}`
@@ -414,7 +436,7 @@ def request_sprites(store: Store, pid: str, identifiers: list[str], notes: str =
     from .art import brief as art_brief, effective_art
     from .spritecheck import catalogue as sprite_catalogue
     art_kinds = {i: v["art_kind"] for i, v in sprite_catalogue(spec).items()}
-    lines = ["Sprites to paint (identifier → what it is, then its art direction; paint THAT, not the stock icon of its kind):"]
+    lines = [user_words(store, pid, "these items"), "Sprites to paint (identifier → what it is, then its art direction; paint THAT, not the stock icon of its kind):"]
     for i in identifiers:
         lines.append(f"- {i}: {catalogue[i]['label']} ({catalogue[i]['kind']}{', ' + catalogue[i]['hint'] if catalogue[i]['hint'] else ''})")
         lines += ["    " + l for l in art_brief(spec, art_kinds[i], i, palette=False).splitlines()]
@@ -592,7 +614,7 @@ def request_armor_design(store: Store, pid: str, material: str, notes: str = "")
         shutil.copyfile(TEMPLATE_DIR / "player_armor.bbmodel", target)
     n = sum(1 for t in store.tasks(pid) if f":ARMOR:{material}" in t["id"]) + 1
     task_id = f"{pid}:ARMOR:{material}" + (f":{n}" if n > 1 else "")
-    lines = [f"Material: {material} ({m.label}); pieces: {', '.join(m.armor)}; material colour hint: {m.color or 'derive from icons'}"]
+    lines = [user_words(store, pid, f"the {m.label} armor"), f"Material: {material} ({m.label}); pieces: {', '.join(m.armor)}; material colour hint: {m.color or 'derive from icons'}"]
     prior = [e["payload"].get("notes", "") for e in store.events(pid, 300) if e["kind"] == "ARMOR_REQUESTED" and e["payload"].get("material") == material and e["payload"].get("notes")]
     if notes.strip():
         lines += ["", "User notes for this round:", notes.strip()[:800]]

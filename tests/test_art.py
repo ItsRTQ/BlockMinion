@@ -171,7 +171,7 @@ class TestBriefs(Project):
 
     def test_interpreter_is_told_to_write_art(self):
         from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
-        for needle in ('"art"', "visual cues", "pieces", "never mood words", "serrated edge"):
+        for needle in ('"art"', "visual cues", "pieces", "never mood words", "stock fantasy vocabulary", "the cues describe, they do not dictate"):
             self.assertIn(needle, SPEC_INSTRUCTIONS.replace("6-10 concrete visual cues", "visual cues"))
 
 
@@ -403,7 +403,7 @@ class TestReferenceAndAvoid(Project):
     def test_the_interpreter_is_told_to_keep_the_users_style_words(self):
         from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
         text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
-        for needle in ("The user's style words are the art direction", "belong in the concept AND in the tags", "never default to green because something is infected", "art.reference",
+        for needle in ("The user's style words are the art direction", "belong in the concept AND in the tags", "not green because something is infected", "art.reference",
                        "the designer cannot see it", "a small head and enormous shoulders and arms", "list it in `art.avoid`", "art.reference 120, at most 8 art.avoid phrases"):
             self.assertIn(needle, text)
 
@@ -456,3 +456,277 @@ class TestPaintWithoutAnAgent(Project):
         env = {**os.environ, "CRAFTCTL_HOME": self.tmp.name}
         r = subprocess.run([sys.executable, "-m", "mod_orchestra.cli", "paint-skin", "--help"], env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr); self.assertIn("--install", r.stdout); self.assertIn("--recipe", r.stdout)
+
+
+class TestCreativeFreedom(Project):
+    """No templates and no anchors: the user's words come first, the scaffold is optional, the artist explores before building."""
+
+    def packet(self, idea=None):
+        from mod_orchestra.models import rig_block
+        if idea is not None:
+            self.set_idea(idea)
+        return rig_block(self.store, "g_mod", "brute", self.root)
+
+    def set_idea(self, idea):
+        raw = self.store.project("g_mod")["spec"]; raw["idea"] = idea
+        with self.store.tx() as con:
+            con.execute("UPDATE projects SET spec_json=? WHERE id=?", (json.dumps(raw), "g_mod"))
+
+    def test_the_users_words_come_first_verbatim_and_win(self):
+        idea = "hostile mobs: brute. The Brute is grotesque, human skin tone, a mutated infected primate, a bit like the Tank from Left 4 Dead, not a cartoon."
+        text = self.packet(idea)
+        self.assertLess(text.index("What the user wrote, in their own words"), text.index("Optional scaffold"))
+        self.assertIn(idea, text); self.assertIn("it wins over every summary below", text); self.assertIn("Where they disagree, follow the words", text)
+        self.assertRegex(text, r"Look for what they said about [\w ]+ \(`brute`\)")
+
+    def test_a_long_idea_is_cut_at_a_word_and_an_empty_one_adds_nothing(self):
+        from mod_orchestra.models import USER_WORDS_LIMIT
+        text = self.packet("word " * 2000)
+        self.assertIn("word ...", text); self.assertLess(len(text), USER_WORDS_LIMIT + 6000)
+        self.assertNotIn("What the user wrote", self.packet("   "))
+
+    def test_the_sprite_and_armor_packets_carry_the_words_too(self):
+        from mod_orchestra.models import request_sprites, request_armor_design
+        self.set_idea("items: groko sword. Crude and brutal, nothing shiny.")
+        self.assertIn("Crude and brutal, nothing shiny.", self.store.task_instructions(request_sprites(self.store, "g_mod", ["groko_sword"])["task"]))
+        self.assertIn("Crude and brutal, nothing shiny.", self.store.task_instructions(request_armor_design(self.store, "g_mod", "groko")["task"]))
+
+    def test_the_scaffold_is_optional_and_never_a_recolour(self):
+        text = self.packet()
+        for needle in ("Optional scaffold", "use it, reshape it heavily, or ignore it and build your own from scratch", "not to decide the design"):
+            self.assertIn(needle, text)
+        from mod_orchestra.models import MODEL_INSTRUCTIONS
+        for needle in ("optional scaffold", "yours to use, reshape heavily or ignore", "Never deliver the scaffold with only a recolour", "Explore before you build",
+                       "three deliberately different takes", "most typical version", '"design_notes"', "the user sees it and may ask for another take"):
+            self.assertIn(needle, MODEL_INSTRUCTIONS)
+        self.assertNotIn("Only start a fresh", MODEL_INSTRUCTIONS); self.assertNotIn("Start from `models/<mob>.bbmodel`", MODEL_INSTRUCTIONS)
+
+    def test_nothing_in_what_the_agents_read_teaches_a_look(self):
+        """Examples anchor: every concrete one we ever shipped came back in the output. The prompts, the skill and the designer's instructions carry none."""
+        import re
+        from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
+        from mod_orchestra.models import MODEL_INSTRUCTIONS, SPRITES_INSTRUCTIONS, ARMOR_INSTRUCTIONS
+        root = Path(__file__).resolve().parents[1]
+        texts = {"interpreter": SPEC_INSTRUCTIONS, "model": MODEL_INSTRUCTIONS, "sprites": SPRITES_INSTRUCTIONS, "armor": ARMOR_INSTRUCTIONS,
+                 "skill": (root / ".claude/skills/blockbench/SKILL.md").read_text(encoding="utf8"), "designer": (root / ".claude/agents/designer.md").read_text(encoding="utf8")}
+        anchors = [r"\bork", r"\borc\b", r"serrated", r"bone teeth", r"hammered iron", r"rust red", r"horned", r"armour plates", r"a hunch", r"#5c7f3a", r"#d9cfb8", r"#8c2d19", r"skull knob", r"leather lashing"]
+        for name, text in texts.items():
+            for pattern in anchors:
+                self.assertIsNone(re.search(pattern, text, re.I), f"{name} still teaches a look: {pattern}")
+
+
+class TestMood(Project):
+    """Mood dials are an open vocabulary of suggestions: written by the interpreter alone, shown to the artists as sentences, editable at redesign."""
+
+    def test_coercion_is_strict_for_what_people_type_and_open_in_vocabulary(self):
+        from mod_orchestra.spec import coerce_mood
+        self.assertEqual(coerce_mood({" Grotesque ": 0.8, "Toon": 0, "eerie  calm": 0.333}), {"grotesque": 0.8, "toon": 0.0, "eerie calm": 0.33})
+        self.assertEqual(coerce_mood(None), {}); self.assertEqual(coerce_mood({}), {})
+        for bad, why in (({"x": 1}, "2-24 letters"), ({"grotesque": 2}, "0 to 1"), ({"grotesque": "high"}, "0 to 1"), ({"grotesque": True}, "0 to 1"), ({f"dial {chr(97 + i)}x": 0.5 for i in range(13)}, "at most 12"), ([1], "object of dials")):
+            with self.assertRaisesRegex(InputError, why):
+                coerce_mood(bad)
+
+    def test_the_spec_keeps_them_for_the_mod_and_per_entity(self):
+        raw = self.store.project("g_mod")["spec"]; raw["mood"] = {"grotesque": 0.8}
+        raw["mobs"][0]["art"] = {"concept": "a brute", "mood": {"gore": 0.2, "grotesque": 1}}
+        spec = read_spec(raw); self.assertEqual((spec.mood, spec.mobs[0].art.mood), ({"grotesque": 0.8}, {"gore": 0.2, "grotesque": 1.0}))
+        again = read_spec(spec.to_dict()); self.assertEqual((again.mood, again.mobs[0].art.mood), (spec.mood, spec.mobs[0].art.mood))
+        self.assertEqual(read_spec(self.store.project("g_mod")["spec"] | {"mood": None}).mood, {})                  # older specs have none
+
+    def test_an_agents_dials_are_fitted_not_rejected(self):
+        from mod_orchestra.interpreter import fit_proposal
+        fitted, notes = fit_proposal({"mood": {"Grotesque!": 1.7, "x": 0.5, "cute": -3, "menace": "high", **{f"dial {chr(97 + i)}x": 0.5 for i in range(14)}},
+                                      "mobs": [{"identifier": "b", "art": {"concept": "c", "mood": {"gore": 5}}}]})
+        self.assertEqual(fitted["mood"]["grotesque"], 1.0); self.assertEqual(fitted["mood"]["cute"], 0.0); self.assertNotIn("x", fitted["mood"]); self.assertNotIn("menace", fitted["mood"])
+        self.assertLessEqual(len(fitted["mood"]), 12); self.assertEqual(fitted["mobs"][0]["art"]["mood"], {"gore": 1.0})
+        self.assertTrue(any("mood dial" in n and "dropped" in n for n in notes)); self.assertTrue(any("mood to 12 dials" in n for n in notes))
+        from mod_orchestra.interpreter import spec_from_proposal
+        full = json.loads((Path(__file__).parent / "fixtures" / "infectious_zombies.proposal.json").read_text(encoding="utf8"))
+        spec = spec_from_proposal(self.store.project("g_mod")["spec"], dict(full, mood={"Bad Key!!": 9}))          # the whole proposal still goes through
+        self.assertEqual(spec.mood, {"bad key": 1.0})
+
+    def test_prose_reads_like_a_person_and_zero_is_a_decision(self):
+        from mod_orchestra.art import mood_prose
+        self.assertEqual(mood_prose({"toon": 0, "grotesque": 0.8, "gore": 0.2, "cute": 0.5, "dread": 0.95, "worn": 0.1}),
+                         "extremely dread (0.95), strongly grotesque (0.8), moderately cute (0.5), a hint of gore (0.2), barely worn (0.1), not at all toon (0)")
+        self.assertEqual(mood_prose({}), "")
+
+    def test_the_entity_overrides_the_mod_one_dial_at_a_time_and_the_brief_says_so(self):
+        raw = self.store.project("g_mod")["spec"]; raw["mood"] = {"grotesque": 0.4, "toon": 0.0}
+        raw["mobs"][0]["art"] = {"concept": "a hulking mutant", "mood": {"grotesque": 0.85, "gore": 0.3}}
+        spec = read_spec(raw)
+        a = art.effective_art(spec, "mob", "brute"); self.assertEqual(a["mood"], {"grotesque": 0.85, "toon": 0.0, "gore": 0.3})
+        text = art.brief(spec, "mob", "brute")
+        self.assertIn("mood, as suggestions to feel your way with, not rules: strongly grotesque (0.85), a hint of gore (0.3), not at all toon (0)", text)
+        self.assertNotIn("mood, as suggestions", art.brief(read_spec(self.store.project("g_mod")["spec"]), "mob", "brute"))   # nothing is said when nothing was inferred
+        self.assertEqual(art.effective_art(spec, "tool", "groko_sword")["mood"], {"grotesque": 0.4, "toon": 0.0})              # items inherit the mod's
+
+    def test_editing_art_keeps_the_dials_unless_they_are_sent(self):
+        from mod_orchestra.content import list_art, set_art
+        set_art(self.store, "g_mod", "mob", "brute", concept="a brute", mood={"grotesque": 0.8})
+        set_art(self.store, "g_mod", "mob", "brute", concept="a bigger brute", tags=["scarred"])                   # the Art form never sends mood
+        self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {"grotesque": 0.8})
+        set_art(self.store, "g_mod", "mob", "brute", concept="x", mood={"grotesque": 0.1, "cute": 0.0}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {"cute": 0.0, "grotesque": 0.1})
+        set_art(self.store, "g_mod", "mob", "brute", concept="x", mood={}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {})
+        set_art(self.store, "g_mod", "set", "groko", concept="crude", mood={"crude": 0.9}); set_art(self.store, "g_mod", "set", "groko", concept="very crude")
+        self.assertEqual(list_art(self.store, "g_mod")["set:groko"]["mood"], {"crude": 0.9})
+
+    def test_the_designer_packet_carries_them(self):
+        from mod_orchestra.content import set_art
+        from mod_orchestra.models import rig_block
+        set_art(self.store, "g_mod", "mob", "brute", concept="a hulking mutant", mood={"grotesque": 0.85, "toon": 0})
+        self.assertIn("strongly grotesque (0.85), not at all toon (0)", rig_block(self.store, "g_mod", "brute", self.root))
+
+    def test_the_interpreter_infers_them_alone_and_treats_them_as_suggestions(self):
+        from mod_orchestra.interpreter import SPEC_INSTRUCTIONS
+        text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
+        for needle in ('"mood": {"<dial>": 0.0}', "open-vocabulary dials from 0 to 1", "including explicit 0 for what they rule out", "infer them from the\nidea without asking", "suggestions the artists feel their way with, not rules"):
+            self.assertIn(needle, text)
+
+
+class TestDesignNotesAndRedesign(Project):
+    """The designer's explored takes are recorded by themselves; a redesign can ask for another take, only the shape or only the skin, or a new mood."""
+    NOTES = {"takes": ["a hunched giant with one oversized arm", "a lean sprinter with long jaw", "a bloated torso on thin legs"], "chosen": 1, "why": "the lopsided arm reads at a glance"}
+
+    def handoff(self, **extra):
+        return {"task": "g_mod:MODEL:brute", "status": "DONE", "scope": "s", "changed_files": [], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "m"},
+                "risks": [], "unknowns": [], "needs_user": [], "next_agent": "coder", **extra}
+
+    def run_model(self, **extra):
+        from mod_orchestra.dispatch import dispatch
+        from mod_orchestra.provider import FakeProvider
+        with patch("mod_orchestra.models.install_model", return_value={"installed": [], "face": None}):
+            return dispatch(self.store, "g_mod", task_id="g_mod:MODEL:brute", provider=FakeProvider("```handoff\n" + json.dumps(self.handoff(**extra)) + "\n```"))
+
+    def test_the_notes_are_recorded_from_the_handoff_without_anyone_asking(self):
+        from mod_orchestra.feedback import latest_design_notes, model_gallery
+        out = self.run_model(design_notes=self.NOTES)
+        self.assertEqual(out["task_state"], "DONE")
+        notes = latest_design_notes(self.store, "g_mod", "brute")
+        self.assertEqual((notes["takes"], notes["chosen"], notes["why"]), (self.NOTES["takes"], 1, self.NOTES["why"]))
+        self.assertEqual(next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")["design_notes"]["chosen"], 1)
+
+    def test_missing_or_malformed_notes_never_fail_a_model(self):
+        from mod_orchestra.feedback import latest_design_notes, record_design_notes
+        for notes in (None, "three ideas", {"takes": "one"}, {"takes": ["only one"]}, {"takes": [" ", ""]}):
+            self.assertIsNone(record_design_notes(self.store, "g_mod", "brute", {"design_notes": notes} if notes is not None else {}, "r"))
+        self.assertEqual(self.run_model(design_notes={"takes": "nonsense"})["task_state"], "DONE"); self.assertIsNone(latest_design_notes(self.store, "g_mod", "brute"))
+
+    def test_the_notes_are_fitted_not_trusted(self):
+        from mod_orchestra.feedback import record_design_notes
+        out = record_design_notes(self.store, "g_mod", "brute", {"design_notes": {"takes": [f"take {i} " + "x" * 400 for i in range(8)], "chosen": 9, "why": "w" * 900}}, "r")
+        self.assertEqual(len(out["takes"]), 5); self.assertTrue(all(len(t) <= 220 for t in out["takes"])); self.assertIsNone(out["chosen"]); self.assertLessEqual(len(out["why"]), 400)
+        self.assertIsNone(record_design_notes(self.store, "g_mod", "brute", {"design_notes": {"takes": ["a", "b"], "chosen": True}}, "r")["chosen"])
+
+    def test_options_alone_are_a_valid_redesign_and_nothing_at_all_is_not(self):
+        from mod_orchestra.feedback import give_model_feedback
+        for kw in ({"scope": "skin"}, {"scope": "shape"}, {"mood": {"grotesque": 0.9}}, {"text": "bigger"}):
+            self.assertEqual(give_model_feedback(self.store, "g_mod", "brute", **kw)["task"], "g_mod:MODEL:brute")
+        with self.assertRaisesRegex(InputError, "Say what should change"):
+            give_model_feedback(self.store, "g_mod", "brute")
+        with self.assertRaisesRegex(InputError, "scope must be"):
+            give_model_feedback(self.store, "g_mod", "brute", "x", scope="everything")
+        with self.assertRaisesRegex(InputError, "2-24 letters|0 to 1"):
+            give_model_feedback(self.store, "g_mod", "brute", "x", mood={"grotesque": 4})
+
+    def test_a_take_must_be_one_the_designer_actually_explored(self):
+        from mod_orchestra.feedback import give_model_feedback
+        with self.assertRaisesRegex(InputError, "no design notes yet"):
+            give_model_feedback(self.store, "g_mod", "brute", take=2)
+        self.run_model(design_notes=self.NOTES)
+        for bad in (0, 4, True, "2"):
+            with self.assertRaisesRegex(InputError, "number from 1 to 3"):
+                give_model_feedback(self.store, "g_mod", "brute", take=bad)
+        self.assertEqual(give_model_feedback(self.store, "g_mod", "brute", take=2)["state"], "READY")
+
+    def test_the_designer_reads_every_option_as_a_sentence(self):
+        from mod_orchestra.feedback import feedback_context, give_model_feedback
+        self.run_model(design_notes=self.NOTES)
+        give_model_feedback(self.store, "g_mod", "brute", "keep the grotesque feel", scope="skin", take=2, mood={"grotesque": 0.9, "toon": 0})
+        text = feedback_context(self.store, "g_mod", "brute")
+        for needle in ("keep the grotesque feel", "Change ONLY the skin and face", "keep the geometry and the animations exactly as they are",
+                       'The user prefers take 2 from your own design notes: "a lean sprinter with long jaw"', "adjusted the mood: extremely grotesque (0.9), not at all toon (0)"):
+            self.assertIn(needle, text)
+        give_model_feedback(self.store, "g_mod", "brute", scope="shape")
+        self.assertIn("Change ONLY the shape", feedback_context(self.store, "g_mod", "brute")); self.assertEqual(feedback_context(self.store, "g_mod", "nobody"), "")
+
+    def test_the_mood_is_saved_to_the_mob_and_the_art_stays_as_it_was(self):
+        from mod_orchestra.content import list_art, set_art, set_mood
+        from mod_orchestra.feedback import give_model_feedback
+        before = list_art(self.store, "g_mod")["mob:brute"]; self.assertEqual(before["source"], "derived")
+        give_model_feedback(self.store, "g_mod", "brute", mood={"grotesque": 0.7})
+        after = list_art(self.store, "g_mod")["mob:brute"]
+        self.assertEqual((after["mood"], after["concept"], after["tags"]), ({"grotesque": 0.7}, before["concept"], before["tags"]))
+        set_art(self.store, "g_mod", "mob", "brute", concept="a hulking mutant")
+        set_mood(self.store, "g_mod", "mob", "brute", {"cute": 0.1}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["concept"], "a hulking mutant")
+        set_mood(self.store, "g_mod", "mob", "brute", {}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {})
+        for kind, ident in (("mob", "ghost"), ("set", "ghost"), ("food", "ghost"), ("item", "ghost"), ("tool", "x")):
+            with self.assertRaises(InputError):
+                set_mood(self.store, "g_mod", kind, ident, {"x1": 0.5})
+
+    def test_the_gallery_and_the_route_carry_the_options(self):
+        from mod_orchestra.feedback import give_model_feedback, model_gallery
+        give_model_feedback(self.store, "g_mod", "brute", "x", scope="skin", mood={"grotesque": 0.5})
+        g = next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")
+        self.assertEqual(g["mood"], {"grotesque": 0.5}); self.assertEqual((g["feedback"][0]["scope"], g["feedback"][0]["mood"]), ("skin", {"grotesque": 0.5}))
+
+
+class TestReferenceImages(Project):
+    """Optional pictures the user attaches to say 'like this'. The designer is told they exist; the tool never needs them."""
+    PNG = skin.encode_png(2, 2, bytes([200, 100, 50, 255] * 4))
+    JPG = b"\xff\xd8\xff\xe0" + b"0" * 64
+    WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"0" * 24
+
+    def b64(self, raw):
+        import base64
+        return base64.b64encode(raw).decode()
+
+    def test_three_kinds_are_accepted_and_named_by_their_bytes(self):
+        from mod_orchestra.references import add_reference, list_references
+        names = [add_reference(self.store, "g_mod", "brute", self.b64(raw))["file"] for raw in (self.PNG, self.JPG, self.WEBP)]
+        self.assertEqual(names, ["references/brute/ref-1.png", "references/brute/ref-2.jpg", "references/brute/ref-3.webp"])
+        self.assertEqual(list_references(self.store, "g_mod", "brute"), names); self.assertEqual((self.root / names[1]).read_bytes(), self.JPG)
+
+    def test_bad_input_is_refused_with_a_reason(self):
+        from mod_orchestra.references import add_reference, remove_reference, MAX_PER_MOB
+        for raw, why in ((b"not an image at all", "PNG, JPEG or WebP"), (b"\xff\xd8\xff" + b"0" * 3_100_000, "at most 3 MB"), (b"GIF89a" + b"0" * 30, "PNG, JPEG or WebP")):
+            with self.assertRaisesRegex(InputError, why):
+                add_reference(self.store, "g_mod", "brute", self.b64(raw))
+        with self.assertRaisesRegex(InputError, "valid base64"):
+            add_reference(self.store, "g_mod", "brute", "!!!not base64!!!")
+        with self.assertRaisesRegex(InputError, "Unknown mob"):
+            add_reference(self.store, "g_mod", "ghost", self.b64(self.PNG))
+        for _ in range(MAX_PER_MOB):
+            add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        with self.assertRaisesRegex(InputError, f"at most {MAX_PER_MOB}"):
+            add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        for name in ("../../etc/passwd", "ref-1.exe", "", "ref-1.png/../x"):
+            with self.assertRaises(InputError):
+                remove_reference(self.store, "g_mod", "brute", name)
+
+    def test_removing_frees_a_slot_and_numbers_do_not_repeat(self):
+        from mod_orchestra.references import add_reference, remove_reference
+        add_reference(self.store, "g_mod", "brute", self.b64(self.PNG)); add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        self.assertEqual(remove_reference(self.store, "g_mod", "brute", "ref-1.png")["references"], ["references/brute/ref-2.png"])
+        self.assertEqual(add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))["file"], "references/brute/ref-3.png")
+        with self.assertRaisesRegex(InputError, "No such reference"):
+            remove_reference(self.store, "g_mod", "brute", "ref-1.png")
+
+    def test_the_designer_is_told_and_told_not_to_trace(self):
+        from mod_orchestra.models import rig_block
+        from mod_orchestra.references import add_reference
+        self.assertNotIn("Reference images", rig_block(self.store, "g_mod", "brute", self.root))
+        add_reference(self.store, "g_mod", "brute", self.b64(self.PNG))
+        text = rig_block(self.store, "g_mod", "brute", self.root)
+        for needle in ("Reference images the user attached (optional inspiration)", "`references/brute/ref-1.png`", "Do not trace or copy them", "make your own creature"):
+            self.assertIn(needle, text)
+
+    def test_the_ui_may_serve_them_but_no_other_jpeg(self):
+        from mod_orchestra.feedback import file_for_ui, model_gallery
+        from mod_orchestra.references import add_reference
+        add_reference(self.store, "g_mod", "brute", self.b64(self.JPG))
+        self.assertEqual(file_for_ui(self.store, "g_mod", "references/brute/ref-1.jpg")[1], "image/jpeg")
+        (self.root / "models").mkdir(exist_ok=True); (self.root / "models/x.jpg").write_bytes(self.JPG)
+        with self.assertRaises(InputError):
+            file_for_ui(self.store, "g_mod", "models/x.jpg")
+        self.assertEqual(next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")["references"], ["references/brute/ref-1.jpg"])

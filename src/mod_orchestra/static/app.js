@@ -357,13 +357,77 @@ async function renderGallery(p) {
     for (const d of drops) { const chip = el("span", null, "drop-chip"); const img = el("img"); img.src = dropIcon(p.id, d.item); img.alt = ""; chip.append(img, el("span", `${d.item} ×${d.count_min}${d.count_max !== d.count_min ? "–" + d.count_max : ""}${d.chance < 1 ? " @" + Math.round(d.chance * 100) + "%" : ""}`)); dl.append(chip); }
     dl.append(btn("Edit drops", () => openPicker(p.id, drops, `Drops on death — ${m.label}`, async (table) => { const out = await api(`/api/project/${p.id}/mob-drops`, { mob: m.mob, drops: table }); toast(out.note || "Drops saved.", "ok"); await openProject(p.id); }), "mini secondary"));
     card.append(dl);
-    if (m.feedback.length) { const ul = el("ul", null, "feedback-list"); for (const f of m.feedback) ul.append(el("li", "you: " + f.text)); card.append(el("div", "Feedback sent to the designer:", "muted")); card.append(ul); }
-    const fb = el("form", null, "feedback"); const ta = el("textarea"); ta.placeholder = m.placeholder ? "Describe the creature you want (shape, colours, size) — this goes to the designer's first run" : "What should change? e.g. “wings too big, make the body rounder, darker blue”"; fb.append(ta);
+    const moodText = (mood) => Object.entries(mood || {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(" · ");
+    if (moodText(m.mood)) card.append(el("div", "mood: " + moodText(m.mood), "art-ref"));
+    if (m.design_notes) {   // what the designer explored before building: a record, and a menu for a redesign
+      const det = document.createElement("details"); det.className = "design-notes"; det.append(el("summary", "Designer's notes: the ideas it explored"));
+      const ol = el("ol"); m.design_notes.takes.forEach((t, i) => { const li = el("li", t); if (m.design_notes.chosen === i + 1) li.className = "chosen"; ol.append(li); });
+      det.append(ol); if (m.design_notes.why) det.append(el("small", "It built the highlighted one: " + m.design_notes.why, "muted")); card.append(det);
+    }
+    if (m.feedback.length) {
+      const ul = el("ul", null, "feedback-list");
+      for (const f of m.feedback) ul.append(el("li", "you: " + [f.text, f.scope && f.scope !== "all" ? `(only the ${f.scope})` : "", f.take ? `(take ${f.take})` : "", f.mood ? `(mood: ${moodText(f.mood)})` : ""].filter(Boolean).join(" ")));
+      card.append(el("div", "Feedback sent to the designer:", "muted")); card.append(ul);
+    }
+    const fb = el("form", null, "feedback"); const ta = el("textarea");
+    ta.placeholder = m.placeholder ? "Describe the creature you want, in your own words. It goes to the designer's first run, exactly as you write it" : "What should change? Leave it empty if the options below say it";
+    fb.append(ta);
+    // ---- everything below is optional: a redesign works with just the text, and the first design needs nothing at all
+    const opts = { scope: "all", take: null, mood: { ...(m.mood || {}) } };
+    const more = document.createElement("details"); more.className = "redesign-options"; more.append(el("summary", "Redesign options (all optional)"));
+    const labelled = (text, control) => { const w = el("label", null, "opt-field"); w.append(el("span", text, "dlg-label"), control); return w; };
+    if (!m.placeholder) {
+      const scope = el("select"); for (const [v, t] of [["all", "Everything"], ["shape", "Only the shape (keep the skin's look)"], ["skin", "Only the skin (keep the shape and animations)"]]) { const o = el("option", t); o.value = v; scope.append(o); }
+      scope.onchange = () => { opts.scope = scope.value; }; more.append(labelled("What to change", scope));
+    }
+    if (m.design_notes) {
+      const box = el("div", null, "takes"); box.append(el("span", "Try another of its ideas", "dlg-label"));
+      const choices = [["", "Keep going with the current one"], ...m.design_notes.takes.map((t, i) => [String(i + 1), `Take ${i + 1}${m.design_notes.chosen === i + 1 ? " (the one it built)" : ""}: ${t}`])];
+      for (const [v, t] of choices) { const r = el("label", null, "take-choice"); const inp = el("input"); inp.type = "radio"; inp.name = "take-" + m.mob; inp.value = v; inp.checked = v === ""; inp.onchange = () => { opts.take = v ? Number(v) : null; }; r.append(inp, el("span", " " + t)); box.append(r); }
+      more.append(box);
+    }
+    const moodBox = el("div", null, "mood-dials"); more.append(el("span", "Mood: how it should feel (suggestions for the artists, not rules)", "dlg-label"), moodBox);
+    const drawMood = () => {
+      moodBox.replaceChildren();
+      for (const k of Object.keys(opts.mood)) {
+        const r = el("div", null, "mood-dial"); const out = el("output", String(opts.mood[k])); const inp = el("input"); inp.type = "range"; inp.min = 0; inp.max = 1; inp.step = 0.05; inp.value = opts.mood[k];
+        inp.oninput = () => { opts.mood[k] = Number(inp.value); out.textContent = String(opts.mood[k]); };
+        const del = el("button", "×", "mini secondary"); del.type = "button"; del.title = "Remove this dial"; del.onclick = () => { delete opts.mood[k]; drawMood(); };
+        r.append(el("span", k, "mood-name"), inp, out, del); moodBox.append(r);
+      }
+      const add = el("div", null, "mood-add"); const name = el("input"); name.placeholder = "add a dial: eerie, gore, cute, toon..."; name.maxLength = 24;
+      const go = el("button", "Add", "mini secondary"); go.type = "button";
+      go.onclick = () => { const k = name.value.trim().toLowerCase(); if (!/^[a-z][a-z '\-]{1,23}$/.test(k)) return toast("A dial is a word or two, 2 to 24 letters", "bad"); if (!(k in opts.mood)) opts.mood[k] = 0.5; drawMood(); };
+      name.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); go.click(); } }; add.append(name, go); moodBox.append(add);
+    };
+    drawMood();
+    const refs = el("div", null, "refs"); refs.append(el("span", "Reference images (optional): pictures to say 'like this'", "dlg-label"));
+    const thumbs = el("div", null, "ref-thumbs");
+    for (const rel of m.references || []) {
+      const t = el("div", null, "ref-thumb"); const img = el("img"); img.src = fileUrl(p.id, rel); img.alt = rel; img.onclick = () => openLightbox(img.src, rel);
+      const del = el("button", "×", "mini secondary"); del.type = "button"; del.title = "Remove this reference";
+      del.onclick = async () => { try { await api(`/api/project/${p.id}/remove-reference`, { mob: m.mob, name: rel.split("/").pop() }); await openProject(p.id); } catch (e) { toast(e.message, "bad"); } };
+      t.append(img, del); thumbs.append(t);
+    }
+    const pick = el("input"); pick.type = "file"; pick.accept = "image/png,image/jpeg,image/webp"; pick.className = "ref-input";
+    pick.onchange = async () => {
+      const f = pick.files && pick.files[0]; if (!f) return;
+      try {
+        const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(new Error("Could not read the image")); r.readAsDataURL(f); });
+        await api(`/api/project/${p.id}/reference`, { mob: m.mob, data }); toast("Reference attached. The designer will be told about it.", "ok"); await openProject(p.id);
+      } catch (e) { toast(e.message, "bad"); }
+    };
+    refs.append(thumbs, pick); more.append(refs); fb.append(more);
     const row = el("div", null, "actions");
     row.append(btn(m.placeholder && !m.feedback.length ? "Send and run designer" : "Send feedback and rerun designer", async () => {
-      if (!ta.value.trim()) throw new Error("Write the feedback first");
-      const out = await api(`/api/project/${p.id}/feedback`, { mob: m.mob, text: ta.value.trim() });
-      if (!confirmBox("Feedback saved. Start the designer now? (about $12 and 24 minutes)", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await openProject(p.id); return; }
+      const body = { mob: m.mob, text: ta.value.trim() };
+      if (opts.scope !== "all") body.scope = opts.scope;
+      if (opts.take) body.take = opts.take;
+      if (JSON.stringify(opts.mood) !== JSON.stringify(m.mood || {})) body.mood = opts.mood;
+      if (!body.text && !body.scope && !body.take && !body.mood && (m.references || []).length) body.text = "Take the attached reference images into account.";
+      if (!body.text && !body.scope && !body.take && !body.mood) throw new Error("Write what should change, or open the options and pick one");
+      const out = await api(`/api/project/${p.id}/feedback`, body);
+      if (!await confirmBox("Feedback saved. Start the designer now? (about $12 and 24 minutes)", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await openProject(p.id); return; }
       await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer started with your feedback.", "ok"); await openProject(p.id);
     }, "primary"));
     if (m.task_state === "READY") row.append(btn("Run designer as is", async () => { await api(`/api/project/${p.id}/dispatch`, { task: m.task }); toast("Designer started.", "ok"); await openProject(p.id); }));
