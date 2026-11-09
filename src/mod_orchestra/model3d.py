@@ -102,14 +102,16 @@ def support_java(package: str) -> dict[str, str]:
         "            }", "        };", "    }", "",
         "    @Override",
         "    public void render(ItemStack stack, ItemDisplayContext mode, PoseStack poseStack, MultiBufferSource buffers, int light, int overlay) {",
-        "        if (mode == ItemDisplayContext.GUI) {",
-        "            VertexConsumer vc = buffers.getBuffer(RenderType.entityCutoutNoCull(icon));",
-        "            PoseStack.Pose pose = poseStack.last();",
-        "            vertex(vc, pose, 0f, 0f, 0f, 1f, light, overlay); vertex(vc, pose, 1f, 0f, 1f, 1f, light, overlay);",
-        "            vertex(vc, pose, 1f, 1f, 1f, 0f, light, overlay); vertex(vc, pose, 0f, 1f, 0f, 0f, light, overlay);",
-        "            return;", "        }",
+        "        if (mode == ItemDisplayContext.GUI) { drawIcon(icon, poseStack, buffers, light, overlay); return; }",
         "        RenderType type = RenderType.entityCutoutNoCull(texture);",
         "        renderer.render(poseStack, animatable, buffers, type, buffers.getBuffer(type), light, 0f);",
+        "    }", "",
+        "    /** The 2D icon as a flat quad filling the slot (the item JSON's GUI transform is the identity). */",
+        "    public static void drawIcon(ResourceLocation icon, PoseStack poseStack, MultiBufferSource buffers, int light, int overlay) {",
+        "        VertexConsumer vc = buffers.getBuffer(RenderType.entityCutoutNoCull(icon));",
+        "        PoseStack.Pose pose = poseStack.last();",
+        "        vertex(vc, pose, 0f, 0f, 0f, 1f, light, overlay); vertex(vc, pose, 1f, 0f, 1f, 1f, light, overlay);",
+        "        vertex(vc, pose, 1f, 1f, 1f, 0f, light, overlay); vertex(vc, pose, 0f, 1f, 0f, 0f, light, overlay);",
         "    }", "",
         "    private static void vertex(VertexConsumer vc, PoseStack.Pose pose, float x, float y, float u, float v, int light, int overlay) {",
         "        vc.addVertex(pose, x, y, 0.5f).setColor(255, 255, 255, 255).setUv(u, v).setOverlay(overlay).setLight(light).setNormal(pose, 0f, 0f, 1f);",
@@ -138,6 +140,7 @@ def support_java(package: str) -> dict[str, str]:
         '                boolean animated = o.has("animated") && o.get("animated").getAsBoolean();',
         "                Item item = BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath(mod, id));",
         '                if (item == Items.AIR) { ModMain.LOGGER.warn("3D model for an unknown item: {}", id); continue; }',
+        "                if (item instanceof software.bernie.geckolib.animatable.GeoItem) continue;   // it draws itself (Item3DGeoRenderer) and plays its actions",
         "                BuiltinItemRendererRegistry.INSTANCE.register(item, new Item3DRenderer(mod, id, animated));",
         "            }",
         "        } catch (Exception e) {",
@@ -179,8 +182,57 @@ def support_java(package: str) -> dict[str, str]:
         "    }", "",
         "    @Override", "    public ResourceLocation getTextureLocation(T entity) { return texture; }",
         "}", ""])
+    actions = "\n".join([
+        f"package {p}.model3d;", "",
+        "import net.minecraft.server.level.ServerLevel;", "import net.minecraft.world.entity.Entity;", "import net.minecraft.world.item.ItemStack;",
+        "import software.bernie.geckolib.animatable.GeoItem;", "import software.bernie.geckolib.animatable.SingletonGeoAnimatable;",
+        "import software.bernie.geckolib.animation.AnimatableManager;", "import software.bernie.geckolib.animation.AnimationController;",
+        "import software.bernie.geckolib.animation.PlayState;", "import software.bernie.geckolib.animation.RawAnimation;", "",
+        "/** Actions of a 3D item (use, attack, equip, ...): one-shot animations the item's own code triggers on the server; GeckoLib syncs them. */",
+        "public final class Item3DActions {",
+        '    public static final String CONTROLLER = "actions";', "",
+        "    private Item3DActions() {}", "",
+        "    /** Call once from the item's constructor. */",
+        "    public static void init(GeoItem item) { SingletonGeoAnimatable.registerSyncedAnimatable(item); }", "",
+        "    /** Call from registerControllers: the idle loop (if the model has one) and one triggerable animation per action. */",
+        "    public static void controllers(GeoItem item, AnimatableManager.ControllerRegistrar controllers, String id, boolean idle, String... actions) {",
+        '        if (idle) controllers.add(new AnimationController<>(item, "idle", 0, state -> state.setAndContinue(RawAnimation.begin().thenLoop("animation." + id + ".idle"))));',
+        "        AnimationController<GeoItem> c = new AnimationController<>(item, CONTROLLER, 0, state -> PlayState.STOP);",
+        '        for (String a : actions) c.triggerableAnim(a, RawAnimation.begin().thenPlay("animation." + id + "." + a));',
+        "        controllers.add(c);", "    }", "",
+        "    /** Call on the server when the action happens; does nothing on the client. */",
+        "    public static void trigger(GeoItem item, Entity holder, ItemStack stack, String action) {",
+        "        if (holder.level() instanceof ServerLevel server) item.triggerAnim(holder, GeoItem.getOrAssignId(stack, server), CONTROLLER, action);",
+        "    }",
+        "}", ""])
+    georenderer = "\n".join([
+        f"package {p}.client;", "",
+        "import com.mojang.blaze3d.vertex.PoseStack;", "import com.mojang.blaze3d.vertex.VertexConsumer;",
+        "import net.minecraft.client.renderer.MultiBufferSource;", "import net.minecraft.resources.ResourceLocation;",
+        "import net.minecraft.world.item.Item;", "import net.minecraft.world.item.ItemDisplayContext;", "import net.minecraft.world.item.ItemStack;",
+        "import software.bernie.geckolib.animatable.GeoAnimatable;", "import software.bernie.geckolib.cache.object.BakedGeoModel;",
+        "import software.bernie.geckolib.model.DefaultedItemGeoModel;", "import software.bernie.geckolib.renderer.GeoItemRenderer;", "",
+        "/** The renderer of a 3D item that is a GeoItem (it plays actions): same space and same 2D inventory icon as Item3DRenderer. */",
+        "public class Item3DGeoRenderer<T extends Item & GeoAnimatable> extends GeoItemRenderer<T> {",
+        "    private final ResourceLocation icon;", "",
+        "    public Item3DGeoRenderer(String modId, String id) {",
+        '        super(new DefaultedItemGeoModel<T>(ResourceLocation.fromNamespaceAndPath(modId, "model3d/" + id)));',
+        '        this.icon = ResourceLocation.fromNamespaceAndPath(modId, "textures/item/" + id + ".png");',
+        "    }", "",
+        "    @Override",
+        "    public void preRender(PoseStack poseStack, T animatable, BakedGeoModel model, MultiBufferSource bufferSource, VertexConsumer buffer,",
+        "                          boolean isReRender, float partialTick, int packedLight, int packedOverlay, int colour) {",
+        "        super.preRender(poseStack, animatable, model, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, colour);",
+        "        if (!isReRender) poseStack.translate(0f, -0.51f, 0f);   // the icon's space, like Item3DRenderer",
+        "    }", "",
+        "    @Override",
+        "    public void renderByItem(ItemStack stack, ItemDisplayContext mode, PoseStack poseStack, MultiBufferSource buffers, int light, int overlay) {",
+        "        if (mode == ItemDisplayContext.GUI) { Item3DRenderer.drawIcon(icon, poseStack, buffers, light, overlay); return; }",
+        "        super.renderByItem(stack, mode, poseStack, buffers, light, overlay);",
+        "    }",
+        "}", ""])
     return {"client/Model3DAnimatable.java": animatable, "client/Item3DRenderer.java": renderer, "client/Model3DClient.java": client,
-            "client/Projectile3DRenderer.java": projectile}
+            "client/Projectile3DRenderer.java": projectile, "client/Item3DGeoRenderer.java": georenderer, "model3d/Item3DActions.java": actions}
 
 
 def item_model_json(mod_id: str, ident: str, handheld: bool) -> dict:
@@ -202,8 +254,11 @@ model that reaches beyond -12..12 on x and z or -4..24 on y.
 Read the icon (`<icon>`) and keep its design, palette and proportions: this is the same object, now with depth.
 Texture: paint `models/items3d/<id>.png` with a stdlib script (zlib/struct, no PIL) at the model's texture size and set it
 with `bbmodel_geckolib_set_texture`.
-Animation is optional. If the object should move by itself, add a looping `animation.<id>.idle` with
-`bbmodel_geckolib_upsert_animation`; otherwise export an empty animation file.
+Animation, all optional (`bbmodel_geckolib_upsert_animation`): a looping `animation.<id>.idle` only for something that moves
+by itself at rest (most held objects do not). Actions: when the user's notes ask the object to animate when something happens
+to it, make each one a one-shot animation (loop off) named `animation.<id>.<action>`: `use` when it is used, `attack` when it
+hits, `equip` when it is drawn, or a short snake_case name of your own for another moment the notes describe. A coder makes
+the item's code play each action at its moment. With no animation at all, export an empty animation file.
 Deliverables in `models/items3d/`: `<id>.bbmodel`, `<id>.geo.json` (`bbmodel_geckolib_export_geometry`), `<id>.animation.json`
 (`bbmodel_geckolib_export_animations`), `<id>.png`, and at least one render `<id>_render.png` (`bbmodel_render`) that you
 looked at and corrected before finishing. Report them in `changed_files`. Never touch `src/`: the controller installs them.
@@ -295,7 +350,18 @@ def validate_item3d(ws: Path, ident: str, *, folder: str = DIR, bounds=ITEM_BOUN
     except ValueError:
         raise InputError("animation.json is not JSON") from None
     idle = anims.get(f"animation.{ident}.idle")
-    return {"cubes": len(cubes), "bones": [b["name"] for b in bones], "texture": [w, h], "animated": bool(idle and idle.get("bones")),
+    prefix, actions = f"animation.{ident}.", []
+    for name, clip in anims.items():
+        short = name[len(prefix):] if name.startswith(prefix) else ""
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,23}", short):
+            raise InputError(f"animation {name!r}: name it animation.{ident}.<action> (snake_case), or animation.{ident}.idle for the loop")
+        if short == "idle":
+            continue
+        if clip.get("loop") is True:
+            raise InputError(f"action {short!r} loops: an action plays once when it happens (loop off)")
+        if clip.get("bones"):
+            actions.append(short)
+    return {"cubes": len(cubes), "bones": [b["name"] for b in bones], "texture": [w, h], "animated": bool(idle and idle.get("bones")), "actions": sorted(actions),
             "bounds": [lo, hi], "renders": [str(r.relative_to(ws)).replace("\\", "/") for r in renders],
             "files": {k: str(v.relative_to(ws)).replace("\\", "/") for k, v in files.items()}}
 
@@ -344,14 +410,14 @@ def patch_fabric_mod(text: str, package: str) -> str | None:
     return json.dumps(d, indent=2) + "\n"
 
 
-def wire(store: Store, pid: str, ident: str, *, handheld: bool, animated: bool) -> dict:
+def wire(store: Store, pid: str, ident: str, *, handheld: bool, animated: bool, actions: list[str] | None = None) -> dict:
     """Make the project draw this item in 3D. Returns {written: [...], coder: [what could not be patched]}."""
     from .spec import read_spec
     proj = store.project(pid); ws = Path(proj["root"]); spec = read_spec(proj["spec"])
     jdir = f"src/main/java/{spec.package.replace('.', '/')}"
     res = f"src/main/resources"
     written, coder = ensure_support(ws, spec)
-    _wire_item(ws, spec, pid, ident, handheld, animated, written, coder)
+    _wire_item(ws, spec, pid, ident, handheld, animated, written, coder, actions or [])
     return {"written": written, "coder": coder}
 
 
@@ -364,8 +430,11 @@ def ensure_support(ws: Path, spec) -> tuple[list[str], list[str]]:
         f = ws / rel
         if not f.is_file():
             f.parent.mkdir(parents=True, exist_ok=True); f.write_text(src, encoding="utf8"); written.append(rel)
-        elif f.read_text(encoding="utf8") != src and not _known(ws, rel):
-            coder.append(f"{rel} differs from the controller's version: make sure it still registers 3D items from model3d/index.json")
+        elif f.read_text(encoding="utf8") != src:
+            if _known(ws, rel):   # the controller's own earlier version: update it
+                f.write_text(src, encoding="utf8"); written.append(rel)
+            else:
+                coder.append(f"{rel} has edits the controller did not record; make it match the controller's current version, keeping what the edits need:\n{src}")
     gradle, props = ws / "build.gradle", ws / "gradle.properties"
     if "software.bernie.geckolib" not in gradle.read_text(encoding="utf8") or "geckolib_version" not in props.read_text(encoding="utf8"):
         patched = patch_gradle(gradle.read_text(encoding="utf8"), props.read_text(encoding="utf8")) if _known(ws, "build.gradle") and _known(ws, "gradle.properties") else None
@@ -384,7 +453,7 @@ def _index(ws: Path, pid: str) -> tuple[Path, dict]:
         return f, {"items": []}
 
 
-def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: bool, written: list, coder: list) -> None:
+def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: bool, written: list, coder: list, actions: list) -> None:
     res = "src/main/resources"
     index_rel = f"{res}/assets/{pid}/model3d/index.json"
     index_f = ws / index_rel
@@ -392,7 +461,7 @@ def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: b
         index = json.loads(index_f.read_text(encoding="utf8")) if index_f.is_file() else {"items": []}
     except ValueError:
         index = {"items": []}
-    index["items"] = [i for i in index.get("items", []) if i.get("id") != ident] + [{"id": ident, "animated": animated}]
+    index["items"] = [i for i in index.get("items", []) if i.get("id") != ident] + [{"id": ident, "animated": animated, **({"actions": actions} if actions else {})}]
     index_f.parent.mkdir(parents=True, exist_ok=True); index_f.write_text(json.dumps(index, indent=2) + "\n", encoding="utf8"); written.append(index_rel)
     fmj_rel = f"{res}/fabric.mod.json"
     fmj = ws / fmj_rel
@@ -433,7 +502,7 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
     for k, dst in targets.items():
         dst.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(ws / info["files"][k], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
-    wired = wire(store, pid, ident, handheld=cand[ident]["handheld"], animated=info["animated"])
+    wired = wire(store, pid, ident, handheld=cand[ident]["handheld"], animated=info["animated"], actions=info["actions"])
     changed += wired["written"]
     history = ws / ".mod-orchestra" / "previews" / _safe_dirname(run_id); history.mkdir(parents=True, exist_ok=True)
     for r in info["renders"]:
@@ -452,12 +521,71 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
         store.add_task(pid, wire_task, "coder", f"Wire the 3D model of {ident}")
         with store.tx() as con:
             con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (wire_task, "\n".join(brief)))
+    anim_task = request_actions_wiring(store, pid, ident, info["actions"], info["animated"]) if info["actions"] else None
     from .dispatch import _source_changed, _reopen_build
     _source_changed(store, pid); _reopen_build(store, pid)
-    store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
+    store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"actions": info["actions"], "anim_task": anim_task} |  {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
                                                             "wire_task": wire_task})
-    return info | {"installed": changed, "accepted": accepted["accepted"], "wire_task": wire_task,
+    return info | {"installed": changed, "accepted": accepted["accepted"], "wire_task": wire_task, "anim_task": anim_task,
                    "previews": [f".mod-orchestra/previews/{_safe_dirname(run_id)}/{Path(r).name}" for r in info["renders"]]}
+
+
+def actions_brief(package: str, ident: str, actions: list[str], idle: bool) -> list[str]:
+    """The coder's recipe: the item becomes a GeoItem that draws itself with Item3DGeoRenderer and plays each action at its moment."""
+    names = ", ".join(f'"{a}"' for a in actions)
+    code = f"""public class <ItsClass> extends <WhatItExtendsNow> implements GeoItem {{
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
+    public <ItsClass>(/* its current arguments */) {{ super(/* ... */); Item3DActions.init(this); }}
+
+    @Override
+    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {{
+        Item3DActions.controllers(this, controllers, "{ident}", {str(idle).lower()}, {names});
+    }}
+
+    @Override
+    public AnimatableInstanceCache getAnimatableInstanceCache() {{ return cache; }}
+
+    @Override
+    public void createGeoRenderer(Consumer<GeoRenderProvider> consumer) {{
+        consumer.accept(new GeoRenderProvider() {{
+            private Item3DGeoRenderer<<ItsClass>> renderer;
+            @Override
+            public BlockEntityWithoutLevelRenderer getGeoItemRenderer() {{
+                if (renderer == null) renderer = new Item3DGeoRenderer<>(ModMain.MOD_ID, "{ident}");
+                return renderer;
+            }}
+        }});
+    }}
+}}"""
+    moments = {"use": f'when it is used (in use(...), or wherever it fires or acts): Item3DActions.trigger(this, player, stack, "use")',
+               "attack": f'when it hits (hurtEnemy(...)): Item3DActions.trigger(this, attacker, stack, "attack")',
+               "equip": f'when it becomes the selected item (inventoryTick(...) with selected turning true; remember the previous state on the stack): Item3DActions.trigger(this, entity, stack, "equip")'}
+    lines = [f"The item `{ident}` has a 3D model with these actions: {', '.join(actions)}. Make its code play them.",
+             f"1. Make its item class a GeckoLib GeoItem (helpers already in the project: {package}.model3d.Item3DActions, {package}.client.Item3DGeoRenderer).",
+             "   If it is registered as a plain vanilla class (new Item(...), new SwordItem(...) in ModMain), create a class for it that extends that same",
+             "   class, keep every property and argument, and register that class instead. The shape (fill in the class names):", code,
+             "   Imports: software.bernie.geckolib.animatable.GeoItem, .animatable.client.GeoRenderProvider, .animatable.instance.AnimatableInstanceCache,",
+             "   .animation.AnimatableManager, .util.GeckoLibUtil; net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer; java.util.function.Consumer.",
+             "2. Trigger each action at its moment (on the server; the helper does nothing on the client):"]
+    lines += [f"   - {a}: " + moments.get(a, f'at the moment its name describes, if the item has such a moment: Item3DActions.trigger(this, holder, stack, "{a}")') for a in actions]
+    lines += ["3. Do not touch the model files or assets/<mod>/model3d/index.json: a GeoItem draws itself, and the 3D index skips it.",
+              "Change nothing else. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0."]
+    return lines
+
+
+def request_actions_wiring(store: Store, pid: str, ident: str, actions: list[str], idle: bool) -> str:
+    from .spec import read_spec
+    spec = read_spec(store.project(pid)["spec"])
+    base = f"{pid}:ITEM3DANIM:{ident}"
+    tasks = [t for t in store.tasks(pid) if t["id"] == base or t["id"].startswith(base + ":")]
+    waiting = next((t for t in tasks if t["state"] in ("BACKLOG", "READY")), None)
+    task_id = waiting["id"] if waiting else (base if not tasks else f"{base}:{len(tasks) + 1}")
+    if waiting is None:
+        store.add_task(pid, task_id, "coder", f"Play the actions of the 3D {ident}")
+    with store.tx() as con:
+        con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(actions_brief(spec.package, ident, actions, idle))))
+    return task_id
 
 
 def items3d(ws: Path, pid: str) -> set[str]:
