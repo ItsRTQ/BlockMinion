@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {startServer, loadPage} from './harness.mjs';
+
+// A custom feature on the Map can be given its own art: coder lists what it borrows, the designer paints, the coder wires.
+let server, page;
+const side = () => page.$('#map-side');
+const btnOf = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
+const posts = (suffix) => page.calls.filter((c) => c.method === 'POST' && c.path.endsWith(suffix));
+const dlgOpen = () => !page.hidden('#dlg');
+const press = (label) => page.click(btnOf(page.$('#dlg'), label));
+const open = async () => {
+  await page.idle(); await page.eval('openCard(lastProject, "infection")');
+  await page.waitFor(() => side() && btnOf(side(), 'Give it its own art'), 'the infection card with its art button');
+};
+
+test.before(async () => {
+  server = await startServer(); page = await loadPage(server); await page.eval('openProject("infect")');
+  page.click(page.$('.tab[data-tab="map"]')); await page.waitFor(() => page.eval('typeof mapState !== "undefined" && !!mapState.data'), 'the map');
+});
+test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
+test.beforeEach(async () => { page.overrides['/api/project/infect/dispatch'] = {started: true}; await open(); });
+
+test('the button says what will happen and "Not now" does nothing', async () => {
+  page.click(btnOf(side(), 'Give it its own art')); await page.waitFor(dlgOpen, 'the confirmation');
+  assert.match(page.$('#dlg-body').textContent, /borrows from vanilla/); assert.match(page.$('#dlg-body').textContent, /designer paints them/);
+  press('Not now'); await page.waitFor(() => !dlgOpen());
+  assert.equal(posts('/art-pass').length, 0); assert.equal(posts('/dispatch').length, 0);
+});
+
+test('Start coder creates the art pass for this card and starts it', async () => {
+  page.click(btnOf(side(), 'Give it its own art')); await page.waitFor(dlgOpen); press('Start coder');
+  await page.waitFor(() => posts('/art-pass').length === 1 && posts('/dispatch').length === 1, 'the art pass and its dispatch');
+  assert.equal(posts('/art-pass')[0].body.card, 'infection');
+  assert.match(posts('/dispatch')[0].body.task, /^infect:ARTPASS:infection/);
+  await page.waitFor(() => /Coder started/.test(page.toasts()), 'the toast');
+});
+
+test('vanilla and spec-derived cards do not offer it', async () => {
+  await page.eval('openCard(lastProject, "runner")');
+  await page.waitFor(() => side() && /Request a change/.test(side().textContent), 'the runner card');
+  assert.equal(btnOf(side(), 'Give it its own art'), undefined);
+});

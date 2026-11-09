@@ -112,6 +112,8 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
                        "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("request-art", help="USER-ONLY: give a custom feature that borrows vanilla visuals its own art (coder lists them -> designer paints -> coder wires)")
+    a.add_argument("project"); a.add_argument("--card", required=True)
     a = sub.add_parser("modify-model", help="USER-ONLY: ask the designer to change a mob's existing model (add a tail...) and keep everything else; the install is refused if it "
                        "touched a part you did not open for change. --cancel drops a pending modification")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--request", default="", help="what to change, in your words")
@@ -345,6 +347,9 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "edit-model":
         from .models import set_mob_scale
         return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "request-art":
+        from .artreq import request_art_pass
+        return request_art_pass(store, args.project, args.card)
     if args.command == "modify-model":
         from . import modeledit
         if args.cancel:

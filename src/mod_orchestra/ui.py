@@ -294,6 +294,9 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "art-pass":
+                        from .artreq import request_art_pass
+                        return request_art_pass(store, pid, str(payload.get("card", "")))
                     if op == "change":
                         from .modmap import request_change
                         return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")))
