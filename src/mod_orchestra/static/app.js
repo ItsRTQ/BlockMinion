@@ -977,6 +977,11 @@ function openCard(p, cid) {
     acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
     if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
     if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
+    if (c.kind === "custom") acts.append(btn("Give it its own art", async () => {
+      if (!await confirmBox("A coder finds every visual this feature borrows from vanilla and gives it its own placeholder; then the designer paints them and the coder wires them in. Nothing else changes. Start the coder now?", { title: "Own art for this feature", ok: "Start coder", cancel: "Not now" })) return;
+      const out = await api(`/api/project/${p.id}/art-pass`, { card: cid });
+      await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started: it lists what needs art; the designer follows.", "ok"); await refreshProject(p.id);
+    }, "secondary"));
     if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = await promptBox("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
     side.append(acts);
   }

@@ -509,7 +509,9 @@ class TestCreativeFreedom(Project):
         root = Path(__file__).resolve().parents[1]
         texts = {"interpreter": SPEC_INSTRUCTIONS, "model": MODEL_INSTRUCTIONS, "sprites": SPRITES_INSTRUCTIONS, "armor": ARMOR_INSTRUCTIONS,
                  "skill": (root / ".claude/skills/blockbench/SKILL.md").read_text(encoding="utf8"), "designer": (root / ".claude/agents/designer.md").read_text(encoding="utf8"),
-                 "modification": __import__("mod_orchestra.modeledit", fromlist=["EDIT_INSTRUCTIONS"]).EDIT_INSTRUCTIONS}
+                 "modification": __import__("mod_orchestra.modeledit", fromlist=["EDIT_INSTRUCTIONS"]).EDIT_INSTRUCTIONS,
+                 "art for the coder": __import__("mod_orchestra.artreq", fromlist=["ART_INSTRUCTIONS"]).ART_INSTRUCTIONS,
+                 "coder art rule": " ".join(__import__("mod_orchestra.artreq", fromlist=["CODER_ART_RULE"]).CODER_ART_RULE)}
         anchors = [r"\bork", r"\borc\b", r"serrated", r"bone teeth", r"hammered iron", r"rust red", r"horned", r"armour plates", r"a hunch", r"#5c7f3a", r"#d9cfb8", r"#8c2d19", r"skull knob", r"leather lashing"]
         for name, text in texts.items():
             for pattern in anchors:

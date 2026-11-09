@@ -141,6 +141,11 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         except (InputError, StateError) as exc:
             store.add_event(pid, "controller", "CARD_UPDATE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
         _reopen_build(store, pid)
+    if (":FEATURE:" in task["id"] or ":CHANGE:" in task["id"] or ":ARTPASS:" in task["id"]) and status == "DONE":
+        from .artreq import after_coder_done   # what the coder made visible gets painted: ART (designer), then ARTWIRE (coder)
+        art = after_coder_done(store, pid, task["id"], h)
+        if art:
+            h = h | {"art": art}
     if ":ARMOR3D:" in task["id"] and status == "DONE":
         from .armor3d import install_armor3d
         from .validation import InputError
@@ -169,6 +174,19 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"armor": ad}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ad["installed"]))
+    if ":ART:" in task["id"] and status == "DONE":
+        from .artreq import install_art
+        from .validation import InputError
+        try:
+            ai = install_art(store, pid, task["id"], run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = str(exc)
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"art_installed": ai}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ai["installed"]))
     if ":SPRITES:" in task["id"] and status == "DONE":
         from .models import install_sprites
         from .validation import InputError

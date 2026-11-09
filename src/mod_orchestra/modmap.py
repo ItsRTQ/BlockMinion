@@ -233,8 +233,11 @@ def feature_instructions(card: dict, *, kind: str = "mechanic", carriers: list[s
         instructions += ["This is a CAPABILITY carried by: " + ", ".join(carriers) + ". Implement it ONCE as a reusable component (a class or interface plus the effect, projectile or registration it needs) and give it to each carrier by wiring only:",
                          "a carrier's entity class gets a few lines that use the component, never a copy of the logic, so that adding or removing a carrier later is a small change. If the carriers apply it differently (a melee hit, a projectile), the description says how.",
                          "Write one @GameTest per carrier proving that carrier has the capability (name it after the carrier), in addition to one per acceptance criterion."]
+    from .artreq import CODER_ART_RULE
     instructions += ["Write one @GameTest per acceptance criterion that can be exercised server-side in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
-                     "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item.",
+                     "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item."]
+    instructions += CODER_ART_RULE
+    instructions += [
                      "Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
                      "In your handoff include a `card` object: {\"files\": [every file you created or edited], \"description\": \"one paragraph of what you built and how it works\", \"produces\": [ids of new content you added]}.",
                      "If the feature needs something the user must decide (keybind, GUI size, which block), report WAITING_USER with the question."]
@@ -302,6 +305,8 @@ def request_change(store: Store, pid: str, cid: str, request: str) -> dict:
                     "In your handoff include a `card` object with `files` (every file you edited) and a one-sentence `description` of the new behaviour."]
     if card["kind"] in ("item", "block", "mob", "material", "food"):
         instructions.append("Note: this content is generated from the spec. Edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")
+    from .artreq import CODER_ART_RULE
+    instructions += CODER_ART_RULE
     store.add_task(pid, task_id, "coder", f"Change {card['title']}: {request[:60]}")
     with store.tx() as con:
         con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
