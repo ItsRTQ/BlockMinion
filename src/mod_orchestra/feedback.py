@@ -14,6 +14,9 @@ def model_gallery(store: Store, pid: str) -> list[dict]:
     """Per mob: source/export presence, installed state, previews and texture as UI-servable paths."""
     proj = store.project(pid)
     root = Path(proj["root"]); models = root / "models"; assets = root / "src/main/resources/assets" / pid
+    from .art import effective_art
+    from .spec import read_spec
+    spec_obj = read_spec(proj["spec"])
     out = []
     for m in proj["spec"].get("mobs", []):
         mid = m["identifier"]
@@ -37,7 +40,8 @@ def model_gallery(store: Store, pid: str) -> list[dict]:
                     "installed_texture": f"src/main/resources/assets/{pid}/textures/entity/{mid}.png" if (assets / "textures/entity" / f"{mid}.png").is_file() else None,
                     "previews": [f"models/{n}" for n in previews],
                     "task_state": task["state"] if task else None, "task": task["id"] if task else None,
-                    "feedback": feedback[:10], "placeholder": not (models / f"{mid}.bbmodel").is_file()})
+                    "feedback": feedback[:10], "placeholder": not (models / f"{mid}.bbmodel").is_file(),
+                    "design_notes": latest_design_notes(store, pid, mid), "mood": effective_art(spec_obj, "mob", mid)["mood"]})
     return out
 
 
@@ -53,18 +57,56 @@ def file_for_ui(store: Store, pid: str, relative: str) -> tuple[Path, str]:
     return path, ("image/png" if path.suffix.lower() == ".png" else "application/json")
 
 
-def give_model_feedback(store: Store, pid: str, mob: str, text: str) -> dict:
+def record_design_notes(store: Store, pid: str, mob: str, handoff: dict, run_id: str) -> dict | None:
+    """What the designer explored before building: `design_notes: {takes: [2-5 one-liners], chosen: n, why}` in its handoff. Lenient on purpose: it is
+    a thinking aid and a menu for the user's redesign, never a gate, so a missing or malformed one is simply not recorded."""
+    notes = handoff.get("design_notes") if isinstance(handoff, dict) else None
+    if not isinstance(notes, dict) or not isinstance(notes.get("takes"), list):
+        return None
+    takes = [" ".join(str(t).split())[:220] for t in notes["takes"] if str(t).strip()][:5]
+    if len(takes) < 2:
+        return None
+    chosen = notes.get("chosen")
+    chosen = chosen if isinstance(chosen, int) and not isinstance(chosen, bool) and 1 <= chosen <= len(takes) else None
+    out = {"mob": mob, "takes": takes, "chosen": chosen, "why": " ".join(str(notes.get("why") or "").split())[:400], "run": run_id}
+    store.add_event(pid, "agent:designer", "DESIGN_NOTES", out)
+    return out
+
+
+def latest_design_notes(store: Store, pid: str, mob: str) -> dict | None:
+    return next((e["payload"] for e in store.events(pid, 300) if e["kind"] == "DESIGN_NOTES" and e["payload"].get("mob") == mob), None)
+
+
+FEEDBACK_SCOPES = ("all", "shape", "skin")
+
+
+def give_model_feedback(store: Store, pid: str, mob: str, text: str = "", *, scope: str = "all", take: int | None = None, mood: dict | None = None) -> dict:
+    """USER-ONLY redesign request. Everything beyond the text is optional: `scope` (all, only the shape, only the skin), `take` (build another of the
+    designer's own explored ideas) and `mood` (new dial values, saved to the mob's art direction). At least one of them must say what should change."""
+    from .spec import coerce_mood
     text = text.strip()
-    if not text:
-        raise InputError("Feedback is empty")
+    if scope not in FEEDBACK_SCOPES:
+        raise InputError(f"scope must be one of {', '.join(FEEDBACK_SCOPES)}")
+    mood = coerce_mood(mood) if mood is not None else None
+    if not (text or scope != "all" or take is not None or mood is not None):
+        raise InputError("Say what should change: write it, pick another take, change the mood or limit it to the shape or the skin")
     proj = store.project(pid)
     if mob not in {m["identifier"] for m in proj["spec"].get("mobs", [])}:
         raise InputError(f"Unknown mob {mob!r}")
+    if take is not None:
+        notes = latest_design_notes(store, pid, mob)
+        if not notes:
+            raise InputError("This mob has no design notes yet: the designer has not explored takes for it")
+        if not isinstance(take, int) or isinstance(take, bool) or not 1 <= take <= len(notes["takes"]):
+            raise InputError(f"take is a number from 1 to {len(notes['takes'])}")
+    if mood is not None:
+        from .content import set_mood
+        set_mood(store, pid, "mob", mob, mood)
     task_id = f"{pid}:MODEL:{mob}"
     task = next((t for t in store.tasks(pid) if t["id"] == task_id), None)
     if task is None:
         raise StateError(f"No MODEL task for {mob}; plan the project first")
-    store.add_event(pid, "user", "MODEL_FEEDBACK", {"mob": mob, "text": text[:600], "task": task_id})
+    store.add_event(pid, "user", "MODEL_FEEDBACK", {"mob": mob, "text": text[:600], "task": task_id, "scope": scope, "take": take, "mood": mood})
     if task["state"] == "DONE":
         with store.tx() as con:
             con.execute("UPDATE tasks SET state='READY',version=version+1,lease_owner=NULL,lease_expiry=NULL,attempt=attempt+1 WHERE id=?", (task_id,))
@@ -75,11 +117,23 @@ def give_model_feedback(store: Store, pid: str, mob: str, text: str) -> dict:
 
 
 def feedback_context(store: Store, pid: str, mob: str) -> str:
-    notes = [e["payload"]["text"] for e in store.events(pid, 200) if e["kind"] == "MODEL_FEEDBACK" and e["payload"].get("mob") == mob]
-    if not notes:
+    from .art import mood_prose
+    events = [e["payload"] for e in store.events(pid, 200) if e["kind"] == "MODEL_FEEDBACK" and e["payload"].get("mob") == mob]
+    if not events:
         return ""
-    lines = ["", "## User feedback on the previous model (newest first) — apply it, keep what was not mentioned"]
-    lines += [f"- {n}" for n in notes[:8]]
+    notes = latest_design_notes(store, pid, mob)
+    lines = ["", "## User feedback on the previous model (newest first): apply it, keep what was not mentioned"]
+    for n in events[:8]:
+        parts = [n.get("text") or ""]
+        if n.get("scope") == "shape":
+            parts.append("[Change ONLY the shape: proportions, cubes, silhouette, animations. Keep the look of the current skin: its palette and surface, repainting only what the new UV layout requires.]")
+        elif n.get("scope") == "skin":
+            parts.append("[Change ONLY the skin and face: keep the geometry and the animations exactly as they are, repaint.]")
+        if n.get("take") and notes and n["take"] <= len(notes["takes"]):
+            parts.append(f"[The user prefers take {n['take']} from your own design notes: \"{notes['takes'][n['take'] - 1]}\". Build that one, in your own way.]")
+        if n.get("mood"):
+            parts.append(f"[The user adjusted the mood: {mood_prose(n['mood'])}.]")
+        lines.append("- " + " ".join(p for p in parts if p))
     lines += ["", f"The previous `models/{mob}.bbmodel` is still there: edit it (`bbmodel_edit`, `bbmodel_geckolib_upsert_animation` with `replace: true`) rather than starting over, unless the feedback asks for a different creature."]
     return "\n".join(lines)
 

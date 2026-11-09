@@ -582,3 +582,90 @@ class TestMood(Project):
         text = SPEC_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")
         for needle in ('"mood": {"<dial>": 0.0}', "open-vocabulary dials from 0 to 1", "including explicit 0 for what they rule out", "infer them from the\nidea without asking", "suggestions the artists feel their way with, not rules"):
             self.assertIn(needle, text)
+
+
+class TestDesignNotesAndRedesign(Project):
+    """The designer's explored takes are recorded by themselves; a redesign can ask for another take, only the shape or only the skin, or a new mood."""
+    NOTES = {"takes": ["a hunched giant with one oversized arm", "a lean sprinter with long jaw", "a bloated torso on thin legs"], "chosen": 1, "why": "the lopsided arm reads at a glance"}
+
+    def handoff(self, **extra):
+        return {"task": "g_mod:MODEL:brute", "status": "DONE", "scope": "s", "changed_files": [], "checks_run": [], "evidence": {"level": "STATIC", "pointer": "m"},
+                "risks": [], "unknowns": [], "needs_user": [], "next_agent": "coder", **extra}
+
+    def run_model(self, **extra):
+        from mod_orchestra.dispatch import dispatch
+        from mod_orchestra.provider import FakeProvider
+        with patch("mod_orchestra.models.install_model", return_value={"installed": [], "face": None}):
+            return dispatch(self.store, "g_mod", task_id="g_mod:MODEL:brute", provider=FakeProvider("```handoff\n" + json.dumps(self.handoff(**extra)) + "\n```"))
+
+    def test_the_notes_are_recorded_from_the_handoff_without_anyone_asking(self):
+        from mod_orchestra.feedback import latest_design_notes, model_gallery
+        out = self.run_model(design_notes=self.NOTES)
+        self.assertEqual(out["task_state"], "DONE")
+        notes = latest_design_notes(self.store, "g_mod", "brute")
+        self.assertEqual((notes["takes"], notes["chosen"], notes["why"]), (self.NOTES["takes"], 1, self.NOTES["why"]))
+        self.assertEqual(next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")["design_notes"]["chosen"], 1)
+
+    def test_missing_or_malformed_notes_never_fail_a_model(self):
+        from mod_orchestra.feedback import latest_design_notes, record_design_notes
+        for notes in (None, "three ideas", {"takes": "one"}, {"takes": ["only one"]}, {"takes": [" ", ""]}):
+            self.assertIsNone(record_design_notes(self.store, "g_mod", "brute", {"design_notes": notes} if notes is not None else {}, "r"))
+        self.assertEqual(self.run_model(design_notes={"takes": "nonsense"})["task_state"], "DONE"); self.assertIsNone(latest_design_notes(self.store, "g_mod", "brute"))
+
+    def test_the_notes_are_fitted_not_trusted(self):
+        from mod_orchestra.feedback import record_design_notes
+        out = record_design_notes(self.store, "g_mod", "brute", {"design_notes": {"takes": [f"take {i} " + "x" * 400 for i in range(8)], "chosen": 9, "why": "w" * 900}}, "r")
+        self.assertEqual(len(out["takes"]), 5); self.assertTrue(all(len(t) <= 220 for t in out["takes"])); self.assertIsNone(out["chosen"]); self.assertLessEqual(len(out["why"]), 400)
+        self.assertIsNone(record_design_notes(self.store, "g_mod", "brute", {"design_notes": {"takes": ["a", "b"], "chosen": True}}, "r")["chosen"])
+
+    def test_options_alone_are_a_valid_redesign_and_nothing_at_all_is_not(self):
+        from mod_orchestra.feedback import give_model_feedback
+        for kw in ({"scope": "skin"}, {"scope": "shape"}, {"mood": {"grotesque": 0.9}}, {"text": "bigger"}):
+            self.assertEqual(give_model_feedback(self.store, "g_mod", "brute", **kw)["task"], "g_mod:MODEL:brute")
+        with self.assertRaisesRegex(InputError, "Say what should change"):
+            give_model_feedback(self.store, "g_mod", "brute")
+        with self.assertRaisesRegex(InputError, "scope must be"):
+            give_model_feedback(self.store, "g_mod", "brute", "x", scope="everything")
+        with self.assertRaisesRegex(InputError, "2-24 letters|0 to 1"):
+            give_model_feedback(self.store, "g_mod", "brute", "x", mood={"grotesque": 4})
+
+    def test_a_take_must_be_one_the_designer_actually_explored(self):
+        from mod_orchestra.feedback import give_model_feedback
+        with self.assertRaisesRegex(InputError, "no design notes yet"):
+            give_model_feedback(self.store, "g_mod", "brute", take=2)
+        self.run_model(design_notes=self.NOTES)
+        for bad in (0, 4, True, "2"):
+            with self.assertRaisesRegex(InputError, "number from 1 to 3"):
+                give_model_feedback(self.store, "g_mod", "brute", take=bad)
+        self.assertEqual(give_model_feedback(self.store, "g_mod", "brute", take=2)["state"], "READY")
+
+    def test_the_designer_reads_every_option_as_a_sentence(self):
+        from mod_orchestra.feedback import feedback_context, give_model_feedback
+        self.run_model(design_notes=self.NOTES)
+        give_model_feedback(self.store, "g_mod", "brute", "keep the grotesque feel", scope="skin", take=2, mood={"grotesque": 0.9, "toon": 0})
+        text = feedback_context(self.store, "g_mod", "brute")
+        for needle in ("keep the grotesque feel", "Change ONLY the skin and face", "keep the geometry and the animations exactly as they are",
+                       'The user prefers take 2 from your own design notes: "a lean sprinter with long jaw"', "adjusted the mood: extremely grotesque (0.9), not at all toon (0)"):
+            self.assertIn(needle, text)
+        give_model_feedback(self.store, "g_mod", "brute", scope="shape")
+        self.assertIn("Change ONLY the shape", feedback_context(self.store, "g_mod", "brute")); self.assertEqual(feedback_context(self.store, "g_mod", "nobody"), "")
+
+    def test_the_mood_is_saved_to_the_mob_and_the_art_stays_as_it_was(self):
+        from mod_orchestra.content import list_art, set_art, set_mood
+        from mod_orchestra.feedback import give_model_feedback
+        before = list_art(self.store, "g_mod")["mob:brute"]; self.assertEqual(before["source"], "derived")
+        give_model_feedback(self.store, "g_mod", "brute", mood={"grotesque": 0.7})
+        after = list_art(self.store, "g_mod")["mob:brute"]
+        self.assertEqual((after["mood"], after["concept"], after["tags"]), ({"grotesque": 0.7}, before["concept"], before["tags"]))
+        set_art(self.store, "g_mod", "mob", "brute", concept="a hulking mutant")
+        set_mood(self.store, "g_mod", "mob", "brute", {"cute": 0.1}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["concept"], "a hulking mutant")
+        set_mood(self.store, "g_mod", "mob", "brute", {}); self.assertEqual(list_art(self.store, "g_mod")["mob:brute"]["mood"], {})
+        for kind, ident in (("mob", "ghost"), ("set", "ghost"), ("food", "ghost"), ("item", "ghost"), ("tool", "x")):
+            with self.assertRaises(InputError):
+                set_mood(self.store, "g_mod", kind, ident, {"x1": 0.5})
+
+    def test_the_gallery_and_the_route_carry_the_options(self):
+        from mod_orchestra.feedback import give_model_feedback, model_gallery
+        give_model_feedback(self.store, "g_mod", "brute", "x", scope="skin", mood={"grotesque": 0.5})
+        g = next(g for g in model_gallery(self.store, "g_mod") if g["mob"] == "brute")
+        self.assertEqual(g["mood"], {"grotesque": 0.5}); self.assertEqual((g["feedback"][0]["scope"], g["feedback"][0]["mood"]), ("skin", {"grotesque": 0.5}))

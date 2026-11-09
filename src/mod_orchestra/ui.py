@@ -346,7 +346,8 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "mob-drops":
                         from .models import set_mob_drops
                         return set_mob_drops(store, pid, str(payload.get("mob", "")), list(payload.get("drops") or []))
-                    if op == "feedback": return give_model_feedback(store, pid, str(payload.get("mob", "")), str(payload.get("text", "")))
+                    if op == "feedback": return give_model_feedback(store, pid, str(payload.get("mob", "")), str(payload.get("text", "")), scope=str(payload.get("scope") or "all"),
+                                                   take=payload.get("take"), mood=payload.get("mood") if isinstance(payload.get("mood"), dict) else None)
                     if op == "decide":
                         store.decide_approval(payload["approval_id"], bool(payload.get("grant", True)))
                         return {"id": payload["approval_id"], "status": "GRANT" if payload.get("grant", True) else "DENY"}

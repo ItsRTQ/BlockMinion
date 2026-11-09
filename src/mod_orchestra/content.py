@@ -83,6 +83,40 @@ def list_art(store: Store, pid: str) -> dict:
     return out
 
 
+def set_mood(store: Store, pid: str, kind: str, identifier: str, mood: dict) -> dict:
+    """Replace the mood dials of one entity, leaving the rest of its art direction (and whether it is derived or written) as it is. kind: item | block | food | mob | set."""
+    from .spec import Art, coerce_mood
+    proj = store.project(pid); spec = read_spec(proj["spec"]); dials = coerce_mood(mood)
+
+    def apply(art):
+        merged = replace(art or Art(), mood=dials)
+        return merged if (merged.concept or merged.tags or merged.silhouette or merged.pieces or merged.reference or merged.avoid or merged.mood) else None
+    if kind in ("item", "block"):
+        if not any(f.identifier == identifier and f.kind == kind for f in spec.features):
+            raise InputError(f"Unknown {kind} {identifier!r}")
+        new_spec = replace(spec, features=[replace(f, art=apply(f.art)) if f.identifier == identifier else f for f in spec.features])
+    elif kind == "food":
+        if not any(f.identifier == identifier for f in spec.foods):
+            raise InputError(f"Unknown food {identifier!r}")
+        new_spec = replace(spec, foods=[replace(f, art=apply(f.art)) if f.identifier == identifier else f for f in spec.foods])
+    elif kind == "mob":
+        if not any(m.identifier == identifier for m in spec.mobs):
+            raise InputError(f"Unknown mob {identifier!r}")
+        new_spec = replace(spec, mobs=[replace(m, art=apply(m.art)) if m.identifier == identifier else m for m in spec.mobs])
+    elif kind == "set":
+        if not any(m.identifier == identifier for m in spec.materials):
+            raise InputError(f"Unknown material {identifier!r}")
+        new_spec = replace(spec, materials=[replace(m, art=apply(m.art)) if m.identifier == identifier else m for m in spec.materials])
+    else:
+        raise InputError("kind must be item, block, food, mob or set")
+    if proj["status"] in GENERATED_STATUSES:
+        _save_spec(store, pid, new_spec, f"mood {kind}:{identifier}")
+    else:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"mood {kind}:{identifier}")
+    return {"kind": kind, "identifier": identifier, "mood": dials}
+
+
 def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "", reference: str = "", avoid=None, mood=None) -> dict:
     """Write the art direction of one entity. kind: item | block | food | mob | set (a whole tool/armor set: concept, tags, silhouette) | tool | armor (one piece of a set:
     its own concept sentence only). Empty fields clear it. Before generation this resets the spec approval like any spec edit; afterwards it is cosmetic."""

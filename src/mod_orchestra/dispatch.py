@@ -194,6 +194,11 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"model": installed}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(installed["installed"]))
+        try:
+            from .feedback import record_design_notes
+            record_design_notes(store, pid, mob_id, h, run["id"])
+        except Exception:
+            pass   # the notes are a thinking aid for the user: they must never fail a model
         _reopen_build(store, pid)
     accepted = None
     if status in ("DONE", "WAITING_USER"):
