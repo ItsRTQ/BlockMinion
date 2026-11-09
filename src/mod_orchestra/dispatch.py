@@ -85,8 +85,13 @@ def build_envelope(store: Store, pid: str, task: dict) -> TaskEnvelope:
         from .models import MODEL_INSTRUCTIONS, theme_block
         from .feedback import feedback_context
         from .models import rig_block
+        from .modeledit import pending_edit, edit_brief
         mob = task["id"].split(":MODEL:")[1]
-        extra = MODEL_INSTRUCTIONS.replace("<mob>", mob) + rig_block(store, pid, mob, Path(proj["root"])) + theme_block(store, pid) + feedback_context(store, pid, mob)
+        edit = pending_edit(store, pid, mob)
+        if edit is not None:   # a modification: a short brief on the existing model, never the new-design brief
+            extra = edit_brief(store, pid, mob, edit)
+        else:
+            extra = MODEL_INSTRUCTIONS.replace("<mob>", mob) + rig_block(store, pid, mob, Path(proj["root"])) + theme_block(store, pid) + feedback_context(store, pid, mob)
     specific = store.task_instructions(task["id"])
     if specific:
         extra = extra + "\n\n## Task-specific instructions\n" + specific
@@ -183,9 +188,18 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
     if ":MODEL:" in task["id"] and status == "DONE":
         from .models import install_model
         from .validation import InputError
+        from .modeledit import pending_edit, check_pending
         mob_id = task["id"].split(":MODEL:")[1]
+        edit = pending_edit(store, pid, mob_id)
         try:
+            if edit is not None:
+                verdict = check_pending(store, pid, mob_id)
+                if verdict["violations"]:
+                    raise InputError("the modification touched what was not asked: " + "; ".join(verdict["violations"][:8]))
             installed = install_model(store, pid, mob_id, run_id=run["id"], actor=f"agent:{task['role']}")
+            if edit is not None:
+                store.add_event(pid, "controller", "MODEL_EDIT_APPLIED", {"mob": mob_id, "edit": edit["edit"], "run": run["id"],
+                                                                          "added_bones": verdict["added_bones"], "changed_bones": verdict["changed_bones"]})
         except (InputError, StateError, OSError) as exc:
             error = f"model deliverables rejected: {exc}"
             store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
@@ -196,7 +210,8 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(installed["installed"]))
         try:
             from .feedback import record_design_notes
-            record_design_notes(store, pid, mob_id, h, run["id"])
+            if edit is None:   # a modification explores nothing: the notes of the design it modifies stay the current ones
+                record_design_notes(store, pid, mob_id, h, run["id"])
         except Exception:
             pass   # the notes are a thinking aid for the user: they must never fail a model
         _reopen_build(store, pid)

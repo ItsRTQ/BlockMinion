@@ -41,8 +41,10 @@ TOOLS = [
     {"name": "orchestra_project_plan", "description": "Create task DAG, once per project", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_generate_source", "description": "Generate source only for previously USER-APPROVED, empty project; no overwrite or code execution", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_footprint", "description": "Bounded Markdown project state", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
-    {"name": "orchestra_paint_skin", "description": "Designer: paint models/<mob>.png from the mob's models/<mob>.bbmodel (box-UV cubes): zone colours, face shading, edges, a head face with eyes/brows/nose/mouth of guaranteed contrast, at `scale` pixels per UV unit (default 2 = 128x128 over a 64x64 layout). Returns the face-contrast report. Only writes that PNG.", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}, "palette": {"type": "object", "description": "{base: '#rrggbb', <name>: '#rrggbb', ...}"}, "zones": {"type": "array", "description": "[{bones: ['torso','*_arm*'], color: 'name or #hex', bands: {color, every, thickness}}]; the first matching zone wins, other bones use base", "items": {"type": "object"}}, "face": {"type": "object", "description": "{eyes, pupil, mouth, brow, teeth: '#hex', nose: bool, tusks: bool, style: 'angry'|'calm'|'grim'}; pass false to leave the head unpainted"}, "surface": {"description": "default surface of every zone without its own: a preset ('flesh', 'rotten', 'hide', 'cloth') or {preset, mottle, veins, blotches, scars, grime, streaks, weave, tears: numbers, ramp: bool}; a zone may carry its own `surface`"}, "scale": {"type": "integer", "minimum": 1, "maximum": 4}, "seed": {"type": "string"}}, "required": ["project", "mob", "palette"], "additionalProperties": False}},
+    {"name": "orchestra_paint_skin", "description": "Designer: paint models/<mob>.png from the mob's models/<mob>.bbmodel (box-UV cubes): zone colours, face shading, edges, a head face with eyes/brows/nose/mouth of guaranteed contrast, at `scale` pixels per UV unit (default 2 = 128x128 over a 64x64 layout). Returns the face-contrast report. Only writes that PNG.", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}, "palette": {"type": "object", "description": "{base: '#rrggbb', <name>: '#rrggbb', ...}"}, "zones": {"type": "array", "description": "[{bones: ['torso','*_arm*'], color: 'name or #hex', bands: {color, every, thickness}}]; the first matching zone wins, other bones use base", "items": {"type": "object"}}, "face": {"type": "object", "description": "{eyes, pupil, mouth, brow, teeth: '#hex', nose: bool, tusks: bool, style: 'angry'|'calm'|'grim'}; pass false to leave the head unpainted"}, "surface": {"description": "default surface of every zone without its own: a preset ('flesh', 'rotten', 'hide', 'cloth') or {preset, mottle, veins, blotches, scars, grime, streaks, weave, tears: numbers, ramp: bool}; a zone may carry its own `surface`"}, "scale": {"type": "integer", "minimum": 1, "maximum": 4}, "seed": {"type": "string"}, "only_bones": {"type": "array", "items": {"type": "string"}, "description": "modifications: paint only the cubes of these bones (names or * patterns) over the current PNG, keeping every other pixel; scale must be the PNG's"}}, "required": ["project", "mob", "palette"], "additionalProperties": False}},
     {"name": "orchestra_check_skin", "description": "Designer: measure how much the head's front face stands out in models/<mob>.png (works for any PNG, painted by hand or by orchestra_paint_skin)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
+    {"name": "orchestra_check_model_edit", "description": "Designer, on a modification: compare models/<mob>.geo.json, .animation.json and .png with the snapshot taken before the run and list everything the install would refuse (an existing part, keyframe, clip or texture pixel that changed without being opened for change, new UV over existing texture)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
+    {"name": "orchestra_grow_texture", "description": "Designer, on a modification with no free UV room: double the texture height of models/<mob>.bbmodel and models/<mob>.png; every existing UV and pixel stays in place and the new rows are free for new parts", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
     {"name": "orchestra_check_sprites", "description": "Designer: run the creative gates on models/sprites/*.png (not the stock template of its kind, not a copy of another sprite of the set, 4+ colours) and list what would be rejected and why; repaint those and call again", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_validate_source", "description": "Static manifest + JSON verification; not a build or runtime check", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
 ]
@@ -69,7 +71,11 @@ def _skin_tool(store: Store, name: str, a: dict) -> object:
     zones = a.get("zones") or []
     if len(zones) > 32 or len(json.dumps(a)) > 20000:
         raise InputError("too many zones or an oversized request")
-    png, report = skin.paint_skin(model, palette=a["palette"], zones=zones, face=a.get("face", {}), scale=int(a.get("scale", 2)), seed=str(a.get("seed") or mob)[:64], surface=a.get("surface"))
+    only = a.get("only_bones")
+    if only is not None and (not isinstance(only, list) or not only or len(only) > 64):
+        raise InputError("only_bones is a non-empty list of bone names")
+    png, report = skin.paint_skin(model, palette=a["palette"], zones=zones, face=a.get("face", {}), scale=int(a.get("scale", 2)), seed=str(a.get("seed") or mob)[:64], surface=a.get("surface"),
+                                  only_bones=only, base_png=target.read_bytes() if only is not None and target.is_file() else None)
     tmp = target.with_suffix(".png.tmp")
     tmp.write_bytes(png)
     tmp.replace(target)
@@ -103,6 +109,18 @@ def invoke(store: Store, name: str, a: dict) -> object:
         return export_state_markdown(store, a["project"])
     if name in ("orchestra_paint_skin", "orchestra_check_skin"):
         return _skin_tool(store, name, a)
+    if name in ("orchestra_check_model_edit", "orchestra_grow_texture"):
+        import re as _re
+        from . import modeledit
+        mob = str(a.get("mob", ""))
+        if not _re.fullmatch(r"[a-z][a-z0-9_]{1,49}", mob):
+            from .validation import InputError as _IE
+            raise _IE("mob must be the mob identifier (snake_case)")
+        if name == "orchestra_check_model_edit":
+            return modeledit.check_pending(store, a["project"], mob)
+        if modeledit.pending_edit(store, a["project"], mob) is None:
+            raise StateError("orchestra_grow_texture is for modifications; there is none pending for this mob")
+        return modeledit.grow_texture(store, a["project"], mob)
     if name == "orchestra_check_sprites":
         from .spec import read_spec
         from .spritecheck import catalogue, check_sprites

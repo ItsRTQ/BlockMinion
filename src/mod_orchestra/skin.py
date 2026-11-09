@@ -424,11 +424,14 @@ def _resolve(pal: dict, value, label: str):
     return pal[value] if isinstance(value, str) and value in pal else parse_color(value, label)
 
 
-def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: dict | None = None, scale: int = 2, seed: str = "", surface=None) -> tuple[bytes, dict]:
+def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: dict | None = None, scale: int = 2, seed: str = "", surface=None,
+               only_bones: list | None = None, base_png: bytes | None = None) -> tuple[bytes, dict]:
     """Paint a skin for the model's box-UV cubes. Returns (PNG bytes, report).
 
     palette: {"base": "#hex", ...named colours}; zones: [{"bones": ["torso", "*_arm*"], "color": "cloth", "bands": {"color": "metal", "every": 4, "thickness": 1}}]
-    (first matching zone wins, unmatched bones use `base`); face: {"eyes": "#hex", "pupil", "mouth", "brow", "teeth", "nose": true, "tusks": false, "style": "angry"|"calm"}."""
+    (first matching zone wins, unmatched bones use `base`); face: {"eyes": "#hex", "pupil", "mouth", "brow", "teeth", "nose": true, "tusks": false, "style": "angry"|"calm"}.
+    only_bones (names or * patterns) + base_png: paint only the cubes of those bones over the existing skin, every other pixel kept
+    (a modification that adds a part); the head's face is painted only when the head bone is one of them."""
     if not isinstance(scale, int) or not 1 <= scale <= MAX_SCALE:
         raise InputError(f"scale must be an integer 1-{MAX_SCALE} (2 = a 128x128 skin over a 64x64 layout)")
     res = model.get("resolution") or {}
@@ -446,9 +449,23 @@ def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: d
     if not cubes:
         raise InputError("the model has no box-UV cubes to paint")
     canvas = Canvas(rw * scale, rh * scale)
+    only = [str(b) for b in only_bones] if only_bones else None
+    if only is not None:
+        if base_png is None:
+            raise InputError("only_bones paints over the existing skin: it needs the current PNG")
+        bw, bh, bpx = decode_png(base_png)
+        if bw != rw * scale or bh != rh * scale:
+            raise InputError(f"only_bones keeps the existing skin, so scale must match it: the PNG is {bw}x{bh}, the model {rw}x{rh} at scale {scale} is {rw * scale}x{rh * scale}")
+        canvas.px[:] = bpx
+        matched = {c["bone"] for c in cubes if any(fnmatch.fnmatchcase(c["bone"], p) for p in only)}
+        if not matched:
+            raise InputError(f"no box-UV cube belongs to {only}; the model's bones with cubes are {sorted({c['bone'] for c in cubes})}")
+        cubes_to_paint = [(ci, c) for ci, c in enumerate(cubes) if c["bone"] in matched]
+    else:
+        cubes_to_paint = list(enumerate(cubes))
     base = pal["base"]
     default_surface = surface_options(surface, pal)
-    for ci, c in enumerate(cubes):
+    for ci, c in cubes_to_paint:
         zone = _zone_color(zone_list, pal, c["bone"])
         color = zone["color"] if zone else base
         opts = zone["surface"] if zone else default_surface
@@ -477,9 +494,11 @@ def paint_skin(model: dict, *, palette: dict, zones: list | None = None, face: d
             for y in range(y0, y1):
                 for x in range(x0, x1):
                     canvas.set(x, y, buf[y - y0][x - x0])
-    report = {"size": [canvas.w, canvas.h], "scale": scale, "cubes": len(cubes), "zones": len(zone_list), "face": None, "adjusted": []}
+    report = {"size": [canvas.w, canvas.h], "scale": scale, "cubes": len(cubes_to_paint), "zones": len(zone_list), "face": None, "adjusted": []}
+    if only is not None:
+        report["only_bones"] = sorted({c["bone"] for _, c in cubes_to_paint})
     head = head_cube(cubes)
-    if head and face is not False:
+    if head and face is not False and (only is None or head["bone"] in report.get("only_bones", [])):
         report["face"], report["adjusted"] = _paint_face(canvas, head, pal, face or {}, scale, zone_list)
     png = encode_png(canvas.w, canvas.h, bytes(canvas.px))
     check = face_report({"resolution": res, "groups": model.get("groups"), "outliner": model.get("outliner"), "elements": model.get("elements")}, png)

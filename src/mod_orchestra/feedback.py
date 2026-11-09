@@ -11,6 +11,7 @@ PREVIEW_SUFFIXES = ("_rest.png", "_walk.png", "_face.png", "_front.png", "_iso.p
 
 
 from .references import list_references
+from .modeledit import current_bones, pending_edit
 
 
 def model_gallery(store: Store, pid: str) -> list[dict]:
@@ -30,13 +31,14 @@ def model_gallery(store: Store, pid: str) -> list[dict]:
         hist = root / ".mod-orchestra" / "previews"
         if hist.is_dir():
             runs = {r["id"]: r for r in store.runs(pid)}
-            for d in sorted(hist.iterdir(), key=lambda d: runs.get(d.name, {}).get("created_at", 0)):
+            for d in sorted(hist.iterdir(), key=lambda d: runs.get(d.name, {}).get("created_at") or d.stat().st_mtime):   # imports have no run
                 files = sorted(f.name for f in d.glob(f"{mid}*.png"))
                 if files:
                     r = runs.get(d.name, {})
                     versions.append({"run": d.name, "created_at": r.get("created_at"), "cost_usd": r.get("cost_usd"),
                                      "previews": [f".mod-orchestra/previews/{d.name}/{n}" for n in files]})
         out.append({"mob": mid, "identifier": mid, "body_plan": m.get("body_plan") or "quadruped", "label": m["label"], "behavior": m["behavior"], "versions": versions, "drops": m.get("drops", []), "scale": float(m.get("scale") or 1.0),
+                    "bones": current_bones(store, pid, mid), "modification": _pending_view(store, pid, mid),
                     "bbmodel": (models / f"{mid}.bbmodel").is_file(), "geo": (models / f"{mid}.geo.json").is_file(),
                     "animation": (models / f"{mid}.animation.json").is_file(),
                     "texture": f"models/{mid}.png" if (models / f"{mid}.png").is_file() else None,
@@ -82,6 +84,11 @@ def latest_design_notes(store: Store, pid: str, mob: str) -> dict | None:
 
 
 FEEDBACK_SCOPES = ("all", "shape", "skin")
+
+
+def _pending_view(store: Store, pid: str, mob: str) -> dict | None:
+    edit = pending_edit(store, pid, mob)
+    return None if edit is None else {"edit": edit["edit"], "text": edit["text"], "may_change": edit.get("may_change") or []}
 
 
 def give_model_feedback(store: Store, pid: str, mob: str, text: str = "", *, scope: str = "all", take: int | None = None, mood: dict | None = None) -> dict:

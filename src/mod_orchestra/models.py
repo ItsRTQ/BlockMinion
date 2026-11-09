@@ -242,6 +242,8 @@ def install_model(store: Store, pid: str, mob_id: str, *, run_id: str, actor: st
     history.mkdir(parents=True, exist_ok=True)
     for png in sorted((ws / MODEL_DIR).glob(f"{mob_id}_*.png")) + [ws / info["files"]["png"]]:
         shutil.copyfile(png, history / png.name)
+    for key in ("bbmodel", "geo", "anim"):   # the whole model, not only its pictures: a version can be compared or brought back
+        shutil.copyfile(ws / info["files"][key], history / Path(info["files"][key]).name)
     accepted = accept_changes(ws, run_id=run_id, actor=actor, changed=changed)
     store.add_event(pid, "controller", "MODEL_INSTALLED", {"mob": mob_id, "run": run_id, **{k: v for k, v in info.items() if k != "files"}})
     return info | {"installed": changed, "accepted": accepted["accepted"], "source": info["files"]["bbmodel"]}
