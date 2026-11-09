@@ -455,6 +455,12 @@ async function renderGallery(p) {
   }
 }
 
+// ---------- open a model's .bbmodel in the user's Blockbench (mob, 3D item or 3D projectile) ----------
+async function openModel(p, which) {
+  const out = await api(`/api/project/${p.id}/open-model`, which);
+  toast(out.note || `Opening ${out.opened.split(/[\\/]/).pop()} in ${out.app ? "Blockbench" : "the default app"}…`, "ok");
+}
+
 // ---------- 3D model for one item ----------
 // Opt-in, one item at a time: it costs a designer run, so the dialog says what earlier designer runs cost before anything starts.
 async function make3d(p, f) {
@@ -657,6 +663,7 @@ async function renderFeatures(p) {
     if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = await promptBox(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
     if (generated && f.can3d) right.append(btn(f.model3d ? "3D model…" : "Make it 3D", () => make3d(p, f), f.model3d ? "mini secondary" : "mini"));
+    if (generated && f.model3d) right.append(btn("Open in Blockbench", () => openModel(p, { item: f.identifier }), "mini secondary"));
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
@@ -1003,6 +1010,7 @@ function openCard(p, cid) {
         for (const [pid3, a] of mine) {
           const line = el("div", null, "proj-line"); line.append(el("span", `${pid3}: ${a.what}`, "muted"));
           line.append(btn(a.model3d ? "3D model…" : "Make it 3D", () => make3d(p, { identifier: pid3, label: pid3, model3d: a.model3d, projectile: true }), "mini"));
+          if (a.model3d) line.append(btn("Open in Blockbench", () => openModel(p, { projectile: pid3 }), "mini secondary"));
           box.append(line);
         }
       }).catch(() => {});

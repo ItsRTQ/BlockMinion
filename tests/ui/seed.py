@@ -38,10 +38,21 @@ store.add_event("infect", "controller", "ART_REQUESTED", {"task": "infect:ART:in
     {"id": "bile_glob", "kind": "projectile", "path": "src/main/resources/assets/infect/textures/item/bile_glob.png", "size": [16, 16],
      "for": ["spitter"], "what": "a glob of bile the spitter spits"}]})
 
+# ...and that projectile already flies as a 3D model
+infect_root = Path(store.project("infect")["root"])
+(infect_root / "models/projectiles3d").mkdir(parents=True, exist_ok=True); (infect_root / "models/projectiles3d/bile_glob.bbmodel").write_text("{}")
+(infect_root / "src/main/resources/assets/infect/model3d").mkdir(parents=True, exist_ok=True)
+(infect_root / "src/main/resources/assets/infect/model3d/index.json").write_text(json.dumps({"items": [], "projectiles": ["bile_glob"]}))
+
 workflow.new_project(store, name="Quiet Gems", mod_id="quiet", package="com.example.quiet", idea="items: ruby, sapphire")
 from mod_orchestra.specedit import add_material   # a material set: the Items tab draws it as one card (and offers 3D for the sword)
 add_material(store, "quiet", identifier="ruby_steel", label="Ruby Steel", ingredient="ruby", tools=["sword"], armor=["helmet"])
 workflow.plan_project(store, "quiet"); workflow.approve_spec(store, "quiet"); workflow.generate_project(store, "quiet")
+# the ruby is already a 3D item
+quiet_root = Path(store.project("quiet")["root"])
+(quiet_root / "models/items3d").mkdir(parents=True, exist_ok=True); (quiet_root / "models/items3d/ruby.bbmodel").write_text("{}")
+(quiet_root / "src/main/resources/assets/quiet/model3d").mkdir(parents=True, exist_ok=True)
+(quiet_root / "src/main/resources/assets/quiet/model3d/index.json").write_text(json.dumps({"items": [{"id": "ruby", "animated": False}]}))
 workflow.new_project(store, name="Draft Opal", mod_id="draft", package="com.example.draft", idea="items: opal, jade")   # not generated: its items can still be removed
 workflow.plan_project(store, "draft"); workflow.approve_spec(store, "draft")
 print("seeded", [p["id"] for p in store.projects()])

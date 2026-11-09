@@ -45,9 +45,19 @@ test('vanilla and spec-derived cards do not offer it', async () => {
 test('a projectile with its own art can be made 3D from its feature card', async () => {
   await page.waitFor(() => side().querySelector('.card-projectiles .proj-line'), 'the projectile line');
   const line = side().querySelector('.card-projectiles .proj-line'); assert.match(line.textContent, /bile_glob: a glob of bile/);
-  page.click(btnOf(line, 'Make it 3D')); await page.waitFor(dlgOpen, 'the dialog');
+  page.click(btnOf(line, '3D model…')); await page.waitFor(dlgOpen, 'the dialog');   // the seed already gave it a model
   assert.match(page.$('#dlg').textContent, /flies nose first/); assert.match(page.$('#dlg').textContent, /earlier designer run|no earlier designer runs/);
   press('Ask the designer'); await page.waitFor(() => posts('/proj3d').length === 1, 'the request');
   assert.equal(posts('/proj3d')[0].body.projectile, 'bile_glob');
   await page.waitFor(dlgOpen, 'start now?'); press('Not now'); await page.waitFor(() => !dlgOpen());
+});
+
+test('a 3D projectile opens in Blockbench from its feature card', async () => {
+  page.overrides['/api/project/infect/open-model'] = {opened: '/x/models/projectiles3d/bile_glob.bbmodel', app: null, note: null};
+  await page.waitFor(() => side().querySelector('.card-projectiles .proj-line'), 'the projectile line');
+  const line = side().querySelector('.card-projectiles .proj-line');
+  page.click(btnOf(line, 'Open in Blockbench'));
+  await page.waitFor(() => posts('/open-model').length === 1, 'the request');
+  assert.deepEqual({...posts('/open-model')[0].body}, {projectile: 'bile_glob'});
+  await page.waitFor(() => /Opening bile_glob\.bbmodel in the default app/.test(page.toasts()), 'the toast');
 });

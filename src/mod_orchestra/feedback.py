@@ -165,15 +165,30 @@ def find_blockbench() -> str | None:
     return shutil.which("blockbench") or shutil.which("Blockbench")
 
 
-def open_in_blockbench(store: Store, pid: str, mob: str) -> dict:
-    """Open models/<mob>.bbmodel with the user's Blockbench (file association). Local, user-initiated, never run by agents."""
+def open_in_blockbench(store: Store, pid: str, name: str, kind: str = "mob") -> dict:
+    """Open a model's .bbmodel with the user's Blockbench (file association): a mob (models/<mob>.bbmodel), a 3D item
+    (models/items3d/<id>.bbmodel) or a 3D projectile (models/projectiles3d/<id>.bbmodel). Local, user-initiated, never run by agents."""
     import os, subprocess, sys
+    from . import model3d
+    from .spec import read_spec
     root = Path(store.project(pid)["root"])
-    if mob not in {m["identifier"] for m in store.project(pid)["spec"].get("mobs", [])}:
-        raise InputError(f"Unknown mob {mob!r}")
-    path = root / "models" / f"{mob}.bbmodel"
+    mob = name
+    if kind == "mob":
+        if name not in {m["identifier"] for m in store.project(pid)["spec"].get("mobs", [])}:
+            raise InputError(f"Unknown mob {name!r}")
+        path, missing = root / "models" / f"{name}.bbmodel", "No .bbmodel for this mob yet (the designer has not run)"
+    elif kind == "item":
+        if name not in model3d.candidates(read_spec(store.project(pid)["spec"])):
+            raise InputError(f"Unknown item {name!r}")
+        path, missing = root / model3d.DIR / f"{name}.bbmodel", "No 3D model for this item yet (Make it 3D first)"
+    elif kind == "projectile":
+        if name not in model3d.projectile_assets(store, pid):
+            raise InputError(f"Unknown projectile {name!r}")
+        path, missing = root / model3d.PDIR / f"{name}.bbmodel", "No 3D model for this projectile yet (Make it 3D first)"
+    else:
+        raise InputError(f"kind must be mob, item or projectile, got {kind!r}")
     if not path.is_file():
-        raise InputError("No .bbmodel for this mob yet (the designer has not run)")
+        raise InputError(missing)
     app = find_blockbench()
     try:
         if os.name == "nt":
@@ -184,5 +199,5 @@ def open_in_blockbench(store: Store, pid: str, mob: str) -> dict:
             subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as exc:
         raise StateError(f"Could not open {path.name}: {exc}. Install Blockbench (https://www.blockbench.net) with the GeckoLib Animation Utils plugin, or open the file by hand.")
-    store.add_event(pid, "user", "OPENED_IN_BLOCKBENCH", {"mob": mob, "app": app})
+    store.add_event(pid, "user", "OPENED_IN_BLOCKBENCH", {"kind": kind, **({"mob": name} if kind == "mob" else {"name": name}), "app": app})
     return {"opened": str(path), "app": app, "note": None if app else "Opened with the system's default app for .bbmodel; if nothing appeared, install Blockbench."}
