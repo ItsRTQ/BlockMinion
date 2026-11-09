@@ -363,7 +363,8 @@ def serve(store: Store, port: int = 8765) -> None:
                         return remove_feature(store, pid, str(payload.get("identifier", "")))
                     if op == "open-model":
                         from .feedback import open_in_blockbench
-                        return open_in_blockbench(store, pid, str(payload.get("mob", "")))
+                        kind = "item" if payload.get("item") else "projectile" if payload.get("projectile") else "mob"
+                        return open_in_blockbench(store, pid, str(payload.get(kind, "")), kind)
                     if op in ("model-edit", "model-edit-cancel", "model-import", "model-reinstall"):
                         from . import modeledit
                         import base64 as _b64m

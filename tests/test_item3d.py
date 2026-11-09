@@ -280,6 +280,36 @@ class Projectile(Base):
         self.assertTrue(out["task"].startswith("m_mod:PROJ3D:acid_glob"))
 
 
+class OpenInBlockbench(Base):
+    def test_3d_items_and_projectiles_open_like_mobs(self):
+        import os as _os
+        import mod_orchestra.feedback as fb
+        from mod_orchestra.feedback import open_in_blockbench
+        self.store.add_event("m_mod", "controller", "ART_REQUESTED", {"task": "t", "card": "c", "assets": [
+            {"id": "acid_glob", "kind": "projectile", "path": "x.png", "for": [], "what": "a glob"}]})
+        with self.assertRaisesRegex(InputError, "Make it 3D first"):
+            open_in_blockbench(self.store, "m_mod", "moon_sword", "item")
+        with self.assertRaisesRegex(InputError, "Make it 3D first"):
+            open_in_blockbench(self.store, "m_mod", "acid_glob", "projectile")
+        for kind, bad in (("item", "moon_ore"), ("projectile", "moon_sword")):
+            with self.assertRaisesRegex(InputError, f"Unknown {kind}"):
+                open_in_blockbench(self.store, "m_mod", bad, kind)
+        with self.assertRaisesRegex(InputError, "kind must be"):
+            open_in_blockbench(self.store, "m_mod", "moon_sword", "block")
+        self.deliver()
+        (self.ws / model3d.PDIR).mkdir(parents=True, exist_ok=True); (self.ws / model3d.PDIR / "acid_glob.bbmodel").write_text("{}")
+        opened = []
+        with patch("subprocess.Popen", lambda cmd, **k: opened.append(list(cmd))), patch.object(fb, "find_blockbench", return_value=None), \
+             patch("sys.platform", "linux"), patch.object(_os, "startfile", lambda path: opened.append(["startfile", str(path)]), create=True):
+            a = open_in_blockbench(self.store, "m_mod", "moon_sword", "item")
+            b = open_in_blockbench(self.store, "m_mod", "acid_glob", "projectile")
+        self.assertTrue(a["opened"].replace("\\", "/").endswith("models/items3d/moon_sword.bbmodel"))
+        self.assertTrue(b["opened"].replace("\\", "/").endswith("models/projectiles3d/acid_glob.bbmodel"))
+        self.assertEqual(len(opened), 2)
+        ev = [e["payload"] for e in self.store.events("m_mod") if e["kind"] == "OPENED_IN_BLOCKBENCH"]
+        self.assertEqual({(e["kind"], e["name"]) for e in ev}, {("item", "moon_sword"), ("projectile", "acid_glob")})
+
+
 class NoGeckoLib(Base):
     IDEA = "items: moon gem; blocks: moon ore; tab: Moon"   # no mobs: the build has no GeckoLib yet
 

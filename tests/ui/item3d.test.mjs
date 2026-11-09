@@ -24,7 +24,7 @@ test('a material set is drawn as its own card', () => {
 });
 
 test('items, tools and weapons offer 3D; armor pieces do not', () => {
-  assert.ok(btnOf(row('ruby_steel_sword'), 'Make it 3D')); assert.ok(btnOf(row('ruby'), 'Make it 3D'));
+  assert.ok(btnOf(row('ruby_steel_sword'), 'Make it 3D')); assert.ok(btnOf(row('ruby'), '3D model…'), 'already 3D: change it');
   assert.equal(btnOf(row('ruby_steel_helmet'), 'Make it 3D'), undefined);
 });
 
@@ -42,4 +42,14 @@ test('Ask the designer sends the item and the notes; "Not now" starts nothing', 
   assert.deepEqual({...posts('/item3d')[0].body}, {item: 'ruby_steel_sword', notes: 'a curved blade'});
   await page.waitFor(dlgOpen, 'start now?'); press('Not now'); await page.waitFor(() => !dlgOpen());
   assert.equal(posts('/dispatch').length, 0);
+});
+
+test('a 3D item opens in Blockbench from its row; one without a model does not offer it', async () => {
+  page.overrides['/api/project/quiet/open-model'] = {opened: 'C:/x/models/items3d/ruby.bbmodel', app: 'blockbench'};
+  assert.equal(btnOf(row('ruby_steel_sword'), 'Open in Blockbench'), undefined);
+  assert.ok(btnOf(row('ruby'), '3D model…'));
+  page.click(btnOf(row('ruby'), 'Open in Blockbench'));
+  await page.waitFor(() => posts('/open-model').length === 1, 'the request');
+  assert.deepEqual({...posts('/open-model')[0].body}, {item: 'ruby'});
+  await page.waitFor(() => /Opening ruby\.bbmodel in Blockbench/.test(page.toasts()), 'the toast');
 });
