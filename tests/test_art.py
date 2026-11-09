@@ -511,7 +511,9 @@ class TestCreativeFreedom(Project):
                  "skill": (root / ".claude/skills/blockbench/SKILL.md").read_text(encoding="utf8"), "designer": (root / ".claude/agents/designer.md").read_text(encoding="utf8"),
                  "modification": __import__("mod_orchestra.modeledit", fromlist=["EDIT_INSTRUCTIONS"]).EDIT_INSTRUCTIONS,
                  "art for the coder": __import__("mod_orchestra.artreq", fromlist=["ART_INSTRUCTIONS"]).ART_INSTRUCTIONS,
-                 "coder art rule": " ".join(__import__("mod_orchestra.artreq", fromlist=["CODER_ART_RULE"]).CODER_ART_RULE)}
+                 "coder art rule": " ".join(__import__("mod_orchestra.artreq", fromlist=["CODER_ART_RULE"]).CODER_ART_RULE),
+                 "3d item": __import__("mod_orchestra.model3d", fromlist=["ITEM3D_INSTRUCTIONS"]).ITEM3D_INSTRUCTIONS,
+                 "3d projectile": __import__("mod_orchestra.model3d", fromlist=["PROJ3D_INSTRUCTIONS"]).PROJ3D_INSTRUCTIONS}
         anchors = [r"\bork", r"\borc\b", r"serrated", r"bone teeth", r"hammered iron", r"rust red", r"horned", r"armour plates", r"a hunch", r"#5c7f3a", r"#d9cfb8", r"#8c2d19", r"skull knob", r"leather lashing"]
         for name, text in texts.items():
             for pattern in anchors:

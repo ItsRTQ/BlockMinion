@@ -455,6 +455,23 @@ async function renderGallery(p) {
   }
 }
 
+// ---------- 3D model for one item ----------
+// Opt-in, one item at a time: it costs a designer run, so the dialog says what earlier designer runs cost before anything starts.
+async function make3d(p, f) {
+  const est = await api(`/api/project/${p.id}/item3d-estimate`, {});
+  const cost = est.runs ? `Your ${est.runs} earlier designer run(s) averaged $${est.avg_usd} and ${est.avg_minutes} min (the most expensive: $${est.max_usd}). A 3D model usually takes more than an icon.`
+                        : "There are no earlier designer runs to estimate from yet; a 3D model takes more than an icon.";
+  const notes = await formBox({ title: `3D model — ${f.label}`, message: (f.projectile ? `The designer builds a 3D model of ${f.label} that flies nose first; then a coder switches its renderer. ` : `The designer builds a 3D model of ${f.label}: in the hand, on the ground and in frames it replaces the flat icon; the inventory keeps the icon. `) + cost,
+    fields: [{ name: "notes", label: f.model3d ? "What should change in the current model?" : "Notes for the designer (optional)", value: "", multiline: true }], ok: "Ask the designer" });
+  if (notes == null) return;
+  const out = f.projectile ? await api(`/api/project/${p.id}/proj3d`, { projectile: f.identifier, notes: (notes.notes || "").trim() })
+                           : await api(`/api/project/${p.id}/item3d`, { item: f.identifier, notes: (notes.notes || "").trim() });
+  if (await confirmBox("Request saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) {
+    await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer building the 3D model…", "ok");
+  }
+  await refreshProject(p.id);
+}
+
 // ---------- modify an existing model / use your own ----------
 // A modification keeps the model and changes only what is asked; the controller refuses the result if it touched a part that
 // was not ticked here. Nothing is ticked by default: the designer may only add.
@@ -639,6 +656,7 @@ async function renderFeatures(p) {
     const right = el("div", null, "actions"); right.style.marginTop = "0";
     if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = await promptBox(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
+    if (generated && f.can3d) right.append(btn(f.model3d ? "3D model…" : "Make it 3D", () => make3d(p, f), f.model3d ? "mini secondary" : "mini"));
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
@@ -648,7 +666,7 @@ async function renderFeatures(p) {
   const materials = [...new Set(feats.filter(f => f.material).map(f => f.material))];
   for (const mat of materials) {
     const pieces = feats.filter(f => f.material === mat); const hasArmor = pieces.some(f => f.kind === "armor");
-    const card = el("div", null, "mob"); card.dataset.focus = "mob:" + m.mob; const head = el("div", null, "mob-head"); head.append(el("h4", `${mat} set · ${pieces.length} piece(s)`));
+    const card = el("div", null, "mob"); card.dataset.focus = "set:" + mat; const head = el("div", null, "mob-head"); head.append(el("h4", `${mat} set · ${pieces.length} piece(s)`));
     const acts = el("div", null, "actions"); acts.style.marginTop = "0";
     acts.append(btn("Set art", () => editArt(p.id, "set", mat, () => openProject(p.id)), "mini secondary"));
     card.append(artLine(artMap[`set:${mat}`]));
@@ -977,6 +995,18 @@ function openCard(p, cid) {
     acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
     if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
     if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
+    if (c.kind === "custom") {   // its projectiles (once they have their own art) can fly as 3D models
+      const box = el("div", null, "card-projectiles"); side.append(box);
+      api(`/api/project/${p.id}/projectiles`).then((all) => {
+        const mine = Object.entries(all || {}).filter(([, a]) => a.card === cid); if (!mine.length) return;
+        box.append(el("div", "Projectiles", "eyebrow"));
+        for (const [pid3, a] of mine) {
+          const line = el("div", null, "proj-line"); line.append(el("span", `${pid3}: ${a.what}`, "muted"));
+          line.append(btn(a.model3d ? "3D model…" : "Make it 3D", () => make3d(p, { identifier: pid3, label: pid3, model3d: a.model3d, projectile: true }), "mini"));
+          box.append(line);
+        }
+      }).catch(() => {});
+    }
     if (c.kind === "custom") acts.append(btn("Give it its own art", async () => {
       if (!await confirmBox("A coder finds every visual this feature borrows from vanilla and gives it its own placeholder; then the designer paints them and the coder wires them in. Nothing else changes. Start the coder now?", { title: "Own art for this feature", ok: "Start coder", cancel: "Not now" })) return;
       const out = await api(`/api/project/${p.id}/art-pass`, { card: cid });

@@ -31,6 +31,7 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 
 ## Editing models after generation: what is left
 - More edits without an agent next to `edit-model --scale`: per-bone scale (above), separate width/height scale (`withScale(w, h)` in the renderer plus `EntityDimensions`), and the interpreter reading sizes from the user's words ("a giant", "tiny").
+- 3D items, later: adjusting the hold pose without an agent (rotation/offset per context), enchantment glint on the 2D inventory icon of a 3D item, 3D block items, Modify for 3D items, and an option to make every weapon 3D on the first run.
 - Art for coder-made content, later: projectiles as spec content (seen and edited in Spec before generation, A of the original proposal), 3D GeckoLib projectiles and entity models requested by the coder (today only flat textures), and showing pending and painted coder art on the feature card.
 - Bring back an earlier version of a model: every version now keeps its `.bbmodel`, geo and animation; a "use this version" button would reinstall one (and a side-by-side render of before and after a modification).
 - Recolour without an agent: the texture's real palette as chips, change one colour and keep each pixel's lightness (shading and detail stay).

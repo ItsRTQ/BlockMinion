@@ -112,6 +112,8 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
                        "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("make-3d", help="USER-ONLY: ask the designer for a 3D model of one item, tool, weapon or food (costs a designer run; the inventory keeps the icon)")
+    a.add_argument("project"); a.add_argument("--item"); a.add_argument("--projectile", help="a projectile the coder gave its own art"); a.add_argument("--notes", default="")
     a = sub.add_parser("request-art", help="USER-ONLY: give a custom feature that borrows vanilla visuals its own art (coder lists them -> designer paints -> coder wires)")
     a.add_argument("project"); a.add_argument("--card", required=True)
     a = sub.add_parser("modify-model", help="USER-ONLY: ask the designer to change a mob's existing model (add a tail...) and keep everything else; the install is refused if it "
@@ -347,6 +349,11 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "edit-model":
         from .models import set_mob_scale
         return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "make-3d":
+        from .model3d import request_item3d, request_proj3d
+        if bool(args.item) == bool(args.projectile):
+            raise InputError("give --item or --projectile (one)")
+        return request_proj3d(store, args.project, args.projectile, args.notes) if args.projectile else request_item3d(store, args.project, args.item, args.notes)
     if args.command == "request-art":
         from .artreq import request_art_pass
         return request_art_pass(store, args.project, args.card)

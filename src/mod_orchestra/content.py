@@ -64,6 +64,11 @@ def list_features(store: Store, pid: str) -> list[dict]:
         tex = f"src/main/resources/assets/{pid}/textures/item/{f['identifier']}.png"
         out.append({"kind": "food", "identifier": f["identifier"], "label": f["label"], "texture": tex if (ws / tex).is_file() else None,
                     "food": {"nutrition": f["nutrition"], "saturation": f["saturation"], "effects": f.get("effects", [])}, "recipes": [], "drop": None})
+    from .model3d import items3d
+    in3d = items3d(ws, pid)
+    for row in out:   # a 3D model can be asked for any item, tool, weapon or food (not blocks, not armor pieces)
+        row["can3d"] = row["kind"] in ("item", "tool", "food")
+        row["model3d"] = row["identifier"] in in3d
     return out
 
 
