@@ -61,3 +61,14 @@ test('a 3D projectile opens in Blockbench from its feature card', async () => {
   assert.deepEqual({...posts('/open-model')[0].body}, {projectile: 'bile_glob'});
   await page.waitFor(() => /Opening bile_glob\.bbmodel in the default app/.test(page.toasts()), 'the toast');
 });
+
+test('a 3D projectile is animated with one question: how it moves in flight', async () => {
+  page.overrides['/api/project/infect/animate'] = {task: 'infect:ANIMATE:projectile:bile_glob', anims: ['idle']};
+  await page.waitFor(() => side().querySelector('.card-projectiles .proj-line'), 'the projectile line');
+  page.click(btnOf(side().querySelector('.card-projectiles .proj-line'), 'Animate')); await page.waitFor(dlgOpen, 'the question');
+  assert.match(page.$('#dlg').textContent, /How does it move while it flies/);
+  page.$('#dlg textarea').value = 'it tumbles end over end'; press('Animate');
+  await page.waitFor(() => posts('/animate').length === 1, 'the request');
+  const b = posts('/animate')[0].body; assert.deepEqual({kind: b.kind, ident: b.ident, what: b.anims[0].what}, {kind: 'projectile', ident: 'bile_glob', what: 'it tumbles end over end'});
+  await page.waitFor(dlgOpen, 'start now?'); press('Not now'); await page.waitFor(() => !dlgOpen());
+});

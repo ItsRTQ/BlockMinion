@@ -32,6 +32,8 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 ## Editing models after generation: what is left
 - More edits without an agent next to `edit-model --scale`: per-bone scale (above), separate width/height scale (`withScale(w, h)` in the renderer plus `EntityDimensions`), and the interpreter reading sizes from the user's words ("a giant", "tiny").
 - Install my Blockbench edits for 3D items and projectiles (export, validate without the render, install as a user revision, re-wire actions); today they can be opened but edits there do not reach the game.
+- Player animations, later: PAL's first-person mode (THIRD_PERSON_MODEL) as an alternative to fp_ parts, player animations not tied to an item (emotes, movement), and a player rig with bend helpers.
+- 3D blocks, later: a collision/selection shape that follows the model, a facing property (GeoBlockRenderer turns by FACING when the block has one), 3D block items in the inventory, and block variants (stairs, slabs) of a 3D block.
 - 3D items, later: adjusting the hold pose without an agent (rotation/offset per context), enchantment glint on the 2D inventory icon of a 3D item, 3D block items, Modify for 3D items, and an option to make every weapon 3D on the first run.
 - Art for coder-made content, later: projectiles as spec content (seen and edited in Spec before generation, A of the original proposal), 3D GeckoLib projectiles and entity models requested by the coder (today only flat textures), and showing pending and painted coder art on the feature card.
 - Bring back an earlier version of a model: every version now keeps its `.bbmodel`, geo and animation; a "use this version" button would reinstall one (and a side-by-side render of before and after a modification).

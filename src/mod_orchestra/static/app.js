@@ -381,6 +381,7 @@ async function renderGallery(p) {
       card.append(el("div", "Feedback sent to the designer:", "muted")); card.append(ul);
     }
     card.append(modifyPanel(p, m), ownModelPanel(p, m));
+    if (!m.placeholder && m.geo) card.append(animatePanel(p, "mob", m.mob, "Animate this mob (new moves, movement states)"));
     const fb = el("form", null, "feedback"); const ta = el("textarea");
     ta.placeholder = m.placeholder ? "Describe the creature you want, in your own words. It goes to the designer's first run, exactly as you write it" : "What should change? Leave it empty if the options below say it";
     fb.append(ta);
@@ -455,6 +456,40 @@ async function renderGallery(p) {
   }
 }
 
+// ---------- Animate: what it does (designer) and when it plays (coder); the model's shape and texture stay locked ----------
+function animatePanel(p, kind, ident, title) {
+  const box = document.createElement("details"); box.className = "animate-panel"; box.dataset.target = `${kind}:${ident}`;
+  box.append(el("summary", title || "Animate"));
+  box.append(el("div", "Describe each animation: what it does (the designer animates it; the model's shape and texture stay as they are) and when it plays (a coder makes it play then).", "muted"));
+  const rows = el("div", null, "anim-rows"); box.append(rows);
+  const addRow = () => {
+    const r = el("div", null, "anim-row");
+    const name = el("input"); name.placeholder = "name"; name.className = "anim-name"; name.maxLength = 24;
+    const what = el("textarea"); what.placeholder = "what it does"; what.className = "anim-what"; what.rows = 2; what.maxLength = 800;
+    const when = el("input"); when.placeholder = "when it plays"; when.className = "anim-when"; when.maxLength = 300;
+    const loopL = el("label", null, "part-choice"); const loop = el("input"); loop.type = "checkbox"; loop.className = "anim-loop"; loopL.append(loop, el("span", " lasts while it happens (loops)"));
+    r.append(name, what, when, loopL);
+    if (kind === "item") { const body = el("textarea"); body.placeholder = "the player's body during it (optional): arms, torso, head"; body.className = "anim-player"; body.rows = 2; body.maxLength = 800; r.append(body); }
+    rows.append(r);
+  };
+  addRow();
+  const remove = el("input"); remove.placeholder = "clips to remove (names, comma separated), optional"; remove.className = "anim-remove";
+  box.append(btn("Add another", () => addRow(), "mini secondary"), remove);
+  box.append(btn("Animate", async () => {
+    const anims = [...rows.querySelectorAll(".anim-row")].map((r) => ({ name: r.querySelector(".anim-name").value.trim(), what: r.querySelector(".anim-what").value.trim(),
+      when: r.querySelector(".anim-when").value.trim(), loop: r.querySelector(".anim-loop").checked,
+      ...(r.querySelector(".anim-player")?.value.trim() ? { player: r.querySelector(".anim-player").value.trim() } : {}) })).filter((a) => a.name || a.what || a.when);
+    const rm = remove.value.split(",").map((x) => x.trim()).filter(Boolean);
+    if (!anims.length && !rm.length) throw new Error("Describe at least one animation");
+    const out = await api(`/api/project/${p.id}/animate`, { kind, ident, anims, remove: rm });
+    if (await confirmBox("Saved. Start the designer now? It only animates; the model's shape and texture are locked.", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) {
+      await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer animating…", "ok");
+    }
+    await refreshProject(p.id);
+  }, "primary"));
+  return box;
+}
+
 // ---------- open a model's .bbmodel in the user's Blockbench (mob, 3D item or 3D projectile) ----------
 async function openModel(p, which) {
   const out = await api(`/api/project/${p.id}/open-model`, which);
@@ -467,10 +502,12 @@ async function make3d(p, f) {
   const est = await api(`/api/project/${p.id}/item3d-estimate`, {});
   const cost = est.runs ? `Your ${est.runs} earlier designer run(s) averaged $${est.avg_usd} and ${est.avg_minutes} min (the most expensive: $${est.max_usd}). A 3D model usually takes more than an icon.`
                         : "There are no earlier designer runs to estimate from yet; a 3D model takes more than an icon.";
-  const notes = await formBox({ title: `3D model — ${f.label}`, message: (f.projectile ? `The designer builds a 3D model of ${f.label} that flies nose first; then a coder switches its renderer. ` : `The designer builds a 3D model of ${f.label}: in the hand, on the ground and in frames it replaces the flat icon; the inventory keeps the icon. `) + cost,
+  const notes = await formBox({ title: `3D model — ${f.label}`, message: (f.projectile ? `The designer builds a 3D model of ${f.label} that flies nose first; then a coder switches its renderer. `
+           : f.kind === "block" ? `The designer builds a 3D model of ${f.label}; in the world it replaces the cube (its item keeps the icon). ` : `The designer builds a 3D model of ${f.label}: in the hand, on the ground and in frames it replaces the flat icon; the inventory keeps the icon. `) + cost,
     fields: [{ name: "notes", label: f.model3d ? "What should change in the current model? (and what should animate when it is used, hits or is drawn)" : "Notes for the designer (optional): how it looks, and what should animate when it is used, hits or is drawn", value: "", multiline: true }], ok: "Ask the designer" });
   if (notes == null) return;
   const out = f.projectile ? await api(`/api/project/${p.id}/proj3d`, { projectile: f.identifier, notes: (notes.notes || "").trim() })
+            : f.kind === "block" ? await api(`/api/project/${p.id}/block3d`, { block: f.identifier, notes: (notes.notes || "").trim() })
                            : await api(`/api/project/${p.id}/item3d`, { item: f.identifier, notes: (notes.notes || "").trim() });
   if (await confirmBox("Request saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) {
     await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer building the 3D model…", "ok");
@@ -663,7 +700,13 @@ async function renderFeatures(p) {
     if (f.kind === "block" && !f.ore) right.append(btn("Generate in world", async () => { const spec = await promptBox(`Ore veins for ${f.identifier}: "size count minY maxY [biomes]" — e.g. "9 8 -64 64 overworld"`, "9 8 -64 64 overworld"); if (!spec) return; const [sz, cnt, mn, mx, ...bi] = spec.trim().split(/\s+/); const out = await api(`/api/project/${p.id}/add-ore`, { block: f.identifier, vein_size: Number(sz), veins_per_chunk: Number(cnt), min_y: Number(mn), max_y: Number(mx), biomes: bi.length ? bi : ["overworld"] }); toast(out.generated ? `Worldgen written; the coder registers it (${out.task}) — see Now.` : "Worldgen added to the spec.", "ok"); await openProject(p.id); }, "mini secondary"));
     const up = uploadInput(async (b64) => { const out = await api(`/api/project/${p.id}/set-texture`, { kind: f.kind === "block" ? "block" : "item", identifier: f.identifier, png_base64: b64 }); toast(out.note, "ok"); await openProject(p.id); });
     if (generated && f.can3d) right.append(btn(f.model3d ? "3D model…" : "Make it 3D", () => make3d(p, f), f.model3d ? "mini secondary" : "mini"));
-    if (generated && f.model3d) right.append(btn("Open in Blockbench", () => openModel(p, { item: f.identifier }), "mini secondary"));
+    if (generated && f.model3d) right.append(btn("Open in Blockbench", () => openModel(p, f.kind === "block" ? { block: f.identifier } : { item: f.identifier }), "mini secondary"));
+    if (generated && f.model3d && f.kind === "block") mid.append(animatePanel(p, "block", f.identifier, "Animate this block"));
+    if (generated && f.model3d && f.kind !== "block") {
+      right.append(btn("Reinstall", async () => { const out = await api(`/api/project/${p.id}/reinstall-3d`, { item: f.identifier });
+        toast(out.anim_task ? `Reinstalled; its actions (${out.actions.join(", ")}) go to a coder: ${out.anim_task}` : "Reinstalled.", "ok"); await refreshProject(p.id); }, "mini secondary"));
+      mid.append(animatePanel(p, "item", f.identifier, "Animate this item"));
+    }
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
@@ -1011,6 +1054,12 @@ function openCard(p, cid) {
           const line = el("div", null, "proj-line"); line.append(el("span", `${pid3}: ${a.what}`, "muted"));
           line.append(btn(a.model3d ? "3D model…" : "Make it 3D", () => make3d(p, { identifier: pid3, label: pid3, model3d: a.model3d, projectile: true }), "mini"));
           if (a.model3d) line.append(btn("Open in Blockbench", () => openModel(p, { projectile: pid3 }), "mini secondary"));
+          if (a.model3d) line.append(btn("Animate", async () => {
+            const v = await promptBox("How does it move while it flies? (the designer animates it; its shape and texture stay as they are)", "", { title: `Animate ${pid3}`, ok: "Animate", multiline: true, required: true });
+            if (v == null) return;
+            const out = await api(`/api/project/${p.id}/animate`, { kind: "projectile", ident: pid3, anims: [{ name: "flight", what: v.trim() }] });
+            if (await confirmBox("Saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer animating…", "ok"); }
+          }, "mini secondary"));
           box.append(line);
         }
       }).catch(() => {});

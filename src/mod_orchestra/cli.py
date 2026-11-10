@@ -112,8 +112,17 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
                        "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("animate", help="USER-ONLY: ask the designer for animations on an existing model (shape and texture locked); the coder plays each one "
+                       "when you say. --anim \"name|what it does|when it plays\" (add |loop for one that lasts while something holds)")
+    a.add_argument("project"); g = a.add_mutually_exclusive_group(required=True)
+    g.add_argument("--item"); g.add_argument("--projectile"); g.add_argument("--mob"); g.add_argument("--block")
+    a.add_argument("--anim", action="append", default=[]); a.add_argument("--remove", nargs="*", default=[]); a.add_argument("--notes", default="")
+    a.add_argument("--player", action="append", default=[], help='items: "name|what the player\'s body does" for an --anim of that name (Player Animation Library)')
+    a = sub.add_parser("reinstall-3d", help="USER-ONLY, no agent: run a 3D item's current model through today's installer (wires actions of older installs)")
+    a.add_argument("project"); a.add_argument("--item", required=True)
     a = sub.add_parser("make-3d", help="USER-ONLY: ask the designer for a 3D model of one item, tool, weapon or food (costs a designer run; the inventory keeps the icon)")
-    a.add_argument("project"); a.add_argument("--item"); a.add_argument("--projectile", help="a projectile the coder gave its own art"); a.add_argument("--notes", default="")
+    a.add_argument("project"); a.add_argument("--item"); a.add_argument("--projectile", help="a projectile the coder gave its own art")
+    a.add_argument("--block", help="a block: drawn by its model through a block entity"); a.add_argument("--notes", default="")
     a = sub.add_parser("request-art", help="USER-ONLY: give a custom feature that borrows vanilla visuals its own art (coder lists them -> designer paints -> coder wires)")
     a.add_argument("project"); a.add_argument("--card", required=True)
     a = sub.add_parser("modify-model", help="USER-ONLY: ask the designer to change a mob's existing model (add a tail...) and keep everything else; the install is refused if it "
@@ -349,10 +358,32 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "edit-model":
         from .models import set_mob_scale
         return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "animate":
+        from .animate import request_animate
+        kind = next(k for k in ("item", "projectile", "mob", "block") if getattr(args, k))
+        anims = []
+        for spec_ in args.anim:
+            parts = [x.strip() for x in spec_.split("|")]
+            if len(parts) < 2:
+                raise InputError('--anim "name|what it does|when it plays[|loop]"')
+            anims.append({"name": parts[0], "what": parts[1], "when": parts[2] if len(parts) > 2 else "", "loop": len(parts) > 3 and parts[3].lower() == "loop"})
+        for spec_ in args.player:
+            name, _, body = spec_.partition("|")
+            match = next((x for x in anims if x["name"] == name.strip()), None)
+            if match is None or not body.strip():
+                raise InputError('--player "name|what the body does" needs an --anim with that name')
+            match["player"] = body.strip()
+        return request_animate(store, args.project, kind, getattr(args, kind), anims, args.remove, args.notes)
+    if args.command == "reinstall-3d":
+        from .model3d import reinstall_item3d
+        return reinstall_item3d(store, args.project, args.item)
     if args.command == "make-3d":
         from .model3d import request_item3d, request_proj3d
-        if bool(args.item) == bool(args.projectile):
-            raise InputError("give --item or --projectile (one)")
+        if sum(bool(x) for x in (args.item, args.projectile, args.block)) != 1:
+            raise InputError("give --item, --projectile or --block (one)")
+        if args.block:
+            from .blocks3d import request_block3d
+            return request_block3d(store, args.project, args.block, args.notes)
         return request_proj3d(store, args.project, args.projectile, args.notes) if args.projectile else request_item3d(store, args.project, args.item, args.notes)
     if args.command == "request-art":
         from .artreq import request_art_pass

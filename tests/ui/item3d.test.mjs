@@ -53,3 +53,13 @@ test('a 3D item opens in Blockbench from its row; one without a model does not o
   assert.deepEqual({...posts('/open-model')[0].body}, {item: 'ruby'});
   await page.waitFor(() => /Opening ruby\.bbmodel in Blockbench/.test(page.toasts()), 'the toast');
 });
+
+test('a block offers 3D too, and asks the block route', async () => {
+  page.overrides['/api/project/quiet/block3d'] = {task: 'quiet:BLOCK3D:ruby_lamp', block: 'ruby_lamp', estimate: {runs: 0}};
+  await page.waitFor(() => row('ruby_lamp'), 'the block row');
+  page.click(btnOf(row('ruby_lamp'), 'Make it 3D')); await page.waitFor(dlgOpen, 'the dialog');
+  assert.match(page.$('#dlg').textContent, /replaces the cube \(its item keeps the icon\)/);
+  press('Ask the designer'); await page.waitFor(() => posts('/block3d').length === 1, 'the request');
+  assert.equal(posts('/block3d')[0].body.block, 'ruby_lamp'); assert.equal(posts('/item3d').length, 1, 'the item route was not used');
+  await page.waitFor(dlgOpen, 'start now?'); press('Not now'); await page.waitFor(() => !dlgOpen());
+});
