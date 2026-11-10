@@ -62,35 +62,14 @@ import software.bernie.geckolib.animation.AnimatableManager;
 import software.bernie.geckolib.util.GeckoLibUtil;
 import java.util.function.Consumer;
 
-public class CiActionItem extends Item implements GeoItem {
-    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-
-    public CiActionItem(Properties properties) { super(properties); Item3DActions.init(this); }
-
-    @Override
-    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        Item3DActions.controllers(this, controllers, "ci_sword", true, "use", "attack");
-    }
-
-    @Override
-    public AnimatableInstanceCache getAnimatableInstanceCache() { return cache; }
-
-    @Override
-    public void createGeoRenderer(Consumer<GeoRenderProvider> consumer) {
-        consumer.accept(new GeoRenderProvider() {
-            private Item3DGeoRenderer<CiActionItem> renderer;
-            @Override
-            public BlockEntityWithoutLevelRenderer getGeoItemRenderer() {
-                if (renderer == null) renderer = new Item3DGeoRenderer<>(ModMain.MOD_ID, "ci_sword");
-                return renderer;
-            }
-        });
-    }
+/** The animation contract as a coder writes it: an Item3DBase that emits its moments; the model (and its clips) come later as data. */
+public class CiActionItem extends com.example.cimod.model3d.Item3DBase {
+    public CiActionItem(Properties properties) { super(properties); }
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        Item3DActions.trigger(this, player, stack, "use");
+        Item3DActions.event(stack, player, "use");   // plays the clip once a 3D model with it exists; nothing until then
         com.example.cimod.playeranim.PlayerAnims.play(player, "ci_sword_use");   // the player's body, through Player Animation Library
         com.example.cimod.model3d.Block3DEntity.trigger(level, player.blockPosition().below(), "crack");   // a 3D block's action
         return InteractionResultHolder.success(stack);
@@ -98,12 +77,12 @@ public class CiActionItem extends Item implements GeoItem {
 
     @Override
     public void releaseUsing(ItemStack stack, Level level, LivingEntity entity, int timeLeft) {
-        Item3DActions.stop(this, entity, stack, "use");   // a looping action ends
+        Item3DActions.eventEnd(stack, entity, "use");   // a looping action ends
     }
 
     @Override
     public boolean hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        Item3DActions.trigger(this, attacker, stack, "attack");
+        Item3DActions.event(stack, attacker, "attack");
         return super.hurtEnemy(stack, target, attacker);
     }
 }

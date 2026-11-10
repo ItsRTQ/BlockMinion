@@ -33,7 +33,60 @@ CODER_ART_RULE = [
     "list it in your handoff as `art_needed`: [{\"id\": snake_case, \"kind\": one of " + ", ".join(KINDS) + ", \"path\": the PNG path from the project root,",
     "\"size\": [width, height], \"for\": [identifiers of the mobs/items it belongs to], \"what\": how it is seen in the game and what it is}].",
     "Do not list mob models or the icons of items that are in the spec: the controller designs those already.",
+    "Animation contract: every item you create that has gameplay moments (a weapon, a tool, a wand, anything used or swung) extends <the mod's package>.model3d.Item3DBase",
+    "(or, when it must extend another base such as SwordItem, implements GeoItem by copying Item3DBase's four members). From day one its code emits each moment",
+    "with <the mod's package>.model3d.Item3DActions.event(stack, holder, \"<name>\") (and eventEnd for one that lasts): it does nothing until a 3D model with that clip exists.",
+    "List the moments in your handoff as `animation_events`: [{\"item\": id, \"name\": snake_case, \"when\": what happens in the game at that moment,",
+    "\"loop\": true only if it lasts}], and the items that are Item3DBase/GeoItem as `geo_items`: [ids]. The designer animates exactly those names.",
 ]
+EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,23}$")
+EVENTS_FILE = ".mod-orchestra/animation-events.json"
+
+
+def events_store(ws: Path) -> dict:
+    f = ws / EVENTS_FILE
+    try:
+        d = json.loads(f.read_text(encoding="utf8")) if f.is_file() else {}
+    except ValueError:
+        d = {}
+    d.setdefault("events", {}); d.setdefault("geo_items", [])
+    return d
+
+
+def declared_events(ws: Path, item: str) -> dict[str, dict]:
+    """{name: {when, loop}} the coder declared for an item."""
+    return dict(events_store(ws)["events"].get(item) or {})
+
+
+def is_geo_item(ws: Path, item: str) -> bool:
+    return item in events_store(ws)["geo_items"]
+
+
+def record_contract(store: Store, pid: str, task_id: str, handoff: dict) -> dict | None:
+    """Keep the coder's animation_events and geo_items; drop malformed entries with the reason."""
+    ws = Path(store.project(pid)["root"])
+    raw_events, raw_geo = handoff.get("animation_events") or [], handoff.get("geo_items") or []
+    if not raw_events and not raw_geo:
+        return None
+    d = events_store(ws)
+    kept, dropped = [], {}
+    for i, e in enumerate(raw_events if isinstance(raw_events, list) else []):
+        if not isinstance(e, dict):
+            dropped[f"#{i}"] = "not an object"; continue
+        item, name = str(e.get("item", "")), str(e.get("name", "")).strip().lower()
+        when = " ".join(str(e.get("when", "")).split())[:300]
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", item) or not EVENT_NAME.match(name):
+            dropped[f"{item}.{name}" or f"#{i}"] = "item id and snake_case name needed"; continue
+        if not when:
+            dropped[f"{item}.{name}"] = "say what happens in the game at that moment"; continue
+        d["events"].setdefault(item, {})[name] = {"when": when, "loop": bool(e.get("loop")), "task": task_id}
+        kept.append(f"{item}.{name}")
+    geo = [str(x) for x in raw_geo if isinstance(x, str) and re.fullmatch(r"[a-z][a-z0-9_]{1,49}", x)] if isinstance(raw_geo, list) else []
+    d["geo_items"] = sorted(set(d["geo_items"]) | set(geo))
+    (ws / EVENTS_FILE).parent.mkdir(parents=True, exist_ok=True)
+    (ws / EVENTS_FILE).write_text(json.dumps(d, indent=2) + "\n", encoding="utf8")
+    store.add_event(pid, "controller", "ANIM_EVENTS_DECLARED", {"task": task_id, "events": kept, "geo_items": geo, "dropped": dropped})
+    return {"events": kept, "geo_items": geo, "dropped": dropped}
 
 
 def _tid(store: Store, pid: str, kind: str, card: str) -> str:
@@ -151,8 +204,9 @@ def request_art(store: Store, pid: str, source_task: str, card: str, assets: lis
 
 
 def after_coder_done(store: Store, pid: str, task_id: str, handoff: dict) -> dict | None:
-    """On a FEATURE / CHANGE / ARTPASS DONE: queue the art the coder listed. Never fails the coder's task: what cannot be taken is
-    recorded with the reason."""
+    """On a FEATURE / CHANGE / ARTPASS DONE: keep the animation contract and queue the art the coder listed. Never fails the coder's
+    task: what cannot be taken is recorded with the reason."""
+    record_contract(store, pid, task_id, handoff)
     assets, dropped = parse_art_needed(store, pid, handoff)
     if dropped:
         store.add_event(pid, "controller", "ART_REQUEST_DROPPED", {"task": task_id, "dropped": dropped})
