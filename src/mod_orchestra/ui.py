@@ -164,6 +164,10 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "projectiles":
                         from .model3d import projectile_assets
                         return projectile_assets(store, pid)
+                    if op == "hold-styles":
+                        from .model3d import _index as _m3d_index
+                        from .pose import STYLES, CONTEXTS
+                        return {"styles": _m3d_index(Path(store.project(pid)["root"]), pid)[1].get("styles") or {}, "all": list(STYLES), "contexts": list(CONTEXTS)}
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
@@ -313,6 +317,12 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "block3d":
                         from .blocks3d import request_block3d
                         return request_block3d(store, pid, str(payload.get("block", "")), str(payload.get("notes", "")))
+                    if op == "hold":
+                        from .model3d import set_hold
+                        return set_hold(store, pid, str(payload.get("item", "")), style=payload.get("style"), front=payload.get("front"), top=payload.get("top"))
+                    if op == "hold-style":
+                        from .model3d import set_style_tweaks
+                        return set_style_tweaks(store, pid, str(payload.get("style", "")), dict(payload.get("tweaks") or {}))
                     if op == "item3d-estimate":
                         from .model3d import designer_cost
                         return designer_cost(store)

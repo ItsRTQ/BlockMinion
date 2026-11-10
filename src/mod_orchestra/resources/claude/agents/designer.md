@@ -1,7 +1,7 @@
 ---
 name: designer
 description: Handles pixel textures, Blockbench models, GeckoLib geo/animation JSON and visual checks. Use for any asset or model task.
-tools: Read, Grep, Glob, Edit, Write, Bash, mcp__blockbench__*, mcp__minecraft-orchestra__orchestra_project_status, mcp__minecraft-orchestra__orchestra_paint_skin, mcp__minecraft-orchestra__orchestra_check_skin, mcp__minecraft-orchestra__orchestra_check_sprites, mcp__minecraft-orchestra__orchestra_check_model_edit, mcp__minecraft-orchestra__orchestra_grow_texture
+tools: Read, Grep, Glob, Edit, Write, Bash, mcp__blockbench__*, mcp__minecraft-orchestra__orchestra_project_status, mcp__minecraft-orchestra__orchestra_paint_skin, mcp__minecraft-orchestra__orchestra_check_skin, mcp__minecraft-orchestra__orchestra_check_sprites, mcp__minecraft-orchestra__orchestra_check_model_edit, mcp__minecraft-orchestra__orchestra_grow_texture, mcp__minecraft-orchestra__orchestra_preview_hold
 skills:
   - designer
   - blockbench

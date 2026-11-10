@@ -118,6 +118,13 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--item"); g.add_argument("--projectile"); g.add_argument("--mob"); g.add_argument("--block")
     a.add_argument("--anim", action="append", default=[]); a.add_argument("--remove", nargs="*", default=[]); a.add_argument("--notes", default="")
     a.add_argument("--player", action="append", default=[], help='items: "name|what the player\'s body does" for an --anim of that name (Player Animation Library)')
+    a = sub.add_parser("hold", help="USER-ONLY, no agent: declare or change how a 3D item is held (style aim|wield|carry, the axis its front points to, the axis its top points to); "
+                       "its model JSON and the in-hand previews are recomputed (F3+T in the game reloads it)")
+    a.add_argument("project"); a.add_argument("--item", required=True); a.add_argument("--style", choices=["aim", "wield", "carry"]); a.add_argument("--front"); a.add_argument("--top")
+    a = sub.add_parser("hold-tweak", help="USER-ONLY, no agent: fine-tune a hold style for the whole project: --context thirdperson_righthand|firstperson_righthand|ground|fixed|head "
+                       "--rotation x y z --translation x y z --scale f (offsets added to the computed pose); --clear removes the style's tweaks")
+    a.add_argument("project"); a.add_argument("--style", required=True, choices=["aim", "wield", "carry"]); a.add_argument("--context")
+    a.add_argument("--rotation", nargs=3, type=float); a.add_argument("--translation", nargs=3, type=float); a.add_argument("--scale", type=float); a.add_argument("--clear", action="store_true")
     a = sub.add_parser("reinstall-3d", help="USER-ONLY, no agent: run a 3D item's current model through today's installer (wires actions of older installs)")
     a.add_argument("project"); a.add_argument("--item", required=True)
     a = sub.add_parser("make-3d", help="USER-ONLY: ask the designer for a 3D model of one item, tool, weapon or food (costs a designer run; the inventory keeps the icon)")
@@ -374,6 +381,20 @@ def dispatch(args: argparse.Namespace) -> object:
                 raise InputError('--player "name|what the body does" needs an --anim with that name')
             match["player"] = body.strip()
         return request_animate(store, args.project, kind, getattr(args, kind), anims, args.remove, args.notes)
+    if args.command == "hold":
+        from .model3d import set_hold
+        return set_hold(store, args.project, args.item, style=args.style, front=args.front, top=args.top)
+    if args.command == "hold-tweak":
+        from .model3d import set_style_tweaks, style_tweaks
+        ws = Path(store.project(args.project)["root"])
+        current = {} if args.clear else style_tweaks(ws, args.project, args.style)
+        if args.context and not args.clear:
+            t = dict(current.get(args.context) or {})
+            if args.rotation: t["rotation"] = args.rotation
+            if args.translation: t["translation"] = args.translation
+            if args.scale: t["scale"] = args.scale
+            current[args.context] = t
+        return set_style_tweaks(store, args.project, args.style, current)
     if args.command == "reinstall-3d":
         from .model3d import reinstall_item3d
         return reinstall_item3d(store, args.project, args.item)
