@@ -44,7 +44,7 @@ infect_root = Path(store.project("infect")["root"])
 (infect_root / "src/main/resources/assets/infect/model3d").mkdir(parents=True, exist_ok=True)
 (infect_root / "src/main/resources/assets/infect/model3d/index.json").write_text(json.dumps({"items": [], "projectiles": ["bile_glob"]}))
 
-workflow.new_project(store, name="Quiet Gems", mod_id="quiet", package="com.example.quiet", idea="items: ruby, sapphire")
+workflow.new_project(store, name="Quiet Gems", mod_id="quiet", package="com.example.quiet", idea="items: ruby, sapphire; blocks: ruby lamp")
 from mod_orchestra.specedit import add_material   # a material set: the Items tab draws it as one card (and offers 3D for the sword)
 add_material(store, "quiet", identifier="ruby_steel", label="Ruby Steel", ingredient="ruby", tools=["sword"], armor=["helmet"])
 workflow.plan_project(store, "quiet"); workflow.approve_spec(store, "quiet"); workflow.generate_project(store, "quiet")

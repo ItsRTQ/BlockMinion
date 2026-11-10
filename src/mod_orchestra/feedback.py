@@ -185,8 +185,13 @@ def open_in_blockbench(store: Store, pid: str, name: str, kind: str = "mob") -> 
         if name not in model3d.projectile_assets(store, pid):
             raise InputError(f"Unknown projectile {name!r}")
         path, missing = root / model3d.PDIR / f"{name}.bbmodel", "No 3D model for this projectile yet (Make it 3D first)"
+    elif kind == "block":
+        from . import blocks3d
+        if name not in blocks3d.candidates(read_spec(store.project(pid)["spec"])):
+            raise InputError(f"Unknown block {name!r}")
+        path, missing = root / blocks3d.BDIR / f"{name}.bbmodel", "No 3D model for this block yet (Make it 3D first)"
     else:
-        raise InputError(f"kind must be mob, item or projectile, got {kind!r}")
+        raise InputError(f"kind must be mob, item, projectile or block, got {kind!r}")
     if not path.is_file():
         raise InputError(missing)
     app = find_blockbench()

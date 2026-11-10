@@ -64,7 +64,7 @@ class Request(Base):
         self.assertIn("moon_gem", cand); self.assertTrue(cand["moon_sword"]["handheld"]); self.assertFalse(cand["moon_gem"]["handheld"])
         self.assertNotIn("moon_ore", cand); self.assertNotIn("moon_helmet", cand)
         rows = {r["identifier"]: r for r in list_features(self.store, "m_mod")}
-        self.assertTrue(rows["moon_sword"]["can3d"]); self.assertFalse(rows["moon_ore"]["can3d"]); self.assertFalse(rows["moon_helmet"]["can3d"])
+        self.assertTrue(rows["moon_sword"]["can3d"]); self.assertTrue(rows["moon_ore"]["can3d"], "blocks too (blocks3d)"); self.assertFalse(rows["moon_helmet"]["can3d"])
         self.assertFalse(rows["moon_sword"]["model3d"])
 
     def test_the_designer_brief(self):
@@ -181,8 +181,9 @@ class Actions(Base):
                             "animation.moon_sword.reload": {"animation_length": 1, "bones": self.KEY}})
         info = model3d.validate_item3d(self.ws, "moon_sword")
         self.assertEqual((info["actions"], info["animated"]), (["reload", "use"], False))
-        for anims, why in (({"animation.moon_sword.use": {"loop": True, "bones": self.KEY}}, "loops"),
-                           ({"animation.other.wobble": {"bones": self.KEY}}, "name it animation.moon_sword")):
+        self.deliver_anims({"animation.moon_sword.aim": {"loop": True, "bones": self.KEY}})
+        self.assertEqual(model3d.validate_item3d(self.ws, "moon_sword")["loops"], ["aim"], "an action that lasts loops")
+        for anims, why in (({"animation.other.wobble": {"bones": self.KEY}}, "name it animation.moon_sword"),):
             with self.subTest(why=why):
                 self.deliver_anims(anims)
                 with self.assertRaisesRegex(InputError, why):
@@ -295,7 +296,7 @@ class OpenInBlockbench(Base):
             with self.assertRaisesRegex(InputError, f"Unknown {kind}"):
                 open_in_blockbench(self.store, "m_mod", bad, kind)
         with self.assertRaisesRegex(InputError, "kind must be"):
-            open_in_blockbench(self.store, "m_mod", "moon_sword", "block")
+            open_in_blockbench(self.store, "m_mod", "moon_sword", "statue")
         self.deliver()
         (self.ws / model3d.PDIR).mkdir(parents=True, exist_ok=True); (self.ws / model3d.PDIR / "acid_glob.bbmodel").write_text("{}")
         opened = []

@@ -1,0 +1,226 @@
+{
+  "plan": "player",
+  "name": "player",
+  "identifier": "player",
+  "modid": "rigs",
+  "model_type": "Entity",
+  "texture_width": 64,
+  "texture_height": 64,
+  "visible_box": [
+    2,
+    3,
+    1
+  ],
+  "bones": [
+    {
+      "name": "body",
+      "origin": [
+        0,
+        12,
+        0
+      ]
+    },
+    {
+      "name": "torso",
+      "parent": "body",
+      "origin": [
+        0,
+        24,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "torso",
+      "origin": [
+        0,
+        24,
+        0
+      ]
+    },
+    {
+      "name": "right_arm",
+      "parent": "torso",
+      "origin": [
+        5,
+        22,
+        0
+      ]
+    },
+    {
+      "name": "left_arm",
+      "parent": "torso",
+      "origin": [
+        -5,
+        22,
+        0
+      ]
+    },
+    {
+      "name": "right_item",
+      "parent": "right_arm",
+      "origin": [
+        6,
+        12,
+        -2
+      ]
+    },
+    {
+      "name": "left_item",
+      "parent": "left_arm",
+      "origin": [
+        -6,
+        12,
+        -2
+      ]
+    },
+    {
+      "name": "cape",
+      "parent": "torso",
+      "origin": [
+        0,
+        24,
+        2
+      ]
+    },
+    {
+      "name": "elytra",
+      "parent": "torso",
+      "origin": [
+        0,
+        24,
+        2
+      ]
+    },
+    {
+      "name": "right_leg",
+      "parent": "body",
+      "origin": [
+        2,
+        12,
+        0
+      ]
+    },
+    {
+      "name": "left_leg",
+      "parent": "body",
+      "origin": [
+        -2,
+        12,
+        0
+      ]
+    }
+  ],
+  "cubes": [
+    {
+      "name": "head",
+      "bone": "head",
+      "from": [
+        -4,
+        24,
+        -4
+      ],
+      "to": [
+        4,
+        32,
+        4
+      ],
+      "uv_offset": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "torso",
+      "bone": "torso",
+      "from": [
+        -4,
+        12,
+        -2
+      ],
+      "to": [
+        4,
+        24,
+        2
+      ],
+      "uv_offset": [
+        16,
+        16
+      ]
+    },
+    {
+      "name": "right_arm",
+      "bone": "right_arm",
+      "from": [
+        4,
+        12,
+        -2
+      ],
+      "to": [
+        8,
+        24,
+        2
+      ],
+      "uv_offset": [
+        40,
+        16
+      ]
+    },
+    {
+      "name": "left_arm",
+      "bone": "left_arm",
+      "from": [
+        -8,
+        12,
+        -2
+      ],
+      "to": [
+        -4,
+        24,
+        2
+      ],
+      "uv_offset": [
+        32,
+        48
+      ]
+    },
+    {
+      "name": "right_leg",
+      "bone": "right_leg",
+      "from": [
+        0,
+        0,
+        -2
+      ],
+      "to": [
+        4,
+        12,
+        2
+      ],
+      "uv_offset": [
+        0,
+        16
+      ]
+    },
+    {
+      "name": "left_leg",
+      "bone": "left_leg",
+      "from": [
+        -4,
+        0,
+        -2
+      ],
+      "to": [
+        0,
+        12,
+        2
+      ],
+      "uv_offset": [
+        16,
+        48
+      ]
+    }
+  ],
+  "animations": [],
+  "notes": "Player Animation Library bones and pivots. Animate these bones only; never rename, move or re-pivot them."
+}

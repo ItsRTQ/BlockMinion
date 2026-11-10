@@ -297,12 +297,22 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "animate":
+                        from .animate import request_animate
+                        return request_animate(store, pid, str(payload.get("kind", "")), str(payload.get("ident", "")), list(payload.get("anims") or []),
+                                               [str(r) for r in payload.get("remove") or []], str(payload.get("notes", "")))
+                    if op == "reinstall-3d":
+                        from .model3d import reinstall_item3d
+                        return reinstall_item3d(store, pid, str(payload.get("item", "")))
                     if op == "item3d":
                         from .model3d import request_item3d
                         return request_item3d(store, pid, str(payload.get("item", "")), str(payload.get("notes", "")))
                     if op == "proj3d":
                         from .model3d import request_proj3d
                         return request_proj3d(store, pid, str(payload.get("projectile", "")), str(payload.get("notes", "")))
+                    if op == "block3d":
+                        from .blocks3d import request_block3d
+                        return request_block3d(store, pid, str(payload.get("block", "")), str(payload.get("notes", "")))
                     if op == "item3d-estimate":
                         from .model3d import designer_cost
                         return designer_cost(store)
@@ -363,7 +373,7 @@ def serve(store: Store, port: int = 8765) -> None:
                         return remove_feature(store, pid, str(payload.get("identifier", "")))
                     if op == "open-model":
                         from .feedback import open_in_blockbench
-                        kind = "item" if payload.get("item") else "projectile" if payload.get("projectile") else "mob"
+                        kind = "item" if payload.get("item") else "projectile" if payload.get("projectile") else "block" if payload.get("block") else "mob"
                         return open_in_blockbench(store, pid, str(payload.get(kind, "")), kind)
                     if op in ("model-edit", "model-edit-cancel", "model-import", "model-reinstall"):
                         from . import modeledit
