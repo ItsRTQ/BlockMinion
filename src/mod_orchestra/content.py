@@ -67,9 +67,16 @@ def list_features(store: Store, pid: str) -> list[dict]:
     from .model3d import items3d
     from .blocks3d import blocks3d
     in3d = items3d(ws, pid) | blocks3d(ws, pid)
+    from .model3d import DIR as _ITEMS3D, _index as _m3d_index
+    _, m3d = _m3d_index(ws, pid)
+    holds = {i.get("id"): i.get("hold") for i in m3d.get("items", []) if isinstance(i, dict)}
     for row in out:   # a 3D model can be asked for any item, tool, weapon, food or block (not armor pieces)
         row["can3d"] = row["kind"] in ("item", "tool", "food", "block")
         row["model3d"] = row["identifier"] in in3d
+        if row["model3d"] and row["kind"] != "block":   # how it is held, and the in-hand previews the controller rendered
+            row["hold"] = holds.get(row["identifier"])
+            row["hold_previews"] = [f"{_ITEMS3D}/{row['identifier']}_{tag}_preview.png" for tag in ("hand", "firstperson")
+                                    if (ws / _ITEMS3D / f"{row['identifier']}_{tag}_preview.png").is_file()]
     return out
 
 

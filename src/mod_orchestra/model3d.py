@@ -253,9 +253,32 @@ def support_java(package: str) -> dict[str, str]:
             "client/Projectile3DRenderer.java": projectile, "client/Item3DGeoRenderer.java": georenderer, "model3d/Item3DActions.java": actions}
 
 
-def item_model_json(mod_id: str, ident: str, handheld: bool) -> dict:
-    return {"parent": "builtin/entity", "gui_light": "front", "textures": {"particle": f"{mod_id}:item/{ident}"},
-            "display": {**(_HANDHELD if handheld else _GENERATED), "gui": _GUI}}
+def item_model_json(mod_id: str, ident: str, handheld: bool, display_block: dict | None = None) -> dict:
+    """The item's model JSON: drawn by the 3D renderer, held as the pose engine computed (or, without a model, as its icon kind)."""
+    disp = display_block or {**(_HANDHELD if handheld else _GENERATED), "gui": _GUI}
+    return {"parent": "builtin/entity", "gui_light": "front", "textures": {"particle": f"{mod_id}:item/{ident}"}, "display": disp}
+
+
+def hold_for(model: dict, handheld: bool, declared: dict | None) -> tuple[dict, list[str]]:
+    """The hold to use: what the designer declared, checked against the geometry; else a default with a note."""
+    from . import pose
+    notes = []
+    h = dict(declared or {})
+    style = str(h.get("style") or ("wield" if handheld else "carry")).lower()
+    front = str(h.get("front") or ("+y" if style == "wield" else "-z")).lower()
+    top = str(h.get("top") or "").lower() or None
+    if style not in pose.STYLES or front not in pose.AXES or (top and top not in pose.AXES):
+        raise InputError(f"hold: style one of {pose.STYLES}, front/top one of {sorted(pose.AXES)} (got {h})")
+    if not declared:
+        notes.append(f"the designer declared no hold; using {style}/{front} by the item's kind")
+    lo, hi = pose.bbox(model)
+    ext = [hi[i] - lo[i] for i in range(3)]
+    if style in ("aim", "wield") and ext and max(ext) > 0:
+        axis = [k for k in range(3) if pose.AXES[front][k] != 0][0]
+        if ext[axis] < 0.75 * max(ext):
+            raise InputError(f"hold: front is {front} but the model is longest along {'xyz'[ext.index(max(ext))]} ({[round(v, 1) for v in ext]} px): "
+                             "declare the axis the muzzle/tip really points to")
+    return {"style": style, "front": front, "top": top or pose._default_top(front, model)}, notes
 
 
 # ------------------------------------------------------------------------------------------------ designer task
@@ -265,10 +288,16 @@ ITEM3D_INSTRUCTIONS = """
 Build a GeckoLib model of the item named below; in the game it replaces the flat icon in the hand, on the ground, in item
 frames and in a mob's hand (the inventory keeps the icon). Create it with `bbmodel_geckolib_create` as
 `models/items3d/<id>.bbmodel` with model identifier `<id>` (or keep editing it if it already exists).
-Space: build it inside the icon's own 16x16x16 space and lie it the way the icon lies, seen from the front (north): x from -8
-to 8, y from 0 to 16, z from -8 to 8, thickness along z around 0. The game holds it with the icon's transforms, so a shape
-that follows the icon's layout sits in the hand where the icon did. Small overhangs are fine; the controller refuses a
-model that reaches beyond -12..12 on x and z or -4..24 on y.
+Build it the way the object really is, at a sensible size (the controller fits it in the hand): a rifle horizontal, a sword
+upright, a wand along its length. Keep it within -12..12 on x and z and -4..24 on y. Then declare three technical facts so
+the controller can compute how it is held (never guess a pose yourself): the hold STYLE (`aim`: it is pointed at something,
+like a gun, a crossbow or a wand; `wield`: swung or carried upright, like a sword, an axe or a staff; `carry`: anything
+else), the axis its FRONT points to (`-z`, `+x`, ...: muzzle, blade tip, wand tip) and the axis its TOP points to (where its
+sights or back face; default `+y`). Put a bone named `grip` with its pivot exactly where the hand holds it. Report them in your
+handoff as `"hold": {"style": "aim", "front": "-z", "top": "+y"}`.
+Before you finish, LOOK at it in the hand: `mcp__minecraft-orchestra__orchestra_preview_hold {project, item, style, front, top}`
+renders the player holding it in third person and the first-person view, and tells you where the grip was taken from. If the
+barrel points sideways, the grip floats, or it is upside down, fix the model or the declaration and look again.
 Read the icon (`<icon>`) and keep its design, palette and proportions: this is the same object, now with depth.
 First-person parts (optional): bones whose name starts with `fp_` (arms, hands holding it) are drawn only in first person,
 where the vanilla arm is not; use them when the user asks for hands in actions.
@@ -430,14 +459,15 @@ def patch_fabric_mod(text: str, package: str) -> str | None:
     return json.dumps(d, indent=2) + "\n"
 
 
-def wire(store: Store, pid: str, ident: str, *, handheld: bool, animated: bool, actions: list[str] | None = None) -> dict:
+def wire(store: Store, pid: str, ident: str, *, handheld: bool, animated: bool, actions: list[str] | None = None, hold: dict | None = None,
+         display_block: dict | None = None) -> dict:
     """Make the project draw this item in 3D. Returns {written: [...], coder: [what could not be patched]}."""
     from .spec import read_spec
     proj = store.project(pid); ws = Path(proj["root"]); spec = read_spec(proj["spec"])
     jdir = f"src/main/java/{spec.package.replace('.', '/')}"
     res = f"src/main/resources"
     written, coder = ensure_support(ws, spec)
-    _wire_item(ws, spec, pid, ident, handheld, animated, written, coder, actions or [])
+    _wire_item(ws, spec, pid, ident, handheld, animated, written, coder, actions or [], hold, display_block)
     return {"written": written, "coder": coder}
 
 
@@ -473,7 +503,8 @@ def _index(ws: Path, pid: str) -> tuple[Path, dict]:
         return f, {"items": []}
 
 
-def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: bool, written: list, coder: list, actions: list) -> None:
+def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: bool, written: list, coder: list, actions: list,
+               hold: dict | None = None, display_block: dict | None = None) -> None:
     res = "src/main/resources"
     index_rel = f"{res}/assets/{pid}/model3d/index.json"
     index_f = ws / index_rel
@@ -481,7 +512,8 @@ def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: b
         index = json.loads(index_f.read_text(encoding="utf8")) if index_f.is_file() else {"items": []}
     except ValueError:
         index = {"items": []}
-    index["items"] = [i for i in index.get("items", []) if i.get("id") != ident] + [{"id": ident, "animated": animated, **({"actions": actions} if actions else {})}]
+    index["items"] = [i for i in index.get("items", []) if i.get("id") != ident] + [{"id": ident, "animated": animated, **({"actions": actions} if actions else {}),
+                                                                                       **({"hold": hold} if hold else {})}]
     index_f.parent.mkdir(parents=True, exist_ok=True); index_f.write_text(json.dumps(index, indent=2) + "\n", encoding="utf8"); written.append(index_rel)
     fmj_rel = f"{res}/fabric.mod.json"
     fmj = ws / fmj_rel
@@ -493,7 +525,7 @@ def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: b
         else:
             fmj.write_text(patched, encoding="utf8"); written.append(fmj_rel)
     model_rel = f"{res}/assets/{pid}/models/item/{ident}.json"
-    want = json.dumps(item_model_json(pid, ident, handheld), indent=2) + "\n"
+    want = json.dumps(item_model_json(pid, ident, handheld, display_block), indent=2) + "\n"
     model_f = ws / model_rel
     if not model_f.is_file() or model_f.read_text(encoding="utf8") != want:
         if not model_f.is_file() or _known(ws, model_rel):
@@ -507,7 +539,36 @@ def _wire_item(ws: Path, spec, pid: str, ident: str, handheld: bool, animated: b
             coder.append(f"replace {model_rel} with exactly this JSON (the item is drawn by its 3D renderer; the inventory keeps the icon):\n{want}")
 
 
-def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: str, actor: str) -> dict:
+def stored_hold(ws: Path, pid: str, ident: str) -> dict | None:
+    _, index = _index(ws, pid)
+    return next((i.get("hold") for i in index.get("items", []) if i.get("id") == ident and i.get("hold")), None)
+
+
+def style_tweaks(ws: Path, pid: str, style: str) -> dict:
+    _, index = _index(ws, pid)
+    return dict((index.get("styles") or {}).get(style) or {})
+
+
+def hold_previews(store: Store, pid: str, ident: str, model: dict, display_block: dict, style: str, *, folder: str = DIR) -> list[str]:
+    """Render the item in the player's hand (third person) and in first person; paths relative to the project. Never fatal."""
+    from . import preview, playeranim
+    ws = Path(store.project(pid)["root"])
+    out = []
+    try:
+        rig = json.loads((playeranim.RIG / "player.bbmodel").read_text(encoding="utf8"))
+        for ctx, tag in (("thirdperson_righthand", "hand"), ("firstperson_righthand", "firstperson")):
+            comp = preview.compose(rig, model, display_block, context=ctx, arm_x_rot=preview.ARM_POSE.get(style, -18.0) if ctx.startswith("third") else 0.0)
+            bb = ws / folder / f"{ident}_{tag}_preview.bbmodel"; png = ws / folder / f"{ident}_{tag}_preview.png"
+            bb.write_text(json.dumps(comp), encoding="utf8")
+            preview.render(bb, png, ["front", "right", "top", "iso"] if ctx.startswith("third") else ["front", "right", "top", "iso"], 220)
+            out.append(str(png.relative_to(ws)).replace("\\", "/"))
+    except Exception as exc:   # a preview is help, not a gate
+        store.add_event(pid, "controller", "HOLD_PREVIEW_FAILED", {"item": ident, "error": str(exc)[:200]})
+    return out
+
+
+def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: str, actor: str, hold: dict | None = None) -> dict:
+    from . import pose
     from .fabric import accept_changes
     from .models import _safe_dirname
     from .spec import read_spec
@@ -516,16 +577,24 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
     if ident not in cand:
         raise InputError(f"{ident!r} is not an item of this project")
     info = validate_item3d(ws, ident)
+    try:
+        model = json.loads((ws / info["files"]["bbmodel"]).read_text(encoding="utf8"))
+    except (OSError, ValueError):
+        raise InputError("the .bbmodel is not readable JSON") from None
+    hold, hold_notes = hold_for(model, cand[ident]["handheld"], hold or stored_hold(ws, pid, ident))
+    display_block = pose.display(model, style=hold["style"], front=hold["front"], top=hold["top"], tweaks=style_tweaks(ws, pid, hold["style"]))
+    info["hold"] = hold | pose.describe(model, hold["style"], hold["front"], hold["top"]); info["hold_notes"] = hold_notes
     a = ws / "src/main/resources/assets" / pid
     targets = {"geo": a / "geo/item/model3d" / f"{ident}.geo.json", "anim": a / "animations/item/model3d" / f"{ident}.animation.json",
                "png": a / "textures/item/model3d" / f"{ident}.png"}
     for k, dst in targets.items():
         dst.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(ws / info["files"][k], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
-    wired = wire(store, pid, ident, handheld=cand[ident]["handheld"], animated=info["animated"], actions=info["actions"])
+    wired = wire(store, pid, ident, handheld=cand[ident]["handheld"], animated=info["animated"], actions=info["actions"], hold=hold, display_block=display_block)
     changed += wired["written"]
+    info["hold_previews"] = hold_previews(store, pid, ident, model, display_block, hold["style"])
     history = ws / ".mod-orchestra" / "previews" / _safe_dirname(run_id); history.mkdir(parents=True, exist_ok=True)
-    for r in info["renders"]:
+    for r in info["renders"] + info["hold_previews"]:
         shutil.copyfile(ws / r, history / Path(r).name)
     for k in ("bbmodel", "geo", "anim", "png"):
         shutil.copyfile(ws / info["files"][k], history / Path(info["files"][k]).name)
@@ -544,10 +613,10 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
     anim_task = request_actions_wiring(store, pid, ident, info["actions"], info["animated"], info["loops"]) if info["actions"] else None
     from .dispatch import _source_changed, _reopen_build
     _source_changed(store, pid); _reopen_build(store, pid)
-    store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"actions": info["actions"], "anim_task": anim_task} |  {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
+    store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"actions": info["actions"], "anim_task": anim_task, "hold": hold, "hold_notes": hold_notes} |  {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
                                                             "wire_task": wire_task})
     return info | {"installed": changed, "accepted": accepted["accepted"], "wire_task": wire_task, "anim_task": anim_task,
-                   "previews": [f".mod-orchestra/previews/{_safe_dirname(run_id)}/{Path(r).name}" for r in info["renders"]]}
+                   "previews": [f".mod-orchestra/previews/{_safe_dirname(run_id)}/{Path(r).name}" for r in info["renders"] + info["hold_previews"]]}
 
 
 def actions_brief(package: str, ident: str, actions: list[str], idle: bool, whens: dict | None = None, loops: list | None = None,
@@ -757,3 +826,62 @@ def reinstall_item3d(store: Store, pid: str, ident: str) -> dict:
         raise InputError(f"{ident!r} is not a 3D item")
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return install_item3d(store, pid, f"{pid}:REINSTALL3D:{ident}", ident, run_id=f"reinstall-{ident}-{stamp}", actor="user")
+
+
+def set_hold(store: Store, pid: str, ident: str, *, style: str | None = None, front: str | None = None, top: str | None = None) -> dict:
+    """USER-ONLY, no agent: declare or change how a 3D item is held; its model JSON and previews are recomputed."""
+    ws = Path(store.project(pid)["root"])
+    if ident not in items3d(ws, pid):
+        raise InputError(f"{ident!r} is not a 3D item")
+    current = dict(stored_hold(ws, pid, ident) or {})
+    for k, v in (("style", style), ("front", front), ("top", top)):
+        if v:
+            current[k] = str(v).lower()
+    if top is None and (style or front):
+        current.pop("top", None)   # let the model's thin side decide again
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    return install_item3d(store, pid, f"{pid}:HOLD:{ident}", ident, run_id=f"hold-{ident}-{stamp}", actor="user", hold=current)
+
+
+def set_style_tweaks(store: Store, pid: str, style: str, tweaks: dict) -> dict:
+    """USER-ONLY, no agent: project-wide fine tuning of a hold style ({context: {rotation, translation, scale}}); every 3D item
+    held that way is recomputed. F3+T in the game reloads the item JSON without a restart."""
+    from . import pose
+    if style not in pose.STYLES:
+        raise InputError(f"style must be one of {pose.STYLES}")
+    clean = {}
+    for ctx, t in (tweaks or {}).items():
+        if ctx not in pose.CONTEXTS or not isinstance(t, dict):
+            raise InputError(f"unknown context {ctx!r}")
+        c = {}
+        for key in ("rotation", "translation"):
+            v = t.get(key)
+            if v is not None:
+                if not (isinstance(v, list) and len(v) == 3 and all(isinstance(x, (int, float)) for x in v)):
+                    raise InputError(f"{ctx}.{key} must be three numbers")
+                if any(abs(x) > 180 for x in v) if key == "rotation" else any(abs(x) > 40 for x in v):
+                    raise InputError(f"{ctx}.{key} out of range")
+                c[key] = [float(x) for x in v]
+        if t.get("scale") is not None:
+            sc = float(t["scale"])
+            if not 0.2 <= sc <= 4:
+                raise InputError(f"{ctx}.scale must be 0.2-4")
+            c["scale"] = sc
+        if c:
+            clean[ctx] = c
+    ws = Path(store.project(pid)["root"])
+    index_f, index = _index(ws, pid)
+    styles = index.setdefault("styles", {})
+    if clean:
+        styles[style] = clean
+    else:
+        styles.pop(style, None)
+    index_f.parent.mkdir(parents=True, exist_ok=True); index_f.write_text(json.dumps(index, indent=2) + "\n", encoding="utf8")
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    done = []
+    for item in index.get("items", []):
+        if (item.get("hold") or {}).get("style") == style:
+            install_item3d(store, pid, f"{pid}:HOLD:{item['id']}", item["id"], run_id=f"hold-{style}-{stamp}", actor="user")
+            done.append(item["id"])
+    store.add_event(pid, "user", "HOLD_STYLE_TWEAKED", {"style": style, "tweaks": clean, "items": done})
+    return {"style": style, "tweaks": clean, "recomputed": done}

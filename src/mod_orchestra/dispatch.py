@@ -220,7 +220,7 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         from .validation import InputError
         ident = task["id"].split(":ITEM3D:")[1].split(":")[0]
         try:
-            i3 = install_item3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}")
+            i3 = install_item3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}", hold=h.get("hold") if isinstance(h.get("hold"), dict) else None)
         except (InputError, StateError, OSError) as exc:
             error = f"3D item model rejected: {exc}"
             store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])

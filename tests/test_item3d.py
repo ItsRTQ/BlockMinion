@@ -16,6 +16,7 @@ from mod_orchestra.specedit import add_material
 from mod_orchestra.state import Store, StateError
 from mod_orchestra.validation import InputError
 
+ROOT = Path(__file__).resolve().parents[1]
 PNG = encode_png(16, 16, bytes(c for y in range(16) for x in range(16) for c in ((90, 90, 110, 255) if (x + y) % 3 else (200, 200, 220, 255))))
 
 
@@ -73,7 +74,8 @@ class Request(Base):
         brief = self.store.task_instructions(tid)
         self.assertEqual(t["role"], "designer")
         self.assertIn("models/items3d/moon_sword.bbmodel", brief); self.assertIn("textures/item/moon_sword.png", brief)
-        self.assertIn("16x16x16 space", brief); self.assertIn("a crescent blade", brief); self.assertIn("held like a tool or weapon", brief)
+        self.assertIn('"hold": {"style": "aim", "front": "-z", "top": "+y"}', brief); self.assertIn("orchestra_preview_hold", brief)
+        self.assertIn("a crescent blade", brief); self.assertIn("held like a tool or weapon", brief)
         self.assertIn("art direction:", brief)
         self.deliver()
         self.assertIn("already exists", self.store.task_instructions(self.task(notes="thicker")))
@@ -117,11 +119,15 @@ class Install(Base):
         self.assertEqual(out["task_state"], "DONE", out.get("error"))
         for rel in ("geo/item/model3d/moon_sword.geo.json", "animations/item/model3d/moon_sword.animation.json", "textures/item/model3d/moon_sword.png"):
             self.assertTrue((self.assets / rel).is_file(), rel)
-        self.assertEqual(json.loads((self.assets / "model3d/index.json").read_text()), {"items": [{"id": "moon_sword", "animated": True}]})
+        entry = json.loads((self.assets / "model3d/index.json").read_text())["items"][0]
+        self.assertEqual((entry["id"], entry["animated"], entry["hold"]["style"], entry["hold"]["front"]), ("moon_sword", True, "wield", "+y"), "a tool defaults to wield")
         fmj = json.loads((self.res / "fabric.mod.json").read_text())
         self.assertIn("com.x.m.client.Model3DClient", fmj["entrypoints"]["client"]); self.assertIn("geckolib", fmj["depends"])
         item = json.loads((self.assets / "models/item/moon_sword.json").read_text())
-        self.assertEqual(item["parent"], "builtin/entity"); self.assertEqual(item["display"]["thirdperson_righthand"]["rotation"], [0, -90, 55])
+        self.assertEqual(item["parent"], "builtin/entity")
+        from mod_orchestra import pose
+        want = pose.display(json.loads((self.ws / model3d.DIR / "moon_sword.bbmodel").read_text()), style="wield", front="+y")
+        self.assertEqual(item["display"]["thirdperson_righthand"], want["thirdperson_righthand"], "held as the pose engine computes, not as a sprite")
         self.assertEqual(item["display"]["gui"]["scale"], [1, 1, 1])
         self.assertTrue((self.ws / ".mod-orchestra/items3d/moon_sword.icon-model.json").is_file(), "the icon's model is kept")
         self.assertEqual((self.ws / "src/main/java/com/x/m/ModMain.java").read_text(), main, "item code untouched")
@@ -135,8 +141,8 @@ class Install(Base):
         for ident in ("moon_sword", "moon_gem"):
             tid = self.task(ident); self.deliver(ident, animated=ident == "moon_sword")
             self.assertEqual(dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))["task_state"], "DONE")
-        item = json.loads((self.assets / "models/item/moon_gem.json").read_text())
-        self.assertEqual(item["display"]["thirdperson_righthand"]["rotation"], [0, 0, 0])
+        gem = json.loads((self.assets / "model3d/index.json").read_text())["items"][1]
+        self.assertEqual(gem["hold"]["style"], "carry", "a plain item defaults to carry")
         self.assertEqual([i["id"] for i in json.loads((self.assets / "model3d/index.json").read_text())["items"]], ["moon_sword", "moon_gem"])
 
     def test_files_with_unreported_edits_go_to_the_coder(self):
@@ -309,6 +315,78 @@ class OpenInBlockbench(Base):
         self.assertEqual(len(opened), 2)
         ev = [e["payload"] for e in self.store.events("m_mod") if e["kind"] == "OPENED_IN_BLOCKBENCH"]
         self.assertEqual({(e["kind"], e["name"]) for e in ev}, {("item", "moon_sword"), ("projectile", "acid_glob")})
+
+
+class Hold(Base):
+    """How a 3D item is held: declared by the designer, checked against the geometry, computed by the pose engine, previewed."""
+    GUN = {"meta": {"model_format": "geckolib_model"}, "resolution": {"width": 16, "height": 16},
+           "elements": [{"name": "barrel", "uuid": "e1", "from": [-1, 1, -8], "to": [1, 3, 8]}, {"name": "sight", "uuid": "e2", "from": [-1, 3, -2], "to": [1, 4, 0]},
+                        {"name": "handle", "uuid": "e3", "from": [-1, -3, 1], "to": [1, 1, 3]}],
+           "groups": [{"name": "grip", "uuid": "g1", "origin": [0, 0, 2]}], "outliner": []}
+
+    def deliver_gun(self):
+        self.deliver(cubes=[{"origin": [-1, 1, -8], "size": [2, 2, 16], "uv": [0, 0]}])
+        (self.ws / model3d.DIR / "moon_sword.bbmodel").write_text(json.dumps(self.GUN))
+
+    def done_with_hold(self, hold):
+        tid = self.task(); self.deliver_gun()
+        h = json.loads(handoff(tid).split("```handoff\n")[1].split("\n```")[0]); h["hold"] = hold
+        return dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
+
+    def test_the_designers_declaration_is_used_and_previewed(self):
+        out = self.done_with_hold({"style": "aim", "front": "-z"})
+        self.assertEqual(out["task_state"], "DONE", out.get("error"))
+        entry = json.loads((self.assets / "model3d/index.json").read_text())["items"][0]
+        self.assertEqual(entry["hold"], {"style": "aim", "front": "-z", "top": "+y"})
+        item = json.loads((self.assets / "models/item/moon_sword.json").read_text())
+        from mod_orchestra import pose
+        self.assertEqual(item["display"]["firstperson_righthand"], pose.display(self.GUN, style="aim", front="-z")["firstperson_righthand"])
+        for tag in ("hand", "firstperson"):
+            self.assertTrue((self.ws / model3d.DIR / f"moon_sword_{tag}_preview.png").is_file(), tag)
+        row = {r["identifier"]: r for r in list_features(self.store, "m_mod")}["moon_sword"]
+        self.assertEqual(row["hold"]["style"], "aim"); self.assertEqual(len(row["hold_previews"]), 2)
+        self.assertEqual(out["handoff"]["item3d"]["hold"]["grip_from"], "bone grip")
+
+    def test_a_front_that_contradicts_the_geometry_is_refused(self):
+        out = self.done_with_hold({"style": "aim", "front": "+x"})
+        self.assertEqual(out["task_state"], "FAILED"); self.assertIn("longest along z", out["error"])
+
+    def test_change_the_hold_without_an_agent_and_tune_the_style(self):
+        self.assertEqual(self.done_with_hold({"style": "aim", "front": "-z"})["task_state"], "DONE")
+        before = json.loads((self.assets / "models/item/moon_sword.json").read_text())["display"]["thirdperson_righthand"]
+        out = model3d.set_hold(self.store, "m_mod", "moon_sword", style="wield", front="-z")
+        self.assertEqual(out["hold"]["style"], "wield")
+        self.assertEqual(json.loads((self.assets / "model3d/index.json").read_text())["items"][0]["hold"]["style"], "wield")
+        self.assertNotEqual(json.loads((self.assets / "models/item/moon_sword.json").read_text())["display"]["thirdperson_righthand"], before)
+        with self.assertRaisesRegex(InputError, "hold: style"):
+            model3d.set_hold(self.store, "m_mod", "moon_sword", style="grab")
+        base = json.loads((self.assets / "models/item/moon_sword.json").read_text())["display"]["firstperson_righthand"]
+        out = model3d.set_style_tweaks(self.store, "m_mod", "wield", {"firstperson_righthand": {"translation": [0, -3, 0], "scale": 1.2}})
+        self.assertEqual(out["recomputed"], ["moon_sword"])
+        after = json.loads((self.assets / "models/item/moon_sword.json").read_text())["display"]["firstperson_righthand"]
+        self.assertAlmostEqual(after["translation"][1], base["translation"][1] - 3, 1); self.assertAlmostEqual(after["scale"][0], base["scale"][0] * 1.2, 2)
+        self.assertEqual(json.loads((self.assets / "model3d/index.json").read_text())["styles"]["wield"]["firstperson_righthand"]["scale"], 1.2)
+        with self.assertRaisesRegex(InputError, "unknown context"):
+            model3d.set_style_tweaks(self.store, "m_mod", "wield", {"elbow": {"scale": 1}})
+        model3d.set_style_tweaks(self.store, "m_mod", "wield", {})
+        self.assertEqual(json.loads((self.assets / "models/item/moon_sword.json").read_text())["display"]["firstperson_righthand"], base)
+
+    def test_the_designer_can_look_at_it_in_the_hand(self):
+        from mod_orchestra.mcp import invoke
+        self.deliver_gun()
+        out = invoke(self.store, "orchestra_preview_hold", {"project": "m_mod", "item": "moon_sword", "style": "aim", "front": "-z"})
+        self.assertEqual(out["hold"]["grip_from"], "bone grip"); self.assertEqual(len(out["previews"]), 2)
+        with self.assertRaisesRegex(InputError, "longest along z"):
+            invoke(self.store, "orchestra_preview_hold", {"project": "m_mod", "item": "moon_sword", "style": "wield", "front": "+y"})
+        for path in ("src/mod_orchestra/resources/claude/agents/designer.md", ".claude/agents/designer.md"):
+            self.assertIn("orchestra_preview_hold", (ROOT / path).read_text())
+
+    def test_cli(self):
+        self.assertEqual(self.done_with_hold({"style": "aim", "front": "-z"})["task_state"], "DONE")
+        out = cli_dispatch(parser().parse_args(["--state-db", str(self.db), "hold", "m_mod", "--item", "moon_sword", "--style", "carry"]))
+        self.assertEqual(out["hold"]["style"], "carry")
+        out = cli_dispatch(parser().parse_args(["--state-db", str(self.db), "hold-tweak", "m_mod", "--style", "carry", "--context", "ground", "--scale", "1.5"]))
+        self.assertEqual(out["tweaks"], {"ground": {"scale": 1.5}})
 
 
 class NoGeckoLib(Base):

@@ -456,6 +456,49 @@ async function renderGallery(p) {
   }
 }
 
+// ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
+function holdPanel(p, f) {
+  const box = document.createElement("details"); box.className = "hold-panel"; box.dataset.item = f.identifier;
+  const h = f.hold || {};
+  box.append(el("summary", `Hold: ${h.style || "not declared"}${h.front ? ` · front ${h.front}` : ""}`));
+  const prev = el("div", null, "previews");
+  for (const rel of f.hold_previews || []) { const pv = el("div", null, "preview"); const img = el("img"); img.src = fileUrl(p.id, rel); img.alt = rel; pv.append(img, el("small", rel.includes("firstperson") ? "first person" : "in the hand")); pv.onclick = () => openLightbox(img.src, rel); prev.append(pv); }
+  if (!(f.hold_previews || []).length) prev.append(el("div", "No in-hand preview yet.", "placeholder-note"));
+  box.append(prev);
+  const sel = (cls, opts, cur) => { const s = el("select"); s.className = cls; for (const o of opts) { const op = el("option", o); op.value = o; if (o === cur) op.selected = true; s.append(op); } return s; };
+  const style = sel("hold-style", ["aim", "wield", "carry"], h.style || "carry"), front = sel("hold-front", ["-z", "+z", "+x", "-x", "+y", "-y"], h.front || "-z"), top = sel("hold-top", ["auto", "+y", "-y", "+x", "-x", "+z", "-z"], h.top || "auto");
+  const row = el("div", null, "hold-row"); row.append(el("span", "style", "dlg-label"), style, el("span", "front points", "dlg-label"), front, el("span", "top points", "dlg-label"), top);
+  row.append(btn("Apply", async () => {
+    const out = await api(`/api/project/${p.id}/hold`, { item: f.identifier, style: style.value, front: front.value, top: top.value === "auto" ? null : top.value });
+    toast(`Held as ${out.hold.style}, front ${out.hold.front}. F3+T in the game reloads it.`, "ok"); await refreshProject(p.id);
+  }, "mini"));
+  box.append(el("div", "aim: pointed at something (a gun, a wand). wield: swung or carried upright (a sword, a staff). carry: anything else. The front is where the muzzle or tip points; the top is where its sights or back face.", "muted"), row);
+  return box;
+}
+
+// Project-wide fine tuning of a hold style: offsets added to the computed pose for every item held that way.
+function holdStylePanel(p, data) {
+  const box = document.createElement("details"); box.className = "hold-style-panel";
+  box.append(el("summary", "Fine-tune how a hold style sits (all items of that style)"));
+  const style = el("select"); style.className = "hs-style"; for (const s of data.all) { const o = el("option", s); o.value = s; style.append(o); }
+  const ctx = el("select"); ctx.className = "hs-context"; for (const c of ["thirdperson_righthand", "firstperson_righthand", "ground", "fixed", "head"]) { const o = el("option", c); o.value = c; ctx.append(o); }
+  const nums = {}; const row = el("div", null, "hold-row"); row.append(style, ctx);
+  for (const key of ["rotation", "translation"]) for (const ax of "xyz") { const i = el("input"); i.type = "number"; i.step = key === "rotation" ? "5" : "0.5"; i.className = `hs-${key}-${ax}`; i.placeholder = `${key[0]}${ax}`; i.style.width = "4.5em"; nums[`${key}-${ax}`] = i; row.append(i); }
+  const sc = el("input"); sc.type = "number"; sc.step = "0.05"; sc.className = "hs-scale"; sc.placeholder = "×scale"; sc.style.width = "5em"; row.append(sc);
+  const load = () => { const t = ((data.styles || {})[style.value] || {})[ctx.value] || {}; for (const key of ["rotation", "translation"]) "xyz".split("").forEach((ax, i) => { nums[`${key}-${ax}`].value = t[key] ? t[key][i] : ""; }); sc.value = t.scale ?? ""; };
+  style.onchange = load; ctx.onchange = load; load();
+  row.append(btn("Apply", async () => {
+    const tweaks = JSON.parse(JSON.stringify((data.styles || {})[style.value] || {}));
+    const t = {}; for (const key of ["rotation", "translation"]) { const v = "xyz".split("").map((ax) => Number(nums[`${key}-${ax}`].value || 0)); if (v.some((x) => x !== 0)) t[key] = v; }
+    if (sc.value) t.scale = Number(sc.value);
+    if (Object.keys(t).length) tweaks[ctx.value] = t; else delete tweaks[ctx.value];
+    const out = await api(`/api/project/${p.id}/hold-style`, { style: style.value, tweaks });
+    toast(`${style.value} tuned; ${out.recomputed.length} item(s) recomputed. F3+T in the game reloads them.`, "ok"); await refreshProject(p.id);
+  }, "mini"), btn("Reset style", async () => { const out = await api(`/api/project/${p.id}/hold-style`, { style: style.value, tweaks: {} }); toast(`${style.value} back to the computed pose (${out.recomputed.length} item(s)).`, "ok"); await refreshProject(p.id); }, "mini secondary"));
+  box.append(el("div", "Offsets on top of the computed pose: degrees, pixels, and a scale factor. Leave a field empty for no change.", "muted"), row);
+  return box;
+}
+
 // ---------- Animate: what it does (designer) and when it plays (coder); the model's shape and texture stay locked ----------
 function animatePanel(p, kind, ident, title) {
   const box = document.createElement("details"); box.className = "animate-panel"; box.dataset.target = `${kind}:${ident}`;
@@ -686,6 +729,9 @@ async function renderFeatures(p) {
   if (bar && !bar.querySelector("#restore-sprites-btn")) { const rb = btn("Restore designer icons", async () => { const out = await api(`/api/project/${p.id}/restore-sprites`, {}); toast(`Restored ${out.installed.length} file(s)${Object.keys(out.rejected || {}).length ? "; rejected: " + Object.keys(out.rejected).join(", ") : ""}. Rebuild to apply.`, "ok"); await openProject(p.id); }, "secondary"); rb.id = "restore-sprites-btn"; bar.append(rb); }
   try { const sheet = await api(`/api/project/${p.id}/contact-sheet`); const box = qs("sheet-box"); if (sheet.path) { box.classList.remove("hidden"); qs("sheet-img").src = fileUrl(p.id, sheet.path); qs("sheet-preview").onclick = () => openLightbox(qs("sheet-img").src, "sprites contact sheet"); } else box.classList.add("hidden"); } catch {}
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  if (generated && feats.some((f) => f.model3d && f.kind !== "block")) {   // at least one 3D item: offer the project-wide hold tuning
+    try { list.append(holdStylePanel(p, await api(`/api/project/${p.id}/hold-styles`))); } catch (e) { /* the items still render */ }
+  }
   const uploadInput = (onFile) => { const up = el("input"); up.type = "file"; up.accept = "image/png"; up.style.display = "none"; up.onchange = async () => { const file = up.files[0]; if (!file) return; const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(file); }); try { await onFile(b64); } catch (err) { toast(err.message, "bad"); } up.value = ""; }; return up; };
   const featureRow = (f) => {
     const row = el("div", null, "feature"); const img = el("img"); img.alt = "";
@@ -702,6 +748,7 @@ async function renderFeatures(p) {
     if (generated && f.can3d) right.append(btn(f.model3d ? "3D model…" : "Make it 3D", () => make3d(p, f), f.model3d ? "mini secondary" : "mini"));
     if (generated && f.model3d) right.append(btn("Open in Blockbench", () => openModel(p, f.kind === "block" ? { block: f.identifier } : { item: f.identifier }), "mini secondary"));
     if (generated && f.model3d && f.kind === "block") mid.append(animatePanel(p, "block", f.identifier, "Animate this block"));
+    if (generated && f.model3d && f.kind !== "block") mid.append(holdPanel(p, f));
     if (generated && f.model3d && f.kind !== "block") {
       right.append(btn("Reinstall", async () => { const out = await api(`/api/project/${p.id}/reinstall-3d`, { item: f.identifier });
         toast(out.anim_task ? `Reinstalled; its actions (${out.actions.join(", ")}) go to a coder: ${out.anim_task}` : "Reinstalled.", "ok"); await refreshProject(p.id); }, "mini secondary"));
