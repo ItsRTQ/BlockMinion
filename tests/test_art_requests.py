@@ -147,6 +147,65 @@ class DesignerSide(Base):
         self.assertEqual(self.task(self.wire)["state"], "BACKLOG")
 
 
+class Contract(Base):
+    """The animation contract: the coder declares the moments its code emits; the designer animates exactly those; no wiring task."""
+
+    def declare(self, events, geo=("acid_gun",), task=None):
+        tid = task or self.feature
+        h = json.loads(handoff(tid).split("```handoff\n")[1].split("\n```")[0]); h["animation_events"] = events; h["geo_items"] = list(geo)
+        out = dispatch(self.store, "s_mod", task_id=tid, provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
+        self.assertEqual(out["task_state"], "DONE", out.get("error")); return out
+
+    def test_the_coder_is_told_the_contract(self):
+        brief = " ".join(feature_instructions({"title": "t", "description": "d", "acceptance": [], "derived_from": []}))
+        self.assertIn("Item3DBase", brief); self.assertIn("Item3DActions.event(stack, holder", brief); self.assertIn("animation_events", brief); self.assertIn("geo_items", brief)
+
+    def test_events_are_kept_and_bad_ones_dropped(self):
+        self.declare([{"item": "acid_gun", "name": "fire", "when": "the trigger is pulled"}, {"item": "acid_gun", "name": "aim", "when": "the player holds right click", "loop": True},
+                      {"item": "acid_gun", "name": "Bad Name", "when": "x"}, {"item": "acid_gun", "name": "quiet"}])
+        ws = self.ws
+        ev = artreq.declared_events(ws, "acid_gun")
+        self.assertEqual(ev["fire"]["when"], "the trigger is pulled"); self.assertTrue(ev["aim"]["loop"]); self.assertNotIn("quiet", ev)
+        self.assertTrue(artreq.is_geo_item(ws, "acid_gun")); self.assertFalse(artreq.is_geo_item(ws, "gem"))
+        rec = next(e["payload"] for e in self.store.events("s_mod") if e["kind"] == "ANIM_EVENTS_DECLARED")
+        self.assertEqual(set(rec["dropped"]), {"acid_gun.bad name", "acid_gun.quiet"})
+        # a later declaration adds to it
+        self.declare([{"item": "acid_gun", "name": "reload", "when": "the magazine is swapped"}], geo=(), task=request_change(self.store, "s_mod", "acid_spit", "add reload")["task"])
+        self.assertEqual(sorted(artreq.declared_events(ws, "acid_gun")), ["aim", "fire", "reload"])
+
+
+class ContractOnAnItem(Base):
+    """Seen from the 3D item: the brief lists the moments, and a GeoItem whose clips match them needs no coder."""
+    def setUp(self):
+        super().setUp()
+        self.declare = Contract.declare.__get__(self)
+        self.declare([{"item": "gem", "name": "fire", "when": "the trigger is pulled"}, {"item": "gem", "name": "reload", "when": "the magazine is swapped"}], geo=("gem",))
+
+    def test_brief_and_install(self):
+        from mod_orchestra import model3d
+        from test_item3d import PNG
+        tid = model3d.request_item3d(self.store, "s_mod", "gem")["task"]
+        brief = self.store.task_instructions(tid)
+        self.assertIn("animation.gem.fire (once, when the trigger is pulled)", brief); self.assertIn("no wiring needed", brief)
+        d = self.ws / model3d.DIR; d.mkdir(parents=True, exist_ok=True)
+        geo = {"format_version": "1.12.0", "minecraft:geometry": [{"description": {"identifier": "geometry.gem", "texture_width": 16, "texture_height": 16},
+               "bones": [{"name": "body", "pivot": [0, 0, 0], "cubes": [{"origin": [-1, 0, -8], "size": [2, 2, 16], "uv": [0, 0]}]}]}]}
+        key = {"rotation": {"0.0": {"vector": [0, 0, 0]}, "0.2": {"vector": [-10, 0, 0]}}}
+        (d / "gem.geo.json").write_text(json.dumps(geo)); (d / "gem.png").write_bytes(PNG); (d / "gem_render.png").write_bytes(PNG)
+        (d / "gem.bbmodel").write_text(json.dumps({"elements": [{"from": [-1, 0, -8], "to": [1, 2, 8]}], "groups": [{"name": "grip", "origin": [0, 0, 2]}]}))
+        (d / "gem.animation.json").write_text(json.dumps({"animations": {"animation.gem.fire": {"bones": {"body": key}}, "animation.gem.reload": {"bones": {"body": key}}}}))
+        h = json.loads(handoff(tid).split("```handoff\n")[1].split("\n```")[0]); h["hold"] = {"style": "aim", "front": "-z"}
+        out = dispatch(self.store, "s_mod", task_id=tid, provider=FakeProvider("```handoff\n" + json.dumps(h) + "\n```"))
+        self.assertEqual(out["task_state"], "DONE", out.get("error"))
+        self.assertIsNone(out["handoff"]["item3d"]["anim_task"], "an Item3DBase whose code emits every clip needs no coder")
+        self.assertEqual(out["handoff"]["item3d"]["events_without_clip"], [])
+        # a clip the code never emits still goes to the coder, with the contract's WHEN for the others
+        (d / "gem.animation.json").write_text(json.dumps({"animations": {"animation.gem.fire": {"bones": {"body": key}}, "animation.gem.inspect": {"bones": {"body": key}}}}))
+        out = model3d.reinstall_item3d(self.store, "s_mod", "gem")
+        self.assertIsNotNone(out["anim_task"]); self.assertEqual(out["clips_without_event"], ["inspect"])
+        self.assertIn("fire: the user says it plays the trigger is pulled", self.store.task_instructions(out["anim_task"]))
+
+
 class ArtPass(Base):
     def test_an_existing_feature_gets_its_own_art(self):
         out = artreq.request_art_pass(self.store, "s_mod", "acid_spit")

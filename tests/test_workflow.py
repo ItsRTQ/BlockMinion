@@ -118,7 +118,7 @@ class TestWorkspace(unittest.TestCase):
         workflow.generate_project(self.store, "my_mod")
         root = Path(p["root"])
         meta = json.loads((root / "src/main/resources/fabric.mod.json").read_text())
-        self.assertEqual(meta["entrypoints"]["main"], ["com.example.mymod.ModMain"])
+        self.assertEqual(meta["entrypoints"]["main"][0], "com.example.mymod.ModMain")
         texture = (root / "src/main/resources/assets/my_mod/textures/item/starlight_gem.png").read_bytes()
         self.assertTrue(texture.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(struct.unpack(">II", texture[16:24]), (16,16))

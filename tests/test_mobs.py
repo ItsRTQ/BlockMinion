@@ -68,7 +68,7 @@ class Generated(unittest.TestCase):
         self.assertIn("dl.cloudsmith.io/public/geckolib3/geckolib/maven", g); self.assertIn("geckolib-fabric-${project.minecraft_version}:${project.geckolib_version}", g)
         self.assertIn("geckolib_version=4.7.3", (self.root / "gradle.properties").read_text())
         mj = json.loads((self.res / "fabric.mod.json").read_text())
-        self.assertEqual(mj["entrypoints"]["client"], ["com.x.c.client.ModClient"]); self.assertEqual(mj["depends"]["geckolib"], ">=4.7")
+        self.assertEqual(mj["entrypoints"]["client"][0], "com.x.c.client.ModClient"); self.assertEqual(mj["depends"]["geckolib"], ">=4.7")
 
     def test_java_files_and_registrations(self):
         main = (self.java / "ModMain.java").read_text()
@@ -112,12 +112,14 @@ class Generated(unittest.TestCase):
         lang = json.loads((a / "lang/en_us.json").read_text())
         self.assertEqual(lang["entity.c_mod.sky_critter"], "Sky Critter"); self.assertEqual(lang["item.c_mod.sky_critter_spawn_egg"], "Sky Critter Spawn Egg")
 
-    def test_project_without_mobs_has_no_geckolib(self):
+    def test_project_without_mobs_still_carries_geckolib_and_the_3d_support_but_no_mob_client(self):
         workflow.new_project(self.store, name="P", mod_id="p_mod", package="com.x.p", idea="items: gem")
         workflow.plan_project(self.store, "p_mod"); workflow.approve_spec(self.store, "p_mod"); workflow.generate_project(self.store, "p_mod")
         root = Path(self.store.project("p_mod")["root"])
-        self.assertNotIn("geckolib", (root / "build.gradle").read_text().lower())
-        self.assertNotIn("client", json.loads((root / "src/main/resources/fabric.mod.json").read_text())["entrypoints"])
+        self.assertIn("geckolib", (root / "build.gradle").read_text().lower(), "3D items and the animation contract need it from day one")
+        eps = json.loads((root / "src/main/resources/fabric.mod.json").read_text())["entrypoints"]
+        self.assertNotIn("com.x.p.client.ModClient", eps["client"]); self.assertIn("com.x.p.client.Model3DClient", eps["client"])
+        self.assertTrue((root / "src/main/java/com/x/p/model3d/Item3DBase.java").is_file())
 
 
 if __name__ == "__main__":

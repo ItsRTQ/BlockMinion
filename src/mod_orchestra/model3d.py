@@ -217,6 +217,15 @@ def support_java(package: str) -> dict[str, str]:
         "        if (holder.level() instanceof ServerLevel server) item.triggerAnim(holder, GeoItem.getOrAssignId(stack, server), CONTROLLER, action);",
         "    }",
         "",
+        "    /** Emit a gameplay event from the item's code (use, attack, reload, cast, ...): plays the action if the item has a 3D model",
+        "     *  with a clip of that name, and does nothing otherwise. Safe to call from day one, before any model exists. */",
+        "    public static void event(ItemStack stack, Entity holder, String action) {",
+        "        if (stack.getItem() instanceof GeoItem item) trigger(item, holder, stack, action);",
+        "    }", "",
+        "    /** The end of an event that lasts (a looping clip). */",
+        "    public static void eventEnd(ItemStack stack, Entity holder, String action) {",
+        "        if (stack.getItem() instanceof GeoItem item) stop(item, holder, stack, action);",
+        "    }", "",
         "    /** Call on the server when a looping action (one that plays while something lasts) should end. */",
         "    public static void stop(GeoItem item, Entity holder, ItemStack stack, String action) {",
         "        if (holder.level() instanceof ServerLevel server) item.stopTriggeredAnim(holder, GeoItem.getOrAssignId(stack, server), CONTROLLER, action);",
@@ -249,8 +258,76 @@ def support_java(package: str) -> dict[str, str]:
         "        super.renderByItem(stack, mode, poseStack, buffers, light, overlay);",
         "    }",
         "}", ""])
+    index = "\n".join([
+        f"package {p}.model3d;", "",
+        f"import {p}.ModMain;",
+        "import com.google.gson.JsonElement;", "import com.google.gson.JsonObject;", "import com.google.gson.JsonParser;",
+        "import java.io.InputStream;", "import java.io.InputStreamReader;", "import java.nio.charset.StandardCharsets;",
+        "import java.util.ArrayList;", "import java.util.HashMap;", "import java.util.List;", "import java.util.Map;", "",
+        "/** The 3D index (assets/<mod>/model3d/index.json) read once, on either side: which items have a model, its idle and its actions. */",
+        "public final class Model3DIndex {",
+        "    public record ItemSpec(String id, boolean idle, List<String> actions) {}",
+        "    private static Map<String, ItemSpec> items;", "",
+        "    private Model3DIndex() {}", "",
+        "    public static synchronized ItemSpec item(String id) { load(); return items.get(id); }", "",
+        "    private static void load() {",
+        "        if (items != null) return;",
+        "        items = new HashMap<>();",
+        '        try (InputStream in = Model3DIndex.class.getResourceAsStream("/assets/" + ModMain.MOD_ID + "/model3d/index.json")) {',
+        "            if (in == null) return;",
+        "            JsonObject index = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();",
+        '            if (!index.has("items")) return;',
+        '            for (JsonElement e : index.getAsJsonArray("items")) {',
+        "                JsonObject o = e.getAsJsonObject();",
+        "                List<String> actions = new ArrayList<>();",
+        '                if (o.has("actions")) for (JsonElement a : o.getAsJsonArray("actions")) actions.add(a.getAsString());',
+        '                items.put(o.get("id").getAsString(), new ItemSpec(o.get("id").getAsString(), o.has("animated") && o.get("animated").getAsBoolean(), actions));',
+        "            }",
+        "        } catch (Exception e) {",
+        '            ModMain.LOGGER.error("Could not read the 3D model index", e);',
+        "        }", "    }",
+        "}", ""])
+    base = "\n".join([
+        f"package {p}.model3d;", "",
+        f"import {p}.ModMain;", f"import {p}.client.Item3DGeoRenderer;",
+        "import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;", "import net.minecraft.core.registries.BuiltInRegistries;",
+        "import net.minecraft.resources.ResourceLocation;", "import net.minecraft.world.item.Item;",
+        "import software.bernie.geckolib.animatable.GeoItem;", "import software.bernie.geckolib.animatable.SingletonGeoAnimatable;",
+        "import software.bernie.geckolib.animatable.client.GeoRenderProvider;", "import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;",
+        "import software.bernie.geckolib.animation.AnimatableManager;", "import software.bernie.geckolib.util.GeckoLibUtil;",
+        "import java.util.function.Consumer;", "",
+        "/** An item that is ready for a 3D model: draws itself with the model once one is installed (plain 2D icon until then) and plays",
+        " *  the actions the index lists. Weapons, tools and anything with gameplay events extend this; its code emits events with",
+        " *  Item3DActions.event(stack, holder, \"name\"). Subclass it for other bases (a SwordItem...) by copying its four members. */",
+        "public class Item3DBase extends Item implements GeoItem {",
+        "    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);", "",
+        "    public Item3DBase(Properties properties) { super(properties); SingletonGeoAnimatable.registerSyncedAnimatable(this); }", "",
+        "    /** The model id: this item's registry path. */",
+        "    public String modelId() {",
+        "        ResourceLocation key = BuiltInRegistries.ITEM.getKey(this);",
+        '        return key == null ? "" : key.getPath();',
+        "    }", "",
+        "    @Override",
+        "    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {",
+        "        Model3DIndex.ItemSpec spec = Model3DIndex.item(modelId());",
+        "        Item3DActions.controllers(this, controllers, modelId(), spec != null && spec.idle(), spec == null ? new String[0] : spec.actions().toArray(new String[0]));",
+        "    }", "",
+        "    @Override", "    public AnimatableInstanceCache getAnimatableInstanceCache() { return cache; }", "",
+        "    @Override",
+        "    public void createGeoRenderer(Consumer<GeoRenderProvider> consumer) {",
+        "        consumer.accept(new GeoRenderProvider() {",
+        "            private Item3DGeoRenderer<Item3DBase> renderer;", "",
+        "            @Override",
+        "            public BlockEntityWithoutLevelRenderer getGeoItemRenderer() {",
+        "                if (renderer == null) renderer = new Item3DGeoRenderer<>(ModMain.MOD_ID, modelId());",
+        "                return renderer;",
+        "            }",
+        "        });",
+        "    }",
+        "}", ""])
     return {"client/Model3DAnimatable.java": animatable, "client/Item3DRenderer.java": renderer, "client/Model3DClient.java": client,
-            "client/Projectile3DRenderer.java": projectile, "client/Item3DGeoRenderer.java": georenderer, "model3d/Item3DActions.java": actions}
+            "client/Projectile3DRenderer.java": projectile, "client/Item3DGeoRenderer.java": georenderer, "model3d/Item3DActions.java": actions,
+            "model3d/Model3DIndex.java": index, "model3d/Item3DBase.java": base}
 
 
 def item_model_json(mod_id: str, ident: str, handheld: bool, display_block: dict | None = None) -> dict:
@@ -345,6 +422,11 @@ def request_item3d(store: Store, pid: str, ident: str, notes: str = "") -> dict:
     lines = [ITEM3D_INSTRUCTIONS.replace("<id>", ident).replace("<icon>", icon), user_words(store, pid, c["label"]), theme_block(store, pid),
              f"\n## The item\n{c['label']} (`{ident}`, {c['kind']}{', held like a tool or weapon' if c['handheld'] else ''})",
              "art direction:\n" + art_brief(spec, c["art_kind"], c["art_id"])]
+    from .artreq import declared_events
+    ev = declared_events(ws, ident)
+    if ev:
+        lines += ["", "## The moments its code already emits (name them exactly; the game plays each at that moment, no wiring needed)"]
+        lines += [f"- animation.{ident}.{n} ({'loops while' if v['loop'] else 'once, when'} {v['when']})" for n, v in ev.items()]
     if (ws / DIR / f"{ident}.bbmodel").is_file():
         lines.append(f"A model already exists (models/items3d/{ident}.bbmodel): edit it as the notes ask, do not start over.")
     prior = [e["payload"].get("notes", "") for e in store.events(pid, 300) if e["kind"] == "ITEM3D_REQUESTED" and e["payload"].get("item") == ident and e["payload"].get("notes")]
@@ -610,7 +692,14 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
         store.add_task(pid, wire_task, "coder", f"Wire the 3D model of {ident}")
         with store.tx() as con:
             con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (wire_task, "\n".join(brief)))
-    anim_task = request_actions_wiring(store, pid, ident, info["actions"], info["animated"], info["loops"]) if info["actions"] else None
+    from .artreq import declared_events, is_geo_item
+    contract = declared_events(ws, ident)
+    info["events_declared"] = sorted(contract); info["events_without_clip"] = sorted(n for n in contract if n not in info["actions"])
+    info["clips_without_event"] = sorted(a for a in info["actions"] if a not in contract)
+    if info["actions"] and is_geo_item(ws, ident) and not info["clips_without_event"]:
+        anim_task = None   # the item is a GeoItem whose code already emits every one of these: the index is all it needs
+    else:
+        anim_task = request_actions_wiring(store, pid, ident, info["actions"], info["animated"], info["loops"]) if info["actions"] else None
     from .dispatch import _source_changed, _reopen_build
     _source_changed(store, pid); _reopen_build(store, pid)
     store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"actions": info["actions"], "anim_task": anim_task, "hold": hold, "hold_notes": hold_notes} |  {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
@@ -680,6 +769,7 @@ def actions_brief(package: str, ident: str, actions: list[str], idle: bool, when
 
 def request_actions_wiring(store: Store, pid: str, ident: str, actions: list[str], idle: bool, loops: list | None = None, extra: list | None = None) -> str:
     from .animate import whens as _whens, player_actions as _player
+    from .artreq import declared_events as _declared
     from .spec import read_spec
     spec = read_spec(store.project(pid)["spec"])
     base = f"{pid}:ITEM3DANIM:{ident}"
@@ -688,7 +778,9 @@ def request_actions_wiring(store: Store, pid: str, ident: str, actions: list[str
     task_id = waiting["id"] if waiting else (base if not tasks else f"{base}:{len(tasks) + 1}")
     if waiting is None:
         store.add_task(pid, task_id, "coder", f"Play the actions of the 3D {ident}")
-    text = "\n".join(actions_brief(spec.package, ident, actions, idle, _whens(store, pid, "item", ident), loops,
+    ws_ = Path(store.project(pid)["root"])
+    whens_all = {n: v["when"] for n, v in _declared(ws_, ident).items()} | _whens(store, pid, "item", ident)
+    text = "\n".join(actions_brief(spec.package, ident, actions, idle, whens_all, loops,
                                     _player(store, pid, ident), extra))   # read events outside the write transaction
     with store.tx() as con:
         con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, text))

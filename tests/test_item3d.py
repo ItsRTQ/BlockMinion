@@ -146,7 +146,9 @@ class Install(Base):
         self.assertEqual([i["id"] for i in json.loads((self.assets / "model3d/index.json").read_text())["items"]], ["moon_sword", "moon_gem"])
 
     def test_files_with_unreported_edits_go_to_the_coder(self):
-        fmj = self.res / "fabric.mod.json"; fmj.write_text(fmj.read_text().replace('"main"', '"main"  '))
+        # a legacy project: the entrypoint is missing and the file has unreported edits
+        fmj = self.res / "fabric.mod.json"; fmj.write_text(fmj.read_text().replace('"com.x.m.client.Model3DClient",\n      ', '').replace('"main"', '"main"  '))
+        self.assertNotIn("Model3DClient", fmj.read_text())
         model = self.assets / "models/item/moon_sword.json"; edited = model.read_text() + "\n"; model.write_text(edited)
         tid = self.task(); self.deliver()
         out = dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
@@ -168,7 +170,7 @@ class Install(Base):
         tid = self.task(); self.deliver(render=False)
         out = dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn("no render", out["error"])
-        self.assertFalse((self.assets / "model3d/index.json").exists())
+        self.assertEqual(json.loads((self.assets / "model3d/index.json").read_text())["items"], [])
 
     def test_cli(self):
         out = cli_dispatch(parser().parse_args(["--state-db", str(self.db), "make-3d", "m_mod", "--item", "moon_sword", "--notes", "x"]))
@@ -389,11 +391,18 @@ class Hold(Base):
         self.assertEqual(out["tweaks"], {"ground": {"scale": 1.5}})
 
 
-class NoGeckoLib(Base):
-    IDEA = "items: moon gem; blocks: moon ore; tab: Moon"   # no mobs: the build has no GeckoLib yet
+class LegacyProject(Base):
+    """A project generated before GeckoLib came with every project: the first 3D install adds it."""
+    IDEA = "items: moon gem; blocks: moon ore; tab: Moon"
 
     def test_the_build_gets_geckolib(self):
-        self.assertNotIn("geckolib", (self.ws / "build.gradle").read_text())
+        import re as _re
+        gradle = self.ws / "build.gradle"; props = self.ws / "gradle.properties"
+        text = _re.sub(r"\nrepositories \{.*?\n\}\n", "\n", gradle.read_text(), count=1, flags=_re.S)
+        text = "\n".join(l for l in text.splitlines() if "geckolib" not in l) + "\n"
+        gradle.write_text(text); props.write_text("\n".join(l for l in props.read_text().splitlines() if "geckolib" not in l) + "\n")
+        accept_changes(self.ws, run_id="legacy", actor="controller", changed=["build.gradle", "gradle.properties"])
+        self.assertNotIn("geckolib", gradle.read_text())
         tid = self.task(); self.deliver()
         self.assertEqual(dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))["task_state"], "DONE")
         gradle = (self.ws / "build.gradle").read_text()
