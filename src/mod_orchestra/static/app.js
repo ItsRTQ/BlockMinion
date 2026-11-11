@@ -460,26 +460,38 @@ async function renderGallery(p) {
 function holdPanel(p, f) {
   const box = document.createElement("details"); box.className = "hold-panel"; box.dataset.item = f.identifier;
   const h = f.hold || {};
-  box.append(el("summary", `Hold: ${h.style || "not declared"}${h.front ? ` · front ${h.front}` : ""}`));
+  const STYLE_TEXT = { aim: "pointed at something", wield: "swung or carried upright", carry: "held like any object" };
+  box.append(el("summary", h.style ? `How it is held: ${STYLE_TEXT[h.style]} · front ${h.front}${h.size && h.size !== 1 ? ` · size ×${h.size}` : ""}` : "How it is held: not set yet"));
+  // 1. what the controller already produced
   const prev = el("div", null, "previews");
-  for (const rel of f.hold_previews || []) { const pv = el("div", null, "preview"); const img = el("img"); img.src = fileUrl(p.id, rel); img.alt = rel; pv.append(img, el("small", rel.includes("firstperson") ? "first person" : "in the hand")); pv.onclick = () => openLightbox(img.src, rel); prev.append(pv); }
-  if (!(f.hold_previews || []).length) prev.append(el("div", "No in-hand preview yet.", "placeholder-note"));
-  box.append(prev);
-  const sel = (cls, opts, cur) => { const s = el("select"); s.className = cls; for (const o of opts) { const op = el("option", o); op.value = o; if (o === cur) op.selected = true; s.append(op); } return s; };
-  const style = sel("hold-style", ["aim", "wield", "carry"], h.style || "carry"), front = sel("hold-front", ["-z", "+z", "+x", "-x", "+y", "-y"], h.front || "-z"), top = sel("hold-top", ["auto", "+y", "-y", "+x", "-x", "+z", "-z"], h.top || "auto");
-  const row = el("div", null, "hold-row"); row.append(el("span", "style", "dlg-label"), style, el("span", "front points", "dlg-label"), front, el("span", "top points", "dlg-label"), top);
-  row.append(btn("Apply", async () => {
-    const out = await api(`/api/project/${p.id}/hold`, { item: f.identifier, style: style.value, front: front.value, top: top.value === "auto" ? null : top.value });
-    toast(`Held as ${out.hold.style}, front ${out.hold.front}. F3+T in the game reloads it.`, "ok"); await refreshProject(p.id);
-  }, "mini"));
-  box.append(el("div", "aim: pointed at something (a gun, a wand). wield: swung or carried upright (a sword, a staff). carry: anything else. The front is where the muzzle or tip points; the top is where its sights or back face.", "muted"), row);
+  for (const rel of f.hold_previews || []) { const pv = el("div", null, "preview"); const img = el("img"); img.src = fileUrl(p.id, rel); img.alt = rel; pv.append(img, el("small", rel.includes("firstperson") ? "first person (you)" : "third person (others)")); pv.onclick = () => openLightbox(img.src, rel); prev.append(pv); }
+  if (!(f.hold_previews || []).length) prev.append(el("div", "No preview yet: set how it is held and press Apply.", "placeholder-note"));
+  box.append(el("div", "These pictures are computed from the model, before any build. If they look right here, they look right in the game.", "muted"), prev);
+  // 2. one question at a time
+  const step = (n, q, help) => { const d = el("div", null, "hold-step"); d.append(el("div", `${n}. ${q}`, "dlg-label"), el("div", help, "muted")); return d; };
+  const choice = (name, opts, cur) => { const w = el("div", null, "hold-choices"); for (const [v, label] of opts) { const l = el("label", null, "part-choice"); const r = el("input"); r.type = "radio"; r.name = `${name}-${f.identifier}`; r.value = v; r.checked = v === cur; l.append(r, el("span", " " + label)); w.append(l); } return w; };
+  const s1 = step(1, "What kind of thing is it?", "This decides the pose the game uses.");
+  const styleC = choice("style", [["aim", "Aimed at something: a gun, a crossbow, a wand"], ["wield", "Swung or carried upright: a sword, an axe, a staff"], ["carry", "Anything else: it is just held"]], h.style || "carry"); s1.append(styleC);
+  const s2 = step(2, "Which way does its front point in the model?", "Where the muzzle, blade tip or wand tip points. In Blockbench, −Z is toward you from the front view, +X is to the right, +Y is up. If it comes out backwards, flip the sign.");
+  const frontC = choice("front", [["-z", "−Z (toward the front view)"], ["+z", "+Z (away)"], ["+x", "+X (right)"], ["-x", "−X (left)"], ["+y", "+Y (up)"], ["-y", "−Y (down)"]], h.front || "-z"); s2.append(frontC);
+  const s3 = step(3, "How big should it be in the hand?", "1 = the computed size. The slider changes only this item; the Advanced panel below changes every item of the same kind.");
+  const size = el("input"); size.type = "range"; size.min = "0.5"; size.max = "2"; size.step = "0.05"; size.value = String(h.size || 1); size.className = "hold-size";
+  const sizeOut = el("span", `×${Number(size.value).toFixed(2)}`, "mono"); size.oninput = () => { sizeOut.textContent = `×${Number(size.value).toFixed(2)}`; }; s3.append(size, sizeOut);
+  const adv = document.createElement("details"); adv.className = "hold-advanced"; adv.append(el("summary", "Advanced: where its top points"));
+  const top = el("select"); top.className = "hold-top"; for (const o of ["auto", "+y", "-y", "+x", "-x", "+z", "-z"]) { const op = el("option", o === "auto" ? "auto (from the model)" : o); op.value = o; if (o === (h.top || "auto")) op.selected = true; top.append(op); }
+  adv.append(el("div", "Where its sights or its back face. Only needed if it comes out upside down.", "muted"), top);
+  const picked = (w) => w.querySelector("input:checked")?.value;
+  box.append(s1, s2, s3, adv, btn("Apply", async () => {
+    const out = await api(`/api/project/${p.id}/hold`, { item: f.identifier, style: picked(styleC), front: picked(frontC), top: top.value === "auto" ? null : top.value, size: Number(size.value) });
+    toast(`Held as ${out.hold.style}, front ${out.hold.front}${out.hold.size ? `, size ×${out.hold.size}` : ""}. Previews updated; F3+T in the game reloads it.`, "ok"); await refreshProject(p.id);
+  }, "primary"));
   return box;
 }
 
 // Project-wide fine tuning of a hold style: offsets added to the computed pose for every item held that way.
 function holdStylePanel(p, data) {
   const box = document.createElement("details"); box.className = "hold-style-panel";
-  box.append(el("summary", "Fine-tune how a hold style sits (all items of that style)"));
+  box.append(el("summary", "Advanced: fine-tune a kind of hold for the whole project"));
   const style = el("select"); style.className = "hs-style"; for (const s of data.all) { const o = el("option", s); o.value = s; style.append(o); }
   const ctx = el("select"); ctx.className = "hs-context"; for (const c of ["thirdperson_righthand", "firstperson_righthand", "ground", "fixed", "head"]) { const o = el("option", c); o.value = c; ctx.append(o); }
   const nums = {}; const row = el("div", null, "hold-row"); row.append(style, ctx);
@@ -495,7 +507,7 @@ function holdStylePanel(p, data) {
     const out = await api(`/api/project/${p.id}/hold-style`, { style: style.value, tweaks });
     toast(`${style.value} tuned; ${out.recomputed.length} item(s) recomputed. F3+T in the game reloads them.`, "ok"); await refreshProject(p.id);
   }, "mini"), btn("Reset style", async () => { const out = await api(`/api/project/${p.id}/hold-style`, { style: style.value, tweaks: {} }); toast(`${style.value} back to the computed pose (${out.recomputed.length} item(s)).`, "ok"); await refreshProject(p.id); }, "mini secondary"));
-  box.append(el("div", "Offsets on top of the computed pose: degrees, pixels, and a scale factor. Leave a field empty for no change.", "muted"), row);
+  box.append(el("div", "For when a whole kind (every gun, every sword) needs nudging: pick the kind and the view, then offsets on top of the computed pose: rotation in degrees, position in pixels, and a scale factor. Empty fields change nothing. F3+T in the game reloads.", "muted"), row);
   return box;
 }
 

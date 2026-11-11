@@ -319,7 +319,8 @@ def serve(store: Store, port: int = 8765) -> None:
                         return request_block3d(store, pid, str(payload.get("block", "")), str(payload.get("notes", "")))
                     if op == "hold":
                         from .model3d import set_hold
-                        return set_hold(store, pid, str(payload.get("item", "")), style=payload.get("style"), front=payload.get("front"), top=payload.get("top"))
+                        return set_hold(store, pid, str(payload.get("item", "")), style=payload.get("style"), front=payload.get("front"), top=payload.get("top"),
+                                        size=payload.get("size"))
                     if op == "hold-style":
                         from .model3d import set_style_tweaks
                         return set_style_tweaks(store, pid, str(payload.get("style", "")), dict(payload.get("tweaks") or {}))

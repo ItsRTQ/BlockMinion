@@ -235,7 +235,11 @@ def install_model(store: Store, pid: str, mob_id: str, *, run_id: str, actor: st
     }
     for key, dst in targets.items():
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ws / info["files"][key], dst)
+        if key == "geo":
+            from .model3d import install_geo
+            info["zfight"] = install_geo(ws / info["files"][key], dst)   # coplanar overlapping faces nudged apart in the installed copy
+        else:
+            shutil.copyfile(ws / info["files"][key], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
     # Keep this run's previews + texture so the UI can show versions after feedback rounds.
     history = ws / ".mod-orchestra" / "previews" / _safe_dirname(run_id)

@@ -103,7 +103,7 @@ function buildTriangles(model,pose){
         const coords=ids.map(i=>uvs?.[i]??null);
         tris.push({vertices,uvs:coords,textured:Boolean(usesTexture&&uvs)});
       }
-      if(tris.length>450)throw Error('Preview geometry exceeds 450 triangles; render a smaller model');
+      if(tris.length>1500)throw Error('Preview geometry exceeds 1500 triangles; render a smaller model');
     };
     if(e.type==='mesh'){
       // Generic meshes: UVs are attached to face corners; supports triangles and quads.

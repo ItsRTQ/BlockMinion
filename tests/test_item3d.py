@@ -94,7 +94,7 @@ class Request(Base):
 class Validate(Base):
     def test_each_rule(self):
         cases = [({"render": False}, "no render"), ({"ident_in_geo": "geometry.other"}, "identifier must be geometry.moon_sword"),
-                 ({"cubes": []}, "no cubes"), ({"cubes": [{"origin": [-1, 0, 0], "size": [2, 30, 1], "uv": [0, 0]}]}, "keep it within"),
+                 ({"cubes": []}, "no cubes"), ({"cubes": [{"origin": [-1, 0, 0], "size": [2, 40, 1], "uv": [0, 0]}]}, "keep it within"),
                  ({"tex": (32, 32)}, "texture is 16x16")]
         for kw, why in cases:
             with self.subTest(why=why):
@@ -280,7 +280,7 @@ class Projectile(Base):
         with self.assertRaisesRegex(InputError, "not a projectile with its own art"):
             model3d.request_proj3d(self.store, "m_mod", "moon_sword")
         tid = model3d.request_proj3d(self.store, "m_mod", "acid_glob")["task"]
-        self.deliver_p([{"origin": [-20, 0, 0], "size": [40, 2, 2], "uv": [0, 0]}])
+        self.deliver_p([{"origin": [-40, 0, 0], "size": [80, 2, 2], "uv": [0, 0]}])
         out = dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn("keep it within", out["error"]); self.assertEqual(self.tasks("PROJ3DWIRE"), [])
         with self.assertRaisesRegex(InputError, "one"):
@@ -317,6 +317,27 @@ class OpenInBlockbench(Base):
         self.assertEqual(len(opened), 2)
         ev = [e["payload"] for e in self.store.events("m_mod") if e["kind"] == "OPENED_IN_BLOCKBENCH"]
         self.assertEqual({(e["kind"], e["name"]) for e in ev}, {("item", "moon_sword"), ("projectile", "acid_glob")})
+
+
+class LongDelivery(Base):
+    def test_a_long_rifle_is_fine_and_a_delivery_installs_from_disk_without_the_designer(self):
+        self.deliver(cubes=[{"origin": [-1, 0, -12.4], "size": [2, 2, 22.8], "uv": [0, 0]}])   # 23 px long: the AK case
+        out = model3d.reinstall_item3d(self.store, "m_mod", "moon_sword")   # never installed, but the delivery is on disk
+        self.assertEqual(out["cubes"], 1); self.assertIn("moon_sword", model3d.items3d(self.ws, "m_mod"))
+        with self.assertRaisesRegex(InputError, "no delivery"):
+            model3d.reinstall_item3d(self.store, "m_mod", "moon_gem")
+
+
+class ZFight(Base):
+    def test_the_installed_geo_is_nudged_apart_and_the_delivery_is_not(self):
+        self.deliver(cubes=[{"origin": [-2, 0, -8], "size": [4, 4, 16], "uv": [0, 0]}, {"origin": [-1, 3, -4], "size": [2, 1, 8], "uv": [0, 0]}])   # a rail whose top lies on the body's top
+        delivered = (self.ws / model3d.DIR / "moon_sword.geo.json").read_text()
+        out = model3d.reinstall_item3d(self.store, "m_mod", "moon_sword")
+        self.assertEqual(len(out["zfight"]), 1)
+        installed = json.loads((self.assets / "geo/item/model3d/moon_sword.geo.json").read_text())
+        self.assertAlmostEqual(installed["minecraft:geometry"][0]["bones"][0]["cubes"][1]["size"][1], 1.02, 3)
+        self.assertEqual((self.ws / model3d.DIR / "moon_sword.geo.json").read_text(), delivered)
+        self.assertEqual(next(e["payload"]["zfight_fixed"] for e in self.store.events("m_mod") if e["kind"] == "ITEM3D_INSTALLED"), 1)
 
 
 class Hold(Base):

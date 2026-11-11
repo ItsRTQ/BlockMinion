@@ -291,3 +291,14 @@ button.danger{background:linear-gradient(135deg,#ff5c7a,#c2304f);color:#fff;bord
 .ref-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.ref-thumb{position:relative}.ref-thumb img{width:84px;height:84px;object-fit:cover;border:1px solid var(--line-2);border-radius:2px;cursor:zoom-in}.ref-thumb button{position:absolute;top:2px;right:2px}
 .design-notes{margin:8px 0}.design-notes ol{margin:6px 0 6px 18px;padding:0}.design-notes li{margin:3px 0;font-size:13px;color:var(--dim)}.design-notes li.chosen{color:var(--text);font-weight:600}
 
+
+/* Action panels on cards (Hold, Animate, Modify, Use your own model, fine-tuning): their summary is a button, and it says so. */
+.hold-panel,.animate-panel,.modify-panel,.own-model,.hold-style-panel,.hold-advanced{margin:8px 0}
+.hold-panel > summary,.animate-panel > summary,.modify-panel > summary,.own-model > summary,.hold-style-panel > summary,.hold-advanced > summary{display:inline-block;font:inherit;font-family:var(--display);font-weight:600;letter-spacing:.04em;font-size:12px;cursor:pointer;border-radius:var(--radius-s);border:1px solid var(--line-2);background:linear-gradient(180deg,rgba(var(--cyan-rgb),.06),transparent),var(--panel-2);color:var(--text);padding:5px 12px;transition:border-color .15s,box-shadow .15s;user-select:none}
+.hold-panel > summary:hover,.animate-panel > summary:hover,.modify-panel > summary:hover,.own-model > summary:hover,.hold-style-panel > summary:hover,.hold-advanced > summary:hover{border-color:rgba(var(--cyan-rgb),.6);box-shadow:var(--glow)}
+.hold-panel[open] > summary,.animate-panel[open] > summary,.modify-panel[open] > summary,.own-model[open] > summary,.hold-style-panel[open] > summary,.hold-advanced[open] > summary{border-color:rgba(var(--cyan-rgb),.6);background:rgba(var(--cyan-rgb),.1)}
+.hold-panel > summary::before,.animate-panel > summary::before,.modify-panel > summary::before,.own-model > summary::before,.hold-style-panel > summary::before,.hold-advanced > summary::before{content:"▸ ";color:var(--accent)}
+.hold-panel[open] > summary::before,.animate-panel[open] > summary::before,.modify-panel[open] > summary::before,.own-model[open] > summary::before,.hold-style-panel[open] > summary::before,.hold-advanced[open] > summary::before{content:"▾ "}
+.hold-panel[open],.animate-panel[open],.modify-panel[open],.own-model[open],.hold-style-panel[open]{border:1px dashed var(--line-2);border-radius:var(--radius-s);padding:8px 10px}
+.hold-step{margin:10px 0 4px}.hold-choices{display:flex;flex-direction:column;gap:4px;margin:4px 0 6px}.hold-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.anim-row{display:grid;grid-template-columns:1fr 2fr 2fr auto;gap:6px;align-items:start;margin:6px 0}.anim-row textarea{resize:vertical}

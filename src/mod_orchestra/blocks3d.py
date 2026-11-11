@@ -289,8 +289,13 @@ def install_block3d(store: Store, pid: str, task_id: str, ident: str, *, run_id:
     a = ws / "src/main/resources/assets" / pid
     targets = {"geo": a / "geo/block/model3d" / f"{ident}.geo.json", "anim": a / "animations/block/model3d" / f"{ident}.animation.json",
                "png": a / "textures/block/model3d" / f"{ident}.png"}
+    from .model3d import install_geo
     for k, dst in targets.items():
-        dst.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(ws / info["files"][k], dst)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if k == "geo":
+            info["zfight"] = install_geo(ws / info["files"][k], dst)
+        else:
+            shutil.copyfile(ws / info["files"][k], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
     written, coder = wire(store, pid, ident, idle=info["animated"], actions=info["actions"])
     changed += written

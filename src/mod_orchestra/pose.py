@@ -34,7 +34,7 @@ BASE = {"wield": HANDHELD, "aim": CROSSBOW_FIRING, "carry": GENERATED}
 # where the sprite those sets hold has its handle (px from the icon centre), and how long it is along its diagonal
 HANDLE = {"wield": (-5.0, -5.0, 0.0), "aim": (-3.5, -3.5, 0.0), "carry": (0.0, 0.0, 0.0)}
 LENGTH = {"wield": 16.0, "aim": 16.0, "carry": 12.0}
-AIM_FP_YAW, AIM_FP_SCALE, AIM_FP_GRIP = 12.0, 0.6, (1.5, -2.5, -3.0)   # first-person aim: turn toward the centre (deg), base scale, grip position (px)
+AIM_FP_YAW, AIM_FP_SCALE, AIM_FP_GRIP = 12.0, 1.0, (1.5, -2.5, -3.0)   # first-person aim: turn toward the centre (deg), base scale, grip position (px)
 TOP_TARGET = (-1, 0, 0)   # canonical: front +Y, top to the sprite's upper-left (after the 45° turn onto the diagonal)
 
 Vec = tuple[float, float, float]
@@ -142,8 +142,10 @@ def _default_top(front: str, model: dict | None = None) -> str:
     return "+x" if (hi[0] - lo[0]) <= (hi[2] - lo[2]) else "+z"   # the thinner of x/z is the flat side
 
 
-def display(model: dict, *, style: str, front: str, top: str | None = None, tweaks: dict | None = None) -> dict:
-    """The item model JSON `display` block for this model held in this style. tweaks: {context: {rotation: [dx,dy,dz], translation: [..], scale: f}}."""
+def display(model: dict, *, style: str, front: str, top: str | None = None, tweaks: dict | None = None, size: float = 1.0) -> dict:
+    """The item model JSON `display` block for this model held in this style. tweaks: {context: {rotation: [dx,dy,dz], translation: [..], scale: f}};
+    size: this item's own factor on top (the "Size in hand" control), applied everywhere but the inventory."""
+    size = max(0.3, min(3.0, float(size or 1.0)))
     if style not in STYLES:
         raise ValueError(f"style must be one of {STYLES}")
     if front not in AXES:
@@ -185,7 +187,7 @@ def display(model: dict, *, style: str, front: str, top: str | None = None, twea
         t = tw.get(ctx) or {}
         rot_e = [_clean(rot_e[i] + float((t.get("rotation") or [0, 0, 0])[i])) for i in range(3)]
         tt = [_clean(tt[i] + float((t.get("translation") or [0, 0, 0])[i])) for i in range(3)]
-        scale = _clean(scale * float(t.get("scale") or 1.0))
+        scale = _clean(scale * float(t.get("scale") or 1.0) * size)
         tt = [max(-80.0, min(80.0, v)) for v in tt]
         out[ctx] = {"rotation": rot_e, "translation": tt, "scale": [scale, scale, scale]}
     out["gui"] = {"rotation": [0, 0, 0], "translation": [0, 0, 0], "scale": [1, 1, 1]}   # the renderer draws the 2D icon there

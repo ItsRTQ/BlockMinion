@@ -121,6 +121,7 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("hold", help="USER-ONLY, no agent: declare or change how a 3D item is held (style aim|wield|carry, the axis its front points to, the axis its top points to); "
                        "its model JSON and the in-hand previews are recomputed (F3+T in the game reloads it)")
     a.add_argument("project"); a.add_argument("--item", required=True); a.add_argument("--style", choices=["aim", "wield", "carry"]); a.add_argument("--front"); a.add_argument("--top")
+    a.add_argument("--size", type=float, help="this item's size in the hand, 0.3-3 (1 = computed)")
     a = sub.add_parser("hold-tweak", help="USER-ONLY, no agent: fine-tune a hold style for the whole project: --context thirdperson_righthand|firstperson_righthand|ground|fixed|head "
                        "--rotation x y z --translation x y z --scale f (offsets added to the computed pose); --clear removes the style's tweaks")
     a.add_argument("project"); a.add_argument("--style", required=True, choices=["aim", "wield", "carry"]); a.add_argument("--context")
@@ -383,7 +384,7 @@ def dispatch(args: argparse.Namespace) -> object:
         return request_animate(store, args.project, kind, getattr(args, kind), anims, args.remove, args.notes)
     if args.command == "hold":
         from .model3d import set_hold
-        return set_hold(store, args.project, args.item, style=args.style, front=args.front, top=args.top)
+        return set_hold(store, args.project, args.item, style=args.style, front=args.front, top=args.top, size=args.size)
     if args.command == "hold-tweak":
         from .model3d import set_style_tweaks, style_tweaks
         ws = Path(store.project(args.project)["root"])
