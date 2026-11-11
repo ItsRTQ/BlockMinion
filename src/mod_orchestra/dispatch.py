@@ -174,6 +174,17 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"armor": ad}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ad["installed"]))
+    if ":ASK:" in task["id"] and status == "DONE":
+        from .ask import apply_plan
+        from .validation import InputError
+        try:
+            h = h | {"plan_applied": apply_plan(store, pid, task["id"], h)}
+        except (InputError, StateError) as exc:
+            error = f"plan not applied: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
     if ":BLOCK3D:" in task["id"] and status == "DONE":
         from .blocks3d import install_block3d
         from .validation import InputError
@@ -314,11 +325,17 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
     elif status == "BLOCKED":
         store.set_task_state(task["id"], worker, version, "BLOCKED", error="; ".join(h["unknowns"] + h["risks"])[:500])
         task_state = "BLOCKED"
+        from .escalate import from_needs   # a limitation is work: what the agent needs is made by the right role, and the agent waits behind it
+        esc = from_needs(store, pid, task, h)
+        if esc and esc.get("waiting"):
+            h = h | {"escalation": esc}
     else:
         store.set_task_state(task["id"], worker, version, "FAILED", error="worker reported FAILED: " + "; ".join(h["risks"])[:400])
         task_state = "FAILED"
     store.finish_run(run["id"], state=task_state, exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
                      session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=None)
+    if h.get("escalation", {}).get("waiting"):
+        task_state = "BACKLOG"   # parked behind the tasks that make what it needs; released on its own when they are DONE
     outcome = {"task_state": task_state, "handoff": h}
     # A worker that observed a failing gradle build (its own or the project's) hands the failure to the repair loop.
     if h.get("evidence", {}).get("level") == "BUILD_FAILED" or (status == "FAILED" and ":REPAIR:" in task["id"]):

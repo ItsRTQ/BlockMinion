@@ -17,9 +17,12 @@ test.before(async () => {
 });
 test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
 test.beforeEach(async () => {
-  page.overrides['/api/project/quiet/animate'] = {task: 'quiet:ANIMATE:item:ruby', kind: 'item', ident: 'ruby', anims: ['shine']};
+  page.overrides['/api/project/quiet/animate'] = {task: 'quiet:ANIMATE:item:ruby', kind: 'item', ident: 'ruby', anims: ['shine'], first: 'quiet:CHANGE:ruby:1',
+    plan: [{task: 'quiet:CHANGE:ruby:1', role: 'coder', why: 'the code has no moment for shine: it is made first and emitted'}, {task: 'quiet:ANIMATE:item:ruby', role: 'designer', why: 'the animations, once the moments exist'}]};
   page.overrides['/api/project/quiet/dispatch'] = {started: true};
-  await page.idle(); await page.waitFor(() => row('ruby')?.querySelector('.animate-panel'));
+  await page.idle();
+  if (!row('ruby')) { await page.eval('openProject("quiet")'); page.click(page.$('.tab[data-tab="features"]')); page.click(page.$('.subtab[data-sub="items"]')); }   // a test may have left for another project
+  await page.waitFor(() => row('ruby')?.querySelector('.animate-panel'), 'the ruby row');
 });
 
 test('only 3D items have the panel', () => {
@@ -44,7 +47,7 @@ test('two rows, one that loops and a clip to remove, go in one request; "Not now
   assert.deepEqual({kind: body.kind, ident: body.ident, remove: [...body.remove]}, {kind: 'item', ident: 'ruby', remove: ['idle', 'spin']});
   assert.deepEqual(body.anims.map((a) => ({...a})), [{name: 'shine', what: 'a glint runs along it', when: 'when it is picked up', loop: false},
                                                      {name: 'pulse', what: 'it throbs', when: 'while it is held', loop: true}]);
-  await page.waitFor(dlgOpen, 'start now?'); assert.match(page.$('#dlg').textContent, /shape and texture are locked/);
+  await page.waitFor(dlgOpen, 'the plan'); assert.match(page.$('#dlg').textContent, /a coder makes them first and the designer follows/); assert.match(page.$('#dlg').textContent, /1\. coder: the code has no moment for shine/);
   press('Not now'); await page.waitFor(() => !dlgOpen()); assert.equal(posts('/dispatch').length, 0);
 });
 
@@ -61,4 +64,12 @@ test('a mob with a model has the panel, one without does not', async () => {
   await page.waitFor(() => page.$('[data-focus="mob:spitter"] .animate-panel'), 'the spitter panel');
   assert.match(page.$('[data-focus="mob:spitter"] .animate-panel summary').textContent, /movement states/);
   assert.equal(page.$('[data-focus="mob:runner"] .animate-panel'), null);
+});
+
+test('Start the plan dispatches the first step (the coder), not the designer', async () => {
+  const panel = row('ruby').querySelector('.animate-panel');
+  const r = panel.querySelector('.anim-row'); r.querySelector('.anim-name').value = 'shine'; r.querySelector('.anim-what').value = 'a glint'; r.querySelector('.anim-when').value = 'when picked up';
+  page.click(btnOf(panel, 'Animate')); await page.waitFor(dlgOpen, 'the plan'); press('Start the plan');
+  await page.waitFor(() => posts('/dispatch').length === 1, 'the dispatch'); assert.equal(posts('/dispatch')[0].body.task, 'quiet:CHANGE:ruby:1');
+  await page.waitFor(() => /Coder started; the designer follows/.test(page.toasts()), 'the toast');
 });

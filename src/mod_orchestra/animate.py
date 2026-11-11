@@ -119,13 +119,23 @@ finish, then re-export the animations (and the geometry, if you regrouped) with 
 """
 
 
-def request_animate(store: Store, pid: str, kind: str, ident: str, anims: list, remove: list | None = None, notes: str = "") -> dict:
-    """USER-ONLY: ask the designer for animations on an existing model; geometry and texture stay locked."""
+def request_animate(store: Store, pid: str, kind: str, ident: str, anims: list, remove: list | None = None, notes: str = "", *, escalate: bool = True) -> dict:
+    """USER-ONLY: ask the designer for animations on an existing model; geometry and texture stay locked. A moment the code does not
+    have yet goes to the coder first (a change request on the thing's card) and the designer's task waits behind it."""
     from .models import user_words
+    from . import escalate as _esc
     if kind not in KINDS:
         raise InputError(f"kind must be one of {KINDS}")
     _check_target(store, pid, kind, ident)
     anims, rm = coerce_anims(kind, anims, remove)
+    plan, first_task = [], None
+    missing = _esc.missing_moments(store, pid, kind, ident, anims) if escalate else []
+    if missing:
+        card = _esc.card_for(store, pid, kind, ident)
+        if card is None:
+            raise InputError(f"the code has no moment for {[a['name'] for a in missing]} and {ident!r} has no card to change; ask for it as a feature first")
+        first_task = _esc.request_moments(store, pid, kind, ident, missing, card)
+        plan.append({"task": first_task, "role": "coder", "why": "the code has no moment for " + ", ".join(a["name"] for a in missing) + ": it is made first and emitted"})
     folder, stem = _files(store, pid, kind, ident)
     ws = Path(store.project(pid)["root"])
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
@@ -157,13 +167,17 @@ def request_animate(store: Store, pid: str, kind: str, ident: str, anims: list, 
         lines.append("The mob must keep animation.<stem>.idle, .walk and .attack (its entity plays them).".replace("<stem>", stem))
     if notes.strip():
         lines += ["", "## More from the user", notes.strip()[:1500]]
-    store.add_task(pid, task_id, "designer", f"Animate {ident}")
+    if missing:
+        lines.append("The moments listed above that the code did not have are being added by a coder before you; name your clips exactly as listed.")
+    store.add_task(pid, task_id, "designer", f"Animate {ident}", after=[first_task] if first_task else None)
+    plan.append({"task": task_id, "role": "designer", "why": "the animations, once the moments exist" if missing else "the animations"})
     with store.tx() as con:
         con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(lines)))
     # relative to the project: events hide the user's home directory, so an absolute path under it (Windows) would not read back
     store.add_event(pid, "user", "ANIMATE_REQUESTED", {"task": task_id, "kind": kind, "ident": ident, "anims": anims, "remove": rm,
-                                                       "snapshot": str(snap.relative_to(ws)).replace("\\", "/")})
-    return {"task": task_id, "kind": kind, "ident": ident, "anims": [a["name"] for a in anims], "next": {"action": "dispatch", "payload": {"task": task_id}}}
+                                                       "snapshot": str(snap.relative_to(ws)).replace("\\", "/"), "after": first_task})
+    return {"task": task_id, "kind": kind, "ident": ident, "anims": [a["name"] for a in anims], "plan": plan, "first": first_task or task_id,
+            "next": {"action": "dispatch", "payload": {"task": first_task or task_id}}}
 
 
 # ------------------------------------------------------------------------------------------------ the shape lock

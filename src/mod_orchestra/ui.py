@@ -301,6 +301,9 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "ask":
+                        from .ask import request_ask
+                        return request_ask(store, pid, str(payload.get("text", "")))
                     if op == "animate":
                         from .animate import request_animate
                         return request_animate(store, pid, str(payload.get("kind", "")), str(payload.get("ident", "")), list(payload.get("anims") or []),

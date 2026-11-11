@@ -238,6 +238,17 @@ class Store:
         with self.tx() as con:
             return [dict(r) for r in con.execute("SELECT * FROM tasks WHERE project_id=? ORDER BY id", (pid,))]
 
+    def wait_for(self, task_id: str, predecessors: list[str]) -> None:
+        """Park a task behind other tasks: BACKLOG until every predecessor is DONE (refresh_ready releases it)."""
+        with self.tx() as con:
+            row = con.execute("SELECT project_id FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                raise StateError(f"Unknown task {task_id}")
+            for pred in predecessors:
+                con.execute("INSERT OR IGNORE INTO task_edges(predecessor,successor) VALUES(?,?)", (pred, task_id))
+            con.execute("UPDATE tasks SET state='BACKLOG',version=version+1,lease_owner=NULL,lease_expiry=NULL WHERE id=?", (task_id,))
+            self.event(con, row["project_id"], "controller", "TASK_WAITING", {"task": task_id, "after": predecessors})
+
     def refresh_ready(self, pid: str) -> None:
         with self.tx() as con:
             con.execute("""UPDATE tasks SET state='READY',version=version+1 WHERE project_id=? AND state='BACKLOG'

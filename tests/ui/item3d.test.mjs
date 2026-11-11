@@ -80,3 +80,12 @@ test('a 3D item has a Hold panel: declare how it is held, and tune the style for
   page.click(btnOf(sp, 'Apply')); await page.waitFor(() => posts('/hold-style').length === 1, 'the tweak');
   const b = posts('/hold-style')[0].body; assert.equal(b.style, 'aim'); assert.deepEqual({...b.tweaks.firstperson_righthand, translation: [...b.tweaks.firstperson_righthand.translation]}, {translation: [0, -3, 0], scale: 1.2});
 });
+
+test('Ask: your words become a planner task, started on confirmation', async () => {
+  page.overrides['/api/project/quiet/ask'] = {task: 'quiet:ASK:1'};
+  const box = page.$('#features-list .ask-box'); assert.ok(box, 'the Ask box');
+  page.click(btnOf(box, 'Plan it')); await page.waitFor(() => /Say what you want first/.test(page.toasts()), 'the hint'); assert.equal(posts('/ask').length, 0);
+  box.querySelector('.ask-text').value = 'make the ruby glow when held';
+  page.click(btnOf(box, 'Plan it')); await page.waitFor(() => posts('/ask').length === 1, 'the request'); assert.equal(posts('/ask')[0].body.text, 'make the ruby glow when held');
+  await page.waitFor(dlgOpen); press('Start planner'); await page.waitFor(() => posts('/dispatch').length >= 1 && posts('/dispatch').at(-1).body.task === 'quiet:ASK:1', 'the dispatch');
+});

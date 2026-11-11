@@ -92,7 +92,7 @@ class Blocks(Base):
         self.deliver_block(); self.assertEqual(self.done(tid)["task_state"], "DONE")
         with self.assertRaisesRegex(InputError, "Make it 3D first"):
             animate.request_animate(self.store, "m_mod", "block", "moon_gem", [{"name": "a", "what": "x", "when": "y"}])
-        tid = animate.request_animate(self.store, "m_mod", "block", "moon_ore", [{"name": "open", "what": "the top lifts", "when": "when a player right-clicks it"}])["task"]
+        tid = animate.request_animate(self.store, "m_mod", "block", "moon_ore", [{"name": "open", "what": "the top lifts", "when": "when a player right-clicks it"}], escalate=False)["task"]
         (self.ws / blocks3d.BDIR / "moon_ore.animation.json").write_text(json.dumps({"animations": {"animation.moon_ore.open": {"bones": {"rock": KEY}}}}))
         out = self.done(tid)
         self.assertEqual(out["task_state"], "DONE", out.get("error"))
