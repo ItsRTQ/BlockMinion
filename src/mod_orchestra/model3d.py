@@ -355,7 +355,12 @@ def hold_for(model: dict, handheld: bool, declared: dict | None) -> tuple[dict, 
         if ext[axis] < 0.75 * max(ext):
             raise InputError(f"hold: front is {front} but the model is longest along {'xyz'[ext.index(max(ext))]} ({[round(v, 1) for v in ext]} px): "
                              "declare the axis the muzzle/tip really points to")
-    return {"style": style, "front": front, "top": top or pose._default_top(front, model)}, notes
+    size = h.get("size")
+    try:
+        size = max(0.3, min(3.0, float(size))) if size not in (None, "") else 1.0
+    except (TypeError, ValueError):
+        raise InputError("hold.size must be a number (0.3-3)") from None
+    return {"style": style, "front": front, "top": top or pose._default_top(front, model), **({"size": size} if size != 1.0 else {})}, notes
 
 
 # ------------------------------------------------------------------------------------------------ designer task
@@ -366,11 +371,13 @@ Build a GeckoLib model of the item named below; in the game it replaces the flat
 frames and in a mob's hand (the inventory keeps the icon). Create it with `bbmodel_geckolib_create` as
 `models/items3d/<id>.bbmodel` with model identifier `<id>` (or keep editing it if it already exists).
 Build it the way the object really is, at a sensible size (the controller fits it in the hand): a rifle horizontal, a sword
-upright, a wand along its length. Keep it within -12..12 on x and z and -4..24 on y. Then declare three technical facts so
+upright, a wand along its length. Keep it within -32..32 on every axis (the controller scales it into the hand). Then declare three technical facts so
 the controller can compute how it is held (never guess a pose yourself): the hold STYLE (`aim`: it is pointed at something,
 like a gun, a crossbow or a wand; `wield`: swung or carried upright, like a sword, an axe or a staff; `carry`: anything
 else), the axis its FRONT points to (`-z`, `+x`, ...: muzzle, blade tip, wand tip) and the axis its TOP points to (where its
-sights or back face; default `+y`). Put a bone named `grip` with its pivot exactly where the hand holds it. Report them in your
+sights or back face; default `+y`). Put a bone named `grip` with its pivot exactly where the hand holds it. Never leave two cubes with faces on the same plane
+facing the same way and overlapping (a plate on a body, a rail on a barrel): they flicker in the game (z-fighting); offset
+the detail by 0.05 px or merge the cubes. Report them in your
 handoff as `"hold": {"style": "aim", "front": "-z", "top": "+y"}`.
 Before you finish, LOOK at it in the hand: `mcp__minecraft-orchestra__orchestra_preview_hold {project, item, style, front, top}`
 renders the player holding it in third person and the first-person view, and tells you where the grip was taken from. If the
@@ -441,9 +448,19 @@ def request_item3d(store: Store, pid: str, ident: str, notes: str = "") -> dict:
     return {"task": task_id, "item": ident, "estimate": designer_cost(store), "next": {"action": "dispatch", "payload": {"task": task_id}}}
 
 
-ITEM_BOUNDS = ((-12, 12), (-4, 24), (-12, 12))
-PROJ_BOUNDS = ((-12, 12), (-12, 12), (-12, 12))
+ITEM_BOUNDS = ((-32, 32), (-32, 32), (-32, 32))   # the pose engine fits the length; this only keeps a model from being absurd
+PROJ_BOUNDS = ((-32, 32), (-32, 32), (-32, 32))
 PDIR = "models/projectiles3d"
+
+
+def install_geo(src: Path, dst: Path) -> list[dict]:
+    """Copy a geo into the project with z-fighting pairs nudged apart (the delivery itself is left as the designer made it)."""
+    from . import zfight
+    geo = json.loads(src.read_text(encoding="utf8"))
+    fixed, pairs = zfight.fix(geo)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(fixed if pairs else geo, indent=2) + "\n", encoding="utf8")
+    return pairs
 
 
 def validate_item3d(ws: Path, ident: str, *, folder: str = DIR, bounds=ITEM_BOUNDS) -> dict:
@@ -664,13 +681,17 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
     except (OSError, ValueError):
         raise InputError("the .bbmodel is not readable JSON") from None
     hold, hold_notes = hold_for(model, cand[ident]["handheld"], hold or stored_hold(ws, pid, ident))
-    display_block = pose.display(model, style=hold["style"], front=hold["front"], top=hold["top"], tweaks=style_tweaks(ws, pid, hold["style"]))
+    display_block = pose.display(model, style=hold["style"], front=hold["front"], top=hold["top"], tweaks=style_tweaks(ws, pid, hold["style"]), size=hold.get("size", 1.0))
     info["hold"] = hold | pose.describe(model, hold["style"], hold["front"], hold["top"]); info["hold_notes"] = hold_notes
     a = ws / "src/main/resources/assets" / pid
     targets = {"geo": a / "geo/item/model3d" / f"{ident}.geo.json", "anim": a / "animations/item/model3d" / f"{ident}.animation.json",
                "png": a / "textures/item/model3d" / f"{ident}.png"}
     for k, dst in targets.items():
-        dst.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(ws / info["files"][k], dst)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if k == "geo":
+            info["zfight"] = install_geo(ws / info["files"][k], dst)
+        else:
+            shutil.copyfile(ws / info["files"][k], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
     wired = wire(store, pid, ident, handheld=cand[ident]["handheld"], animated=info["animated"], actions=info["actions"], hold=hold, display_block=display_block)
     changed += wired["written"]
@@ -702,7 +723,8 @@ def install_item3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
         anim_task = request_actions_wiring(store, pid, ident, info["actions"], info["animated"], info["loops"]) if info["actions"] else None
     from .dispatch import _source_changed, _reopen_build
     _source_changed(store, pid); _reopen_build(store, pid)
-    store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"actions": info["actions"], "anim_task": anim_task, "hold": hold, "hold_notes": hold_notes} |  {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
+    store.add_event(pid, "controller", "ITEM3D_INSTALLED", {"actions": info["actions"], "anim_task": anim_task, "hold": hold, "hold_notes": hold_notes,
+                                                            "zfight_fixed": len(info.get("zfight") or [])} |  {"item": ident, "task": task_id, "run": run_id, "cubes": info["cubes"], "animated": info["animated"],
                                                             "wire_task": wire_task})
     return info | {"installed": changed, "accepted": accepted["accepted"], "wire_task": wire_task, "anim_task": anim_task,
                    "previews": [f".mod-orchestra/previews/{_safe_dirname(run_id)}/{Path(r).name}" for r in info["renders"] + info["hold_previews"]]}
@@ -802,7 +824,7 @@ PROJ3D_INSTRUCTIONS = """
 A projectile of this mod flies as a flat sprite today. Build a GeckoLib model of it: create `models/projectiles3d/<id>.bbmodel`
 with `bbmodel_geckolib_create` (model identifier `<id>`), or keep editing it if it already exists.
 Orientation: the projectile flies toward +X. Put its front (the leading end) on +X and centre it on the origin; the game turns
-it to follow its flight, nose first. Keep it within -12..12 on every axis (a projectile is small: compare with the sprite).
+it to follow its flight, nose first. Keep it within -32..32 on every axis (a projectile is small: compare with the sprite).
 Read the sprite it replaces (`<sprite>`) and keep its colours and character: this is the same thing, now with depth.
 Texture: paint `models/projectiles3d/<id>.png` with a stdlib script (zlib/struct, no PIL) at the model's texture size and set it
 with `bbmodel_geckolib_set_texture`. A looping `animation.<id>.idle` is optional, if it should move in flight; without one export
@@ -875,7 +897,11 @@ def install_proj3d(store: Store, pid: str, task_id: str, ident: str, *, run_id: 
     targets = {"geo": a / "geo/item/model3d/projectile" / f"{ident}.geo.json", "anim": a / "animations/item/model3d/projectile" / f"{ident}.animation.json",
                "png": a / "textures/item/model3d/projectile" / f"{ident}.png"}
     for k, dst in targets.items():
-        dst.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(ws / info["files"][k], dst)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if k == "geo":
+            info["zfight"] = install_geo(ws / info["files"][k], dst)
+        else:
+            shutil.copyfile(ws / info["files"][k], dst)
     changed = [str(t.relative_to(ws)).replace("\\", "/") for t in targets.values()]
     written, coder = ensure_support(ws, spec)
     index_f, index = _index(ws, pid)
@@ -914,23 +940,25 @@ def reinstall_item3d(store: Store, pid: str, ident: str) -> dict:
     """USER-ONLY, no agent: run the designer's current delivery for a 3D item through today's installer again (a model installed
     before actions existed gets its actions wired; support classes are brought up to date)."""
     proj = store.project(pid); ws = Path(proj["root"])
-    if ident not in items3d(ws, pid):
-        raise InputError(f"{ident!r} is not a 3D item")
+    if ident not in items3d(ws, pid) and not (ws / DIR / f"{ident}.bbmodel").is_file():
+        raise InputError(f"{ident!r} is not a 3D item and has no delivery in {DIR}/")
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return install_item3d(store, pid, f"{pid}:REINSTALL3D:{ident}", ident, run_id=f"reinstall-{ident}-{stamp}", actor="user")
 
 
-def set_hold(store: Store, pid: str, ident: str, *, style: str | None = None, front: str | None = None, top: str | None = None) -> dict:
+def set_hold(store: Store, pid: str, ident: str, *, style: str | None = None, front: str | None = None, top: str | None = None, size: float | None = None) -> dict:
     """USER-ONLY, no agent: declare or change how a 3D item is held; its model JSON and previews are recomputed."""
     ws = Path(store.project(pid)["root"])
-    if ident not in items3d(ws, pid):
-        raise InputError(f"{ident!r} is not a 3D item")
+    if ident not in items3d(ws, pid) and not (ws / DIR / f"{ident}.bbmodel").is_file():
+        raise InputError(f"{ident!r} is not a 3D item and has no delivery in {DIR}/")
     current = dict(stored_hold(ws, pid, ident) or {})
     for k, v in (("style", style), ("front", front), ("top", top)):
         if v:
             current[k] = str(v).lower()
     if top is None and (style or front):
         current.pop("top", None)   # let the model's thin side decide again
+    if size is not None:
+        current["size"] = float(size)
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return install_item3d(store, pid, f"{pid}:HOLD:{ident}", ident, run_id=f"hold-{ident}-{stamp}", actor="user", hold=current)
 

@@ -124,6 +124,18 @@ def invoke(store: Store, name: str, a: dict) -> object:
         hold, notes = model3d.hold_for(model, True, {"style": a["style"], "front": a["front"], **({"top": a["top"]} if a.get("top") else {})})
         disp = pose.display(model, style=hold["style"], front=hold["front"], top=hold["top"])
         previews = model3d.hold_previews(store, a["project"], item, model, disp, hold["style"])
+        geo_f = ws / model3d.DIR / f"{item}.geo.json"
+        if geo_f.is_file():
+            from . import zfight
+            try:
+                zf = zfight.describe(zfight.find(json.loads(geo_f.read_text(encoding="utf8"))))
+            except (ValueError, KeyError, IndexError, TypeError):
+                zf = ""
+            if zf:
+                notes.append(zf + ": they flicker in the game; offset the detail by 0.05 px or merge the cubes (the controller nudges them apart on install, but fix them)")
+        lo, hi = pose.bbox(model)
+        if any(lo[i] < model3d.ITEM_BOUNDS[i][0] or hi[i] > model3d.ITEM_BOUNDS[i][1] for i in range(3)):
+            notes.append(f"the model reaches {[round(v, 1) for v in lo]}..{[round(v, 1) for v in hi]}: the install refuses anything outside -32..32 on every axis")
         return {"hold": hold | pose.describe(model, hold["style"], hold["front"], hold["top"]), "notes": notes, "previews": previews,
                 "look_for": "the barrel/tip pointing forward, the grip inside the hand, the top up; in first person the item low and to the right"}
     if name in ("orchestra_check_model_edit", "orchestra_grow_texture"):

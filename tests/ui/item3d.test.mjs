@@ -67,10 +67,12 @@ test('a block offers 3D too, and asks the block route', async () => {
 test('a 3D item has a Hold panel: declare how it is held, and tune the style for the whole project', async () => {
   page.overrides['/api/project/quiet/hold'] = {hold: {style: 'aim', front: '-z', top: '+y'}};
   page.overrides['/api/project/quiet/hold-style'] = {style: 'aim', tweaks: {}, recomputed: ['ruby']};
-  const panel = row('ruby').querySelector('.hold-panel'); assert.ok(panel, 'the Hold panel'); assert.match(panel.querySelector('summary').textContent, /not declared/);
-  panel.querySelector('.hold-style').value = 'aim'; panel.querySelector('.hold-front').value = '-z';
+  const panel = row('ruby').querySelector('.hold-panel'); assert.ok(panel, 'the Hold panel'); assert.match(panel.querySelector('summary').textContent, /not set yet/);
+  assert.match(panel.textContent, /1\. What kind of thing is it\?/); assert.match(panel.textContent, /2\. Which way does its front point/); assert.match(panel.textContent, /3\. How big/);
+  panel.querySelector('input[name="style-ruby"][value="aim"]').checked = true; panel.querySelector('input[name="front-ruby"][value="-z"]').checked = true;
+  panel.querySelector('.hold-size').value = '1.5';
   page.click(btnOf(panel, 'Apply')); await page.waitFor(() => posts('/hold').length === 1, 'the hold request');
-  assert.deepEqual({...posts('/hold')[0].body}, {item: 'ruby', style: 'aim', front: '-z', top: null});
+  assert.deepEqual({...posts('/hold')[0].body}, {item: 'ruby', style: 'aim', front: '-z', top: null, size: 1.5});
   await page.waitFor(() => /Held as aim, front -z/.test(page.toasts()), 'the toast');
   await page.idle(); await page.waitFor(() => page.$('#features-list .hold-style-panel'), 'the style panel');
   const sp = page.$('#features-list .hold-style-panel'); sp.querySelector('.hs-style').value = 'aim'; sp.querySelector('.hs-context').value = 'firstperson_righthand';
