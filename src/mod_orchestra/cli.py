@@ -112,12 +112,15 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
                        "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("ask", help="USER-ONLY: say what you want in your own words; a planner turns it into an ordered plan of the existing requests (coder, designer), chained")
+    a.add_argument("project"); a.add_argument("text")
     a = sub.add_parser("animate", help="USER-ONLY: ask the designer for animations on an existing model (shape and texture locked); the coder plays each one "
                        "when you say. --anim \"name|what it does|when it plays\" (add |loop for one that lasts while something holds)")
     a.add_argument("project"); g = a.add_mutually_exclusive_group(required=True)
     g.add_argument("--item"); g.add_argument("--projectile"); g.add_argument("--mob"); g.add_argument("--block")
     a.add_argument("--anim", action="append", default=[]); a.add_argument("--remove", nargs="*", default=[]); a.add_argument("--notes", default="")
     a.add_argument("--player", action="append", default=[], help='items: "name|what the player\'s body does" for an --anim of that name (Player Animation Library)')
+    a.add_argument("--no-escalate", action="store_true", help="do not send moments the code lacks to the coder first (you know the code has them)")
     a = sub.add_parser("hold", help="USER-ONLY, no agent: declare or change how a 3D item is held (style aim|wield|carry, the axis its front points to, the axis its top points to); "
                        "its model JSON and the in-hand previews are recomputed (F3+T in the game reloads it)")
     a.add_argument("project"); a.add_argument("--item", required=True); a.add_argument("--style", choices=["aim", "wield", "carry"]); a.add_argument("--front"); a.add_argument("--top")
@@ -366,6 +369,9 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "edit-model":
         from .models import set_mob_scale
         return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "ask":
+        from .ask import request_ask
+        return request_ask(store, args.project, args.text)
     if args.command == "animate":
         from .animate import request_animate
         kind = next(k for k in ("item", "projectile", "mob", "block") if getattr(args, k))
@@ -381,7 +387,7 @@ def dispatch(args: argparse.Namespace) -> object:
             if match is None or not body.strip():
                 raise InputError('--player "name|what the body does" needs an --anim with that name')
             match["player"] = body.strip()
-        return request_animate(store, args.project, kind, getattr(args, kind), anims, args.remove, args.notes)
+        return request_animate(store, args.project, kind, getattr(args, kind), anims, args.remove, args.notes, escalate=not args.no_escalate)
     if args.command == "hold":
         from .model3d import set_hold
         return set_hold(store, args.project, args.item, style=args.style, front=args.front, top=args.top, size=args.size)

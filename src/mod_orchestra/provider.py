@@ -110,10 +110,14 @@ Finish your reply with exactly one fenced block tagged `handoff` containing a JS
  "evidence": {"level": "STATIC|BUILD_PASS|BUILD_FAILED|NONE", "pointer": "<log/jar/path or note>"},
  "risks": ["..."], "unknowns": ["..."],
  "needs_user": ["<exact craftctl command the user must run, if any>"],
+ "needs": [{"role": "coder", "what": "<what must exist that does not>", "why": "<why your task needs it>", "target": "<the item/mob/block id or card it belongs to, if any>"}],
  "next_agent": "<role or none>"}
 ```
 Status: DONE = your part is complete (list the user's next craftctl steps under needs_user);
 WAITING_USER = you cannot continue until the user acts; BLOCKED = missing information; FAILED = you could not do it.
+A limitation is work, not a stop: when what you were asked to build on does not exist yet (a mechanic, an entity, a moment the
+code never emits, a thing to animate), do not fake it and do not stop silently: report status BLOCKED with `needs` saying what
+must exist and why; the controller has it made by the right role and runs you again right after, with it in place.
 Rules: you are running with the project workspace as your current directory. Only claim BUILD_PASS if you ran
 `./gradlew build` (or `gradlew.bat build`) here and it exited 0. Never claim client/server/in-game results.
 Never run `craftctl approve-spec|request-build|decide|build|evidence|delete|release|new`; list them under

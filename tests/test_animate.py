@@ -23,7 +23,7 @@ class Item(ItemBase):
         self.dir = self.ws / model3d.DIR
 
     def ask(self, anims, remove=None):
-        return animate.request_animate(self.store, "m_mod", "item", "moon_sword", anims, remove)
+        return animate.request_animate(self.store, "m_mod", "item", "moon_sword", anims, remove, escalate=False)   # the designer side alone
 
     def anims(self):
         return json.loads((self.dir / "moon_sword.animation.json").read_text())
@@ -142,7 +142,7 @@ class Item(ItemBase):
 
     def test_cli(self):
         out = cli_dispatch(parser().parse_args(["--state-db", str(self.db), "animate", "m_mod", "--item", "moon_sword",
-                                                "--anim", "reload|the guard drops|when it reloads", "--anim", "glow|pulse|while held|loop"]))
+                                                "--anim", "reload|the guard drops|when it reloads", "--anim", "glow|pulse|while held|loop", "--no-escalate"]))
         self.assertEqual(out["anims"], ["reload", "glow"])
         req = animate.latest_request(self.store, "m_mod", out["task"])
         self.assertEqual([a["loop"] for a in req["anims"]], [False, True])
@@ -163,7 +163,8 @@ class Projectile(ItemBase):
         dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
         with self.assertRaisesRegex(InputError, "one animation"):
             animate.request_animate(self.store, "m_mod", "projectile", "acid_glob", [{"name": "a", "what": "x"}, {"name": "b", "what": "y"}])
-        tid = animate.request_animate(self.store, "m_mod", "projectile", "acid_glob", [{"name": "spin", "what": "it tumbles"}])["task"]
+        out = animate.request_animate(self.store, "m_mod", "projectile", "acid_glob", [{"name": "spin", "what": "it tumbles"}])
+        self.assertEqual(len(out["plan"]), 1, "a projectile's flight needs no code"); tid = out["task"]
         self.assertIn("animation.acid_glob.idle (loops)", self.store.task_instructions(tid))
         (d / "acid_glob.animation.json").write_text(json.dumps({"animations": {"animation.acid_glob.idle": {"loop": True, "bones": {"glob": KEY}}}}))
         out = dispatch(self.store, "m_mod", task_id=tid, provider=FakeProvider(handoff(tid)))
@@ -179,7 +180,7 @@ class Mob(MobBase):
         out = animate.request_animate(self.store, "c_mod", "mob", MOB, [
             {"name": "roar", "what": "head back, jaw open", "when": "when it first sees a player"},
             {"name": "swim", "what": "legs paddle", "when": "it is in water", "loop": True},
-            {"name": "walk", "what": "a limp"}])
+            {"name": "walk", "what": "a limp"}], escalate=False)
         a = self.anim()
         clip = {"animation_length": 1, "bones": {"head": KEY}}
         a["animations"].update({f"animation.{MOB}.roar": clip, f"animation.{MOB}.swim": {**clip, "loop": True}})

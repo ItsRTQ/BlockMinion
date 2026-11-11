@@ -537,8 +537,11 @@ function animatePanel(p, kind, ident, title) {
     const rm = remove.value.split(",").map((x) => x.trim()).filter(Boolean);
     if (!anims.length && !rm.length) throw new Error("Describe at least one animation");
     const out = await api(`/api/project/${p.id}/animate`, { kind, ident, anims, remove: rm });
-    if (await confirmBox("Saved. Start the designer now? It only animates; the model's shape and texture are locked.", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) {
-      await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer animating…", "ok");
+    const steps = (out.plan || []).map((s, i) => `${i + 1}. ${s.role}: ${s.why}`).join("\n");
+    const chained = (out.plan || []).length > 1;
+    if (await confirmBox((chained ? "Some of these moments do not exist in the code yet, so a coder makes them first and the designer follows:\n\n" : "Saved. ") + steps + "\n\nStart now? Each step is an agent run.",
+                         { title: chained ? "Start the plan" : "Start the designer", ok: chained ? "Start the plan" : "Start designer", cancel: "Not now" })) {
+      await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast(chained ? "Coder started; the designer follows when it is done." : "Designer animating…", "ok");
     }
     await refreshProject(p.id);
   }, "primary"));
@@ -741,6 +744,19 @@ async function renderFeatures(p) {
   if (bar && !bar.querySelector("#restore-sprites-btn")) { const rb = btn("Restore designer icons", async () => { const out = await api(`/api/project/${p.id}/restore-sprites`, {}); toast(`Restored ${out.installed.length} file(s)${Object.keys(out.rejected || {}).length ? "; rejected: " + Object.keys(out.rejected).join(", ") : ""}. Rebuild to apply.`, "ok"); await openProject(p.id); }, "secondary"); rb.id = "restore-sprites-btn"; bar.append(rb); }
   try { const sheet = await api(`/api/project/${p.id}/contact-sheet`); const box = qs("sheet-box"); if (sheet.path) { box.classList.remove("hidden"); qs("sheet-img").src = fileUrl(p.id, sheet.path); qs("sheet-preview").onclick = () => openLightbox(qs("sheet-img").src, "sprites contact sheet"); } else box.classList.add("hidden"); } catch {}
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  if (generated) {   // Ask: say what you want; a planner turns it into the ordered requests
+    const ask = el("div", null, "ask-box"); const ta = el("textarea"); ta.className = "ask-text"; ta.rows = 2; ta.maxLength = 2000;
+    ta.placeholder = "What do you want next? In your words: a behaviour, a model, an animation, a fix... A planner turns it into the steps (coder, designer) in the right order.";
+    ask.append(el("div", "Ask", "eyebrow"), ta, btn("Plan it", async () => {
+      const text = ta.value.trim(); if (!text) throw new Error("Say what you want first");
+      const out = await api(`/api/project/${p.id}/ask`, { text });
+      if (await confirmBox("The planner reads the project and writes the plan (one agent run); the steps then appear in Now and start in order. Start it?", { title: "Plan it", ok: "Start planner", cancel: "Not now" })) {
+        await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Planner working… the plan's tasks appear in Now.", "ok");
+      }
+      ta.value = ""; await refreshProject(p.id);
+    }, "primary"));
+    list.append(ask);
+  }
   if (generated && feats.some((f) => f.model3d && f.kind !== "block")) {   // at least one 3D item: offer the project-wide hold tuning
     try { list.append(holdStylePanel(p, await api(`/api/project/${p.id}/hold-styles`))); } catch (e) { /* the items still render */ }
   }
@@ -1117,7 +1133,7 @@ function openCard(p, cid) {
             const v = await promptBox("How does it move while it flies? (the designer animates it; its shape and texture stay as they are)", "", { title: `Animate ${pid3}`, ok: "Animate", multiline: true, required: true });
             if (v == null) return;
             const out = await api(`/api/project/${p.id}/animate`, { kind: "projectile", ident: pid3, anims: [{ name: "flight", what: v.trim() }] });
-            if (await confirmBox("Saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Designer animating…", "ok"); }
+            if (await confirmBox("Saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await api(`/api/project/${p.id}/dispatch`, { task: out.first || out.task }); toast("Designer animating…", "ok"); }
           }, "mini secondary"));
           box.append(line);
         }
