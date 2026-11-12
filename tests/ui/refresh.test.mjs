@@ -87,3 +87,12 @@ test('an Environment view that cannot reach the server says so instead of failin
 });
 
 test('no refresh path used a native popup', () => { assert.deepEqual(page.popups, []); });
+
+test('a refresh with SVG elements on screen (the Map) does not throw on the scroll guard', async () => {
+  await page.eval('openProject("infect")'); page.click(page.$('.tab[data-tab="map"]'));
+  await page.waitFor(() => page.$('#map-svg'), 'the map');
+  page.$('#map-svg').innerHTML = '<defs class="x y"></defs><g class="node"><rect/></g>';
+  const svg = page.$('#map-svg defs'); Object.defineProperty(svg, 'scrollTop', {value: 3, configurable: true});   // a scrolled SVG node, as the guard sees it
+  let threw = null; try { await page.eval('Guard.snapshot()'); } catch (e) { threw = e; }
+  assert.equal(threw, null, 'Guard.snapshot must not throw on SVG class names');
+});

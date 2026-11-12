@@ -101,7 +101,9 @@ const Guard = (() => {
     if (document.querySelector(".lightbox:not(.hidden)")) return true;
     return inField() || Date.now() - lastTyped < 8000;
   }
-  const keyOf = (n) => n.id || `${n.tagName}.${n.className}#${[...document.querySelectorAll(`${n.tagName}${n.className ? "." + String(n.className).trim().split(/\s+/).join(".") : ""}`)].indexOf(n)}`;
+  // SVG elements have an SVGAnimatedString className: read the class attribute, escape it, and never let a bad selector throw
+  const classes = (n) => (n.getAttribute && n.getAttribute("class") || "").trim().split(/\s+/).filter(Boolean).map((c) => (window.CSS && CSS.escape ? CSS.escape(c) : c));
+  const keyOf = (n) => { if (n.id) return n.id; const sel = `${n.tagName.toLowerCase()}${classes(n).map((c) => "." + c).join("")}`; let i = -1; try { i = [...document.querySelectorAll(sel)].indexOf(n); } catch (e) { /* unkeyable: no scroll restore for it */ } return `${sel}#${i}`; };
   const detailsKey = (d) => d.id || (d.querySelector("summary") ? d.querySelector("summary").textContent.trim() : "");
   function snapshot() {
     const scopes = [...document.querySelectorAll("#view-project *")].filter((n) => n.scrollTop > 0).map((n) => [keyOf(n), n.scrollTop]);
