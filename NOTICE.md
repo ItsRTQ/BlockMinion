@@ -1,6 +1,6 @@
 # NOTICE
 
-**BlockMinion** (formerly distributed as "Minecraft Mod Orchestra"; repository `ItsRTQ/Minecraft-Modding-Minion`).
+**BlockMinion** (formerly distributed as "Minecraft Mod Orchestra" in the repository `ItsRTQ/Minecraft-Modding-Minion`, now `ItsRTQ/BlockMinion`).
 
 Copyright (c) 2026 ItsRTQ (HCoding). Licensed under the BlockMinion Source-Available License (see `LICENSE`).
 This file must be kept with every copy and Derivative Version.
