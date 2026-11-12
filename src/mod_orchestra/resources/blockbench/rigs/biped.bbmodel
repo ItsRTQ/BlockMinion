@@ -1019,6 +1019,20 @@
       ]
     },
     {
+      "uuid": "bc8d9ce0-7896-4c14-8456-335634c4bffc",
+      "name": "held_item",
+      "origin": [
+        -6,
+        12,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
       "uuid": "35eb60af-8689-4570-831e-6e7fe976c24c",
       "name": "right_leg",
       "origin": [
@@ -1099,6 +1113,11 @@
                   "uuid": "643e6866-11f4-4488-8eec-71eeccd3fc74",
                   "isOpen": true,
                   "children": [
+                    {
+                      "uuid": "bc8d9ce0-7896-4c14-8456-335634c4bffc",
+                      "isOpen": true,
+                      "children": []
+                    },
                     "d965aeaa-b30d-4da1-8750-1f587d9c5ba6"
                   ]
                 },

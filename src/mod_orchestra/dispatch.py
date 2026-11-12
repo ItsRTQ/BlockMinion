@@ -85,8 +85,13 @@ def build_envelope(store: Store, pid: str, task: dict) -> TaskEnvelope:
         from .models import MODEL_INSTRUCTIONS, theme_block
         from .feedback import feedback_context
         from .models import rig_block
+        from .modeledit import pending_edit, edit_brief
         mob = task["id"].split(":MODEL:")[1]
-        extra = MODEL_INSTRUCTIONS.replace("<mob>", mob) + rig_block(store, pid, mob, Path(proj["root"])) + theme_block(store, pid) + feedback_context(store, pid, mob)
+        edit = pending_edit(store, pid, mob)
+        if edit is not None:   # a modification: a short brief on the existing model, never the new-design brief
+            extra = edit_brief(store, pid, mob, edit)
+        else:
+            extra = MODEL_INSTRUCTIONS.replace("<mob>", mob) + rig_block(store, pid, mob, Path(proj["root"])) + theme_block(store, pid) + feedback_context(store, pid, mob)
     specific = store.task_instructions(task["id"])
     if specific:
         extra = extra + "\n\n## Task-specific instructions\n" + specific
@@ -136,6 +141,11 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         except (InputError, StateError) as exc:
             store.add_event(pid, "controller", "CARD_UPDATE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
         _reopen_build(store, pid)
+    if (":FEATURE:" in task["id"] or ":CHANGE:" in task["id"] or ":ARTPASS:" in task["id"]) and status == "DONE":
+        from .artreq import after_coder_done   # what the coder made visible gets painted: ART (designer), then ARTWIRE (coder)
+        art = after_coder_done(store, pid, task["id"], h)
+        if art:
+            h = h | {"art": art}
     if ":ARMOR3D:" in task["id"] and status == "DONE":
         from .armor3d import install_armor3d
         from .validation import InputError
@@ -164,6 +174,85 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"armor": ad}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ad["installed"]))
+    if ":ASK:" in task["id"] and status == "DONE":
+        from .ask import apply_plan
+        from .validation import InputError
+        try:
+            h = h | {"plan_applied": apply_plan(store, pid, task["id"], h)}
+        except (InputError, StateError) as exc:
+            error = f"plan not applied: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+    if ":BLOCK3D:" in task["id"] and status == "DONE":
+        from .blocks3d import install_block3d
+        from .validation import InputError
+        ident = task["id"].split(":BLOCK3D:")[1].split(":")[0]
+        try:
+            b3 = install_block3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D block model rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"block3d": b3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(b3["installed"]))
+    if ":ANIMATE:" in task["id"] and status == "DONE":
+        from .animate import install_animate
+        from .validation import InputError
+        try:
+            an = install_animate(store, pid, task["id"], run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = str(exc) if str(exc).startswith("animation delivery refused") else f"animation delivery refused: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"animate": an}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(an["installed"]))
+    if ":PROJ3D:" in task["id"] and status == "DONE":
+        from .model3d import install_proj3d
+        from .validation import InputError
+        ident = task["id"].split(":PROJ3D:")[1].split(":")[0]
+        try:
+            p3 = install_proj3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D projectile model rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"proj3d": p3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(p3["installed"]))
+    if ":ITEM3D:" in task["id"] and status == "DONE":
+        from .model3d import install_item3d
+        from .validation import InputError
+        ident = task["id"].split(":ITEM3D:")[1].split(":")[0]
+        try:
+            i3 = install_item3d(store, pid, task["id"], ident, run_id=run["id"], actor=f"agent:{task['role']}", hold=h.get("hold") if isinstance(h.get("hold"), dict) else None)
+        except (InputError, StateError, OSError) as exc:
+            error = f"3D item model rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"item3d": i3}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(i3["installed"]))
+    if ":ART:" in task["id"] and status == "DONE":
+        from .artreq import install_art
+        from .validation import InputError
+        try:
+            ai = install_art(store, pid, task["id"], run_id=run["id"], actor=f"agent:{task['role']}")
+        except (InputError, StateError, OSError) as exc:
+            error = str(exc)
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"art_installed": ai}
+        h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ai["installed"]))
     if ":SPRITES:" in task["id"] and status == "DONE":
         from .models import install_sprites
         from .validation import InputError
@@ -183,9 +272,18 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
     if ":MODEL:" in task["id"] and status == "DONE":
         from .models import install_model
         from .validation import InputError
+        from .modeledit import pending_edit, check_pending
         mob_id = task["id"].split(":MODEL:")[1]
+        edit = pending_edit(store, pid, mob_id)
         try:
+            if edit is not None:
+                verdict = check_pending(store, pid, mob_id)
+                if verdict["violations"]:
+                    raise InputError("the modification touched what was not asked: " + "; ".join(verdict["violations"][:8]))
             installed = install_model(store, pid, mob_id, run_id=run["id"], actor=f"agent:{task['role']}")
+            if edit is not None:
+                store.add_event(pid, "controller", "MODEL_EDIT_APPLIED", {"mob": mob_id, "edit": edit["edit"], "run": run["id"],
+                                                                          "added_bones": verdict["added_bones"], "changed_bones": verdict["changed_bones"]})
         except (InputError, StateError, OSError) as exc:
             error = f"model deliverables rejected: {exc}"
             store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
@@ -194,6 +292,12 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"model": installed}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(installed["installed"]))
+        try:
+            from .feedback import record_design_notes
+            if edit is None:   # a modification explores nothing: the notes of the design it modifies stay the current ones
+                record_design_notes(store, pid, mob_id, h, run["id"])
+        except Exception:
+            pass   # the notes are a thinking aid for the user: they must never fail a model
         _reopen_build(store, pid)
     accepted = None
     if status in ("DONE", "WAITING_USER"):
@@ -221,11 +325,17 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
     elif status == "BLOCKED":
         store.set_task_state(task["id"], worker, version, "BLOCKED", error="; ".join(h["unknowns"] + h["risks"])[:500])
         task_state = "BLOCKED"
+        from .escalate import from_needs   # a limitation is work: what the agent needs is made by the right role, and the agent waits behind it
+        esc = from_needs(store, pid, task, h)
+        if esc and esc.get("waiting"):
+            h = h | {"escalation": esc}
     else:
         store.set_task_state(task["id"], worker, version, "FAILED", error="worker reported FAILED: " + "; ".join(h["risks"])[:400])
         task_state = "FAILED"
     store.finish_run(run["id"], state=task_state, exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
                      session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=None)
+    if h.get("escalation", {}).get("waiting"):
+        task_state = "BACKLOG"   # parked behind the tasks that make what it needs; released on its own when they are DONE
     outcome = {"task_state": task_state, "handoff": h}
     # A worker that observed a failing gradle build (its own or the project's) hands the failure to the repair loop.
     if h.get("evidence", {}).get("level") == "BUILD_FAILED" or (status == "FAILED" and ":REPAIR:" in task["id"]):
@@ -329,6 +439,18 @@ def reconcile_stale_runs(store: Store, pid: str) -> list[str]:
 
 
 MAX_AUTO_RETRIES = 1
+
+
+def dispatch_with_retry(store: Store, pid: str, *, task_id: str | None = None, provider: AgentProvider | None = None) -> dict:
+    """One dispatch and, when the controller rejected the worker's output for a format reason and reopened the task with the reason in its packet, the
+    retry that Autopilot would also make: the same rule for the UI's Run agent button, so a rejected proposal is fixed by the agent, not by you pressing it again."""
+    out = dispatch(store, pid, task_id=task_id, provider=provider)
+    for _ in range(MAX_AUTO_RETRIES):
+        retry = out.get("auto_retry")
+        if not retry:
+            break
+        out = dispatch(store, pid, task_id=retry["task"], provider=provider)
+    return out
 HUMAN_NEEDED = ("WAITING_USER", "BLOCKED", "FAILED")
 
 
@@ -405,6 +527,11 @@ def orchestrate(store: Store, pid: str, *, max_runs: int = 5, max_cost_usd: floa
         from .workflow import plan_project
         plan_project(store, pid)
     stale = reconcile_stale_runs(store, pid)
+    try:
+        from .models import ensure_initial_sprites
+        ensure_initial_sprites(store, pid)   # projects generated before icons were designed automatically
+    except Exception:
+        pass
     policy = autopilot_policy(store, pid)
     runs, cost, gates = [], 0.0, []
     reason = "no READY tasks"
@@ -424,6 +551,10 @@ def orchestrate(store: Store, pid: str, *, max_runs: int = 5, max_cost_usd: floa
         out = dispatch(store, pid, provider=provider)
         runs.append({k: out.get(k) for k in ("run", "task", "role", "task_state", "cost_usd", "duration_s", "error")})
         cost += float(out.get("cost_usd") or 0.0)
+        if ":SPRITES:" in out["task"] and out["task_state"] != "DONE":
+            # Icons are cosmetic: a failed or half-done icon run never stops the build and the game test. It is recorded and the user redesigns from the UI.
+            store.add_event(pid, "controller", "SPRITES_NOT_DONE", {"task": out["task"], "state": out["task_state"], "error": str(out.get("error") or "")[:300]})
+            continue
         if out["task_state"] == "DONE" and ":REPAIR:" in out["task"]:
             if policy["build"]:
                 continue  # Autopilot will run the trusted build itself at the gate

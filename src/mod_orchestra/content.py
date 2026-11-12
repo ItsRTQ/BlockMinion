@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .fabric import accept_changes, loot_table_json, placeholder_png, feature_texture
 from .textures import tinted_item_png, armor_layer_png, material_colors, palette_from_png
-from .spec import Feature, check_java_name_collisions, read_spec, validate_spec_content
+from .spec import Feature, TOOL_KINDS, check_java_name_collisions, read_spec, validate_spec_content
 from .state import Store, StateError
 from .validation import InputError, normalize_id
 
@@ -64,7 +64,165 @@ def list_features(store: Store, pid: str) -> list[dict]:
         tex = f"src/main/resources/assets/{pid}/textures/item/{f['identifier']}.png"
         out.append({"kind": "food", "identifier": f["identifier"], "label": f["label"], "texture": tex if (ws / tex).is_file() else None,
                     "food": {"nutrition": f["nutrition"], "saturation": f["saturation"], "effects": f.get("effects", [])}, "recipes": [], "drop": None})
+    from .model3d import items3d
+    from .blocks3d import blocks3d
+    in3d = items3d(ws, pid) | blocks3d(ws, pid)
+    from .model3d import DIR as _ITEMS3D, _index as _m3d_index
+    _, m3d = _m3d_index(ws, pid)
+    holds = {i.get("id"): i.get("hold") for i in m3d.get("items", []) if isinstance(i, dict)}
+    for row in out:   # a 3D model can be asked for any item, tool, weapon, food or block (not armor pieces)
+        row["can3d"] = row["kind"] in ("item", "tool", "food", "block")
+        row["model3d"] = row["identifier"] in in3d
+        if row["model3d"] and row["kind"] != "block":   # how it is held, and the in-hand previews the controller rendered
+            row["hold"] = holds.get(row["identifier"])
+            row["hold_previews"] = [f"{_ITEMS3D}/{row['identifier']}_{tag}_preview.png" for tag in ("hand", "firstperson")
+                                    if (ws / _ITEMS3D / f"{row['identifier']}_{tag}_preview.png").is_file()]
     return out
+
+
+def list_art(store: Store, pid: str) -> dict:
+    """Every entity's effective art direction, keyed "kind:identifier" (item, block, tool, armor, food, set, mob): concept, tags, silhouette, source."""
+    from .art import effective_art
+    spec = read_spec(store.project(pid)["spec"])
+    keys = [(f.kind, f.identifier, f.label) for f in spec.features] + [("food", f.identifier, f.label) for f in spec.foods] + [("mob", m.identifier, m.label) for m in spec.mobs]
+    for m in spec.materials:
+        keys.append(("set", m.identifier, m.label))
+        keys += [("tool" if k in TOOL_KINDS else "armor", f"{m.identifier}_{k}", f"{m.label} {k}") for k in tuple(m.tools) + tuple(m.armor)]
+    out = {}
+    for kind, ident, label in keys:
+        a = effective_art(spec, kind, ident)
+        out[f"{kind}:{ident}"] = {"label": label, "kind": kind, "identifier": ident, "concept": a["concept"], "tags": a["tags"], "silhouette": a["silhouette"], "source": a["source"],
+                                  "reference": a["reference"], "avoid": a["avoid"], "mood": a["mood"]}
+    return out
+
+
+def set_mood(store: Store, pid: str, kind: str, identifier: str, mood: dict) -> dict:
+    """Replace the mood dials of one entity, leaving the rest of its art direction (and whether it is derived or written) as it is. kind: item | block | food | mob | set."""
+    from .spec import Art, coerce_mood
+    proj = store.project(pid); spec = read_spec(proj["spec"]); dials = coerce_mood(mood)
+
+    def apply(art):
+        merged = replace(art or Art(), mood=dials)
+        return merged if (merged.concept or merged.tags or merged.silhouette or merged.pieces or merged.reference or merged.avoid or merged.mood) else None
+    if kind in ("item", "block"):
+        if not any(f.identifier == identifier and f.kind == kind for f in spec.features):
+            raise InputError(f"Unknown {kind} {identifier!r}")
+        new_spec = replace(spec, features=[replace(f, art=apply(f.art)) if f.identifier == identifier else f for f in spec.features])
+    elif kind == "food":
+        if not any(f.identifier == identifier for f in spec.foods):
+            raise InputError(f"Unknown food {identifier!r}")
+        new_spec = replace(spec, foods=[replace(f, art=apply(f.art)) if f.identifier == identifier else f for f in spec.foods])
+    elif kind == "mob":
+        if not any(m.identifier == identifier for m in spec.mobs):
+            raise InputError(f"Unknown mob {identifier!r}")
+        new_spec = replace(spec, mobs=[replace(m, art=apply(m.art)) if m.identifier == identifier else m for m in spec.mobs])
+    elif kind == "set":
+        if not any(m.identifier == identifier for m in spec.materials):
+            raise InputError(f"Unknown material {identifier!r}")
+        new_spec = replace(spec, materials=[replace(m, art=apply(m.art)) if m.identifier == identifier else m for m in spec.materials])
+    else:
+        raise InputError("kind must be item, block, food, mob or set")
+    if proj["status"] in GENERATED_STATUSES:
+        _save_spec(store, pid, new_spec, f"mood {kind}:{identifier}")
+    else:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"mood {kind}:{identifier}")
+    return {"kind": kind, "identifier": identifier, "mood": dials}
+
+
+def set_art(store: Store, pid: str, kind: str, identifier: str, *, concept: str = "", tags=None, silhouette: str = "", reference: str = "", avoid=None, mood=None) -> dict:
+    """Write the art direction of one entity. kind: item | block | food | mob | set (a whole tool/armor set: concept, tags, silhouette) | tool | armor (one piece of a set:
+    its own concept sentence only). Empty fields clear it. Before generation this resets the spec approval like any spec edit; afterwards it is cosmetic."""
+    from .spec import Art, coerce_art
+    proj = store.project(pid); spec = read_spec(proj["spec"])
+    tags = [t.strip() for t in (tags if isinstance(tags, (list, tuple)) else re.split(r"[,;\n]", str(tags or ""))) if t.strip()]
+    base_art = {"concept": concept, "tags": tags, "silhouette": silhouette, "reference": reference, "avoid": avoid or []}
+
+    def make(existing, extra=None):
+        """The new sheet; the mood dials are kept as they are unless the caller sends some (an empty object clears them)."""
+        return coerce_art({**base_art, **(extra or {}), "mood": mood if mood is not None else (existing.mood if existing else {})})
+    if kind in ("item", "block"):
+        if not any(f.identifier == identifier and f.kind == kind for f in spec.features):
+            raise InputError(f"Unknown {kind} {identifier!r}")
+        new_spec = replace(spec, features=[replace(f, art=make(f.art)) if f.identifier == identifier else f for f in spec.features])
+    elif kind == "food":
+        if not any(f.identifier == identifier for f in spec.foods):
+            raise InputError(f"Unknown food {identifier!r}")
+        new_spec = replace(spec, foods=[replace(f, art=make(f.art)) if f.identifier == identifier else f for f in spec.foods])
+    elif kind == "mob":
+        if not any(m.identifier == identifier for m in spec.mobs):
+            raise InputError(f"Unknown mob {identifier!r}")
+        new_spec = replace(spec, mobs=[replace(m, art=make(m.art)) if m.identifier == identifier else m for m in spec.mobs])
+    elif kind == "set":
+        mat = next((m for m in spec.materials if m.identifier == identifier), None)
+        if mat is None:
+            raise InputError(f"Unknown material {identifier!r}")
+        keep = mat.art.pieces if mat.art else {}
+        merged = make(mat.art, {"pieces": keep})
+        new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == identifier else m for m in spec.materials])
+    elif kind in ("tool", "armor"):
+        mat = next((m for m in spec.materials if identifier.startswith(m.identifier + "_") and identifier[len(m.identifier) + 1:] in tuple(m.tools) + tuple(m.armor)), None)
+        if mat is None:
+            raise InputError(f"Unknown {kind} {identifier!r}")
+        piece = identifier[len(mat.identifier) + 1:]
+        base = mat.art or Art()
+        pieces = {k: v for k, v in base.pieces.items() if k != piece}
+        if concept.strip():
+            pieces[piece] = concept.strip()
+        merged = replace(base, pieces=pieces)
+        merged = None if not (merged.concept or merged.tags or merged.silhouette or merged.pieces or merged.reference or merged.avoid or merged.mood) else merged
+        new_spec = replace(spec, materials=[replace(m, art=merged) if m.identifier == mat.identifier else m for m in spec.materials])
+    else:
+        raise InputError("kind must be item, block, food, mob, set, tool or armor")
+    if proj["status"] in GENERATED_STATUSES:
+        _save_spec(store, pid, new_spec, f"art {kind}:{identifier}")
+    else:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"art {kind}:{identifier}")
+    return {"kind": kind, "identifier": identifier, "art": list_art(store, pid)[f"{kind}:{identifier}"]}
+
+
+def set_behavior_carriers(store: Store, pid: str, behavior: str, carriers: list[str]) -> dict:
+    """Change which mobs carry a capability (the infection, a freezing touch ...). Before generation it is a spec edit (the approval is reset like any edit);
+    afterwards the spec is updated and the code follows: a coder task that has not started gets its brief rewritten with the new carriers, one that has
+    gets a change request that wires or unwires only the carriers."""
+    from .spec import behavior_id
+    proj = store.project(pid); spec = read_spec(proj["spec"])
+    b = next((x for x in spec.behaviors if behavior_id(x.title) == behavior), None)
+    if b is None:
+        raise InputError(f"Unknown behavior {behavior!r}; the project has {[behavior_id(x.title) for x in spec.behaviors]}")
+    if b.kind != "capability":
+        raise InputError(f"{b.title!r} is a mechanic, not a capability: only capabilities have carriers")
+    mobs = {m.identifier for m in spec.mobs}
+    new = list(dict.fromkeys(str(c) for c in carriers))
+    if not new or [c for c in new if c not in mobs]:
+        raise InputError(f"Carriers are one or more mobs of this project ({sorted(mobs)}), got {new}")
+    if tuple(new) == tuple(b.affects):
+        return {"behavior": behavior, "carriers": new, "changed": False, "task": None}
+    added, removed = [c for c in new if c not in b.affects], [c for c in b.affects if c not in new]
+    new_spec = replace(spec, behaviors=[replace(x, affects=tuple(new)) if x is b else x for x in spec.behaviors])
+    if proj["status"] not in GENERATED_STATUSES:
+        from .specedit import _save
+        _save(store, pid, new_spec, f"carriers of {behavior}: +{added} -{removed}")
+        return {"behavior": behavior, "carriers": new, "changed": True, "task": None, "spec_state": "DRAFT"}
+    _save_spec(store, pid, new_spec, f"carriers of {behavior}: +{added} -{removed}")
+    from .modmap import custom_cards, update_card, request_change, feature_instructions, plan_behaviors
+    card = custom_cards(store, pid).get(behavior)
+    if card is None:
+        return {"behavior": behavior, "carriers": new, "changed": True, "task": (plan_behaviors(store, pid) or [None])[0]}   # never planned: plan it now with the new carriers
+    update_card(store, pid, behavior, by="user", note=f"carriers: +{added} -{removed}", derived_from=new)
+    task_id = f"{pid}:FEATURE:{behavior}"
+    feature = next((t for t in store.tasks(pid) if t["id"] == task_id), None)
+    if feature is not None and feature["state"] in ("BACKLOG", "READY"):
+        card = custom_cards(store, pid)[behavior]
+        with store.tx() as con:
+            con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(feature_instructions(card, kind="capability", carriers=new))))
+        return {"behavior": behavior, "carriers": new, "changed": True, "task": task_id, "how": "brief rewritten: the coder has not started it"}
+    request = (f"The carriers of this capability changed. " + (f"Give it to: {', '.join(added)}: wire the existing component into their entity classes and add a GameTest per new carrier. " if added else "")
+               + (f"Take it away from: {', '.join(removed)}: remove only their wiring and their GameTests. " if removed else "")
+               + f"Do not duplicate the component; the carriers are now {', '.join(new)}.")
+    out = request_change(store, pid, behavior, request)
+    return {"behavior": behavior, "carriers": new, "changed": True, "task": out["task"], "how": "change request for the coder"}
 
 
 def _save_spec(store: Store, pid: str, spec, reason: str) -> None:
@@ -307,6 +465,29 @@ TEXTURE_TARGETS = {
     "entity": ("textures/entity/{id}.png", None), "armor_layer_1": ("textures/models/armor/{id}_layer_1.png", (64, 32)),
     "armor_layer_2": ("textures/models/armor/{id}_layer_2.png", (64, 32)),
 }
+
+
+def paint_mob_skin(store: Store, pid: str, mob: str, recipe: dict, *, install: bool = False) -> dict:
+    """USER-ONLY, no agent: paint models/<mob>.png from a skin recipe (what the designer's orchestra_paint_skin takes: palette, zones, surface, face, scale, seed),
+    and with `install` put it in the game as the mob's texture. This is how an already installed mob gets a new look for the price of nothing."""
+    from . import skin
+    from .models import MODEL_DIR
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", mob):
+        raise InputError("mob must be the mob identifier (snake_case)")
+    if not isinstance(recipe, dict) or "palette" not in recipe:
+        raise InputError("the recipe is an object with at least a `palette` ({\"base\": \"#rrggbb\", ...}); it may also have zones, surface, face, scale and seed")
+    models = Path(store.project(pid)["root"]) / MODEL_DIR
+    source = models / f"{mob}.bbmodel"
+    if not source.is_file():
+        raise StateError(f"models/{mob}.bbmodel does not exist: the mob's MODEL task stages its model there")
+    png, report = skin.paint_skin(json.loads(source.read_text(encoding="utf8")), palette=recipe["palette"], zones=recipe.get("zones") or [], face=recipe.get("face", {}),
+                                  scale=int(recipe.get("scale", 2)), seed=str(recipe.get("seed") or mob)[:64], surface=recipe.get("surface"))
+    (models / f"{mob}.png").write_bytes(png)
+    out = {"file": f"{MODEL_DIR}/{mob}.png", "size": report["size"], "face_check": report["face_check"], "adjusted": report["adjusted"], "installed": False}
+    if install:
+        installed = set_texture(store, pid, kind="entity", identifier=mob, png_base64=_b64.b64encode(png).decode())
+        out["installed"] = True; out["texture"] = installed
+    return out
 
 
 def set_texture(store: Store, pid: str, *, kind: str, identifier: str, png_base64: str) -> dict:

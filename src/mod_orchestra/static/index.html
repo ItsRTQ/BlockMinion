@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Minecraft Mod Orchestra</title>
+<title>BlockMinion</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -102,7 +102,7 @@
         <div class="card map-card">
           <div class="card-head map-head">
             <div><h3>Mod map</h3><p class="muted">Every feature as a card; arrows show what derives from what. Click a card for details and to request a change — the coder gets that card's files and relations, not the whole project. Drag to arrange, wheel to zoom.</p></div>
-            <div class="actions" style="margin:0"><button type="button" class="primary" id="map-new-feature">＋ New feature</button><button type="button" class="secondary" id="map-fit">Fit</button></div>
+            <div class="actions" style="margin:0"><button type="button" class="primary" id="map-new-feature">＋ New feature</button><button type="button" class="secondary" id="map-multi" title="Click several cards, then send one change to all of them">Select cards</button><button type="button" class="secondary" id="map-fit">Fit</button></div>
           </div>
           <div class="map-wrap">
             <svg id="map-svg" class="map-svg"></svg>
@@ -275,7 +275,7 @@
                 </div>
                 <div class="row">
                   <label>Behaviour <select id="am-behavior"><option value="passive">passive — wanders, never attacks</option><option value="neutral">neutral — minds its business, fights back when hurt (wolf / iron golem)</option><option value="hostile">hostile — attacks players on sight</option></select></label>
-                  <label>Body plan <select id="am-body-plan"><option value="quadruped">quadruped — four legs, head on a neck, tail (cow, wolf, deer)</option><option value="biped">biped — humanoid on the vanilla skeleton (villager, golem)</option><option value="bird">bird — wings, beak, thin legs (chicken, parrot)</option><option value="fish">fish — fins and a wagging tail (cod, eel)</option><option value="serpent">serpent — slithering segments (snake, worm)</option><option value="insect">insect — six legs, tripod gait (beetle, spider)</option></select></label>
+                  <label>Body plan <select id="am-body-plan"><option value="quadruped">quadruped — four legs, head on a neck, tail (cow, wolf, deer)</option><option value="biped">biped — humanoid on the vanilla skeleton (villager, golem)</option><option value="bird">bird — wings, beak, thin legs (chicken, parrot)</option><option value="fish">fish — fins and a wagging tail (cod, eel)</option><option value="serpent">serpent — slithering segments (snake, worm)</option><option value="insect">insect — six legs, tripod gait (beetle, spider)</option><option value="primate">primate — hunched, long arms, knuckle-walking (gorilla, chimpanzee)</option></select></label>
                   <label>Drops on death <div class="drops-field"><div id="am-drops-summary" class="muted">nothing</div><button type="button" class="secondary" id="am-drops-btn">Choose items…</button></div><small>Pick from the game's items and your mod's, with counts and chance.</small></label>
                 </div>
                 <label class="check"><input type="checkbox" id="am-spawn"><span>Spawns naturally in the world</span><small>Otherwise it only comes from its spawn egg.</small></label>
@@ -288,12 +288,13 @@
                 <div class="actions"><button class="primary" type="submit">Add mob</button><span class="muted" id="am-note"></span></div>
               </form></div></div>
 <div id="modal-sprites" class="lightbox hidden"><div class="modal">
-  <div class="modal-head"><h3>Paint icons with the designer</h3><button type="button" class="secondary mini modal-close">✕</button></div>
-  <p class="muted">A designer agent paints 16×16 pixel-art sprites by script for the items you pick and shows a contact sheet here. The controller only installs sprites that are 16×16, have a transparent background and are not a flat colour. ~$0.5–1 per run. Your own PNG upload always wins if you have art.</p>
+  <div class="modal-head"><h3>Redesign icons</h3><button type="button" class="secondary mini modal-close">✕</button></div>
+  <p class="muted">Icons are designed automatically when the mod is generated (Autopilot or Dispatch runs it). Use this to change them: pick the icons, say what should change, and the designer edits its previous work and repaints only that. ~$0.5–1 per run. Your own PNG upload always wins if you have art.</p>
   <div id="sprites-list" class="checks" style="margin-bottom:10px"></div>
-  <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all placeholders</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
-  <label>Style notes (optional) <textarea id="sprites-notes" rows="2" placeholder="e.g. deep red rubies with a pink highlight; chunky outlines like vanilla"></textarea></label>
-  <div class="actions"><button type="button" class="primary" id="sprites-go">Create task and run designer</button></div>
+  <div class="actions" style="margin:0 0 10px"><button type="button" class="secondary mini" id="sprites-all">Select all</button><button type="button" class="secondary mini" id="sprites-none">Clear</button></div>
+  <p class="muted">Each icon is painted from its art direction (the concept, visual cues and palette under every item, editable with its <b>Art</b> button). An icon that copies the stock shape of its kind, or another piece of the batch, is rejected.</p>
+  <label>What should change? (required for icons already designed) <textarea id="sprites-notes" rows="3" placeholder="e.g. the sword blade is too thin and needs a red wrap on the grip; make the helmets look more battered; keep the rest"></textarea></label>
+  <div class="actions"><button type="button" class="primary" id="sprites-go">Redesign with the designer</button></div>
 </div></div>
 <div id="modal-ench" class="lightbox hidden"><div class="modal">
   <div class="modal-head"><h3>Add an enchantment</h3><button type="button" class="secondary mini modal-close">✕</button></div>
@@ -392,6 +393,16 @@
 </div></div>
 <div id="lightbox" class="lightbox hidden"><div class="lightbox-inner"><img id="lightbox-img" alt=""><div id="lightbox-cap" class="muted"></div><button id="lightbox-close" class="secondary">Close</button></div></div>
 <div id="toast" class="toast hidden"></div>
+<div id="activity-bar" class="activity-bar hidden" aria-live="polite">
+  <div id="activity-panel" class="activity-panel hidden"></div>
+  <button id="activity-pill" class="activity-pill" type="button" aria-expanded="false" aria-controls="activity-panel"></button>
+</div>
+<div id="dlg" class="lightbox dlg hidden"><div class="modal dlg-box" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+  <div class="modal-head"><h3 id="dlg-title"></h3></div>
+  <div id="dlg-body" class="dlg-body"></div>
+  <div id="dlg-actions" class="actions dlg-actions"></div>
+</div></div>
+<script src="/kit.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

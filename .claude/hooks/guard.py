@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse guard for Minecraft Mod Orchestra (Claude Code hook; runs on Windows and POSIX).
+"""PreToolUse guard for BlockMinion (Claude Code hook; runs on Windows and POSIX).
 
 Reads the hook JSON on stdin. Exit 2 blocks the tool call and sends the message to Claude.
 Blocks:

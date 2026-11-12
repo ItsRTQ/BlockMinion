@@ -18,3 +18,26 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 - Profile migration notes for 1.21.4+: client item definitions (`assets/<ns>/items/*.json`, `minecraft:item_model`) replace `overrides`; `EntityModel<EntityRenderState>` for any vanilla `ModelPart` code; see §8 of the formats note.
 - Rig library follow-ups (jointed limbs and the attack clip landed 2026-11-04): a third joint (hand/foot) and a `death` clip with `hold_on_last_frame` + entity removal delay; UV-rectangle opacity check against the PNG in `validate_model_files`; optional `body_plan` inference from the interpreter's mob text (only with a zero-false-positive vocabulary); "import your own .bbmodel" from the UI (decided 2026-11-04: v2).
 - Animation states beyond idle/walk/attack: `run` (speed threshold), `hold` state clips with part visibility via scale 0 (carrying, sitting), and an optional `emote` one-shot the controller can trigger from a command; learned from community models on 2026-11-05.
+- Skins: patterns beyond plain zones and bands (plates, straps, scales, fur tufts), a mirror of the painter for non-head faces (snout, beak, visor), a held-item texture check, and re-painting existing mobs from the UI without a MODEL task.
+- Art direction follow-ups: variant masks per kind (several sword/axe/helmet silhouettes chosen from the tags) so the placeholders are not one template before a designer runs; art sheets for enchantments, structures, biomes and dimensions; an interpreter pass that writes sheets for projects whose spec predates them (today the derivation fills in).
+- Icons: design the icons of items added after generation automatically too (today they get the placeholder until Redesign is used), a per-project switch to turn the automatic first design off, and a before/after view of a redesign in the contact sheet.
+- Behaviors: edit or add a behavior from the Spec tab (today the answer box asks the interpreter to change it, and the Mod Map adds cards by hand after generation), a cost estimate per behavior before approving, and a spec with only behaviors (a mod with no generated content) once the generator supports an empty scaffold.
+
+## Creative freedom: what is left
+- Painter as a toolbox of generic operations (fill, noise, gradient, scatter, line) with no presets and no suggested values; today it is presets (`flesh`, `rotten`, `hide`, `cloth`) plus free hand painting.
+- Mood dials and reference images in the icons and armor redesign dialogs (today only mobs have them).
+- A way to measure how different two or three designs of the same prompt are (proportions, palette) so variety can be checked and not only hoped for.
+- Proportion dials (head size, shoulder and limb mass, hunch) over the existing body plans, if the scaffold turns out to be the main reason designs look alike. Per-bone scale (GeckoLib `GeoBone.setScaleX/Y/Z` at render time) is the cheap way in: like `Mob.scale`, it touches neither the geometry nor the skin.
+
+## Editing models after generation: what is left
+- More edits without an agent next to `edit-model --scale`: per-bone scale (above), separate width/height scale (`withScale(w, h)` in the renderer plus `EntityDimensions`), and the interpreter reading sizes from the user's words ("a giant", "tiny").
+- Install my Blockbench edits for 3D items and projectiles (export, validate without the render, install as a user revision, re-wire actions); today they can be opened but edits there do not reach the game.
+- Player animations, later: PAL's first-person mode (THIRD_PERSON_MODEL) as an alternative to fp_ parts, player animations not tied to an item (emotes, movement), and a player rig with bend helpers.
+- 3D blocks, later: a collision/selection shape that follows the model, a facing property (GeoBlockRenderer turns by FACING when the block has one), 3D block items in the inventory, and block variants (stairs, slabs) of a 3D block.
+- 3D items, later: enchantment glint on the 2D inventory icon of a 3D item, 3D block items, Modify for 3D items, an option to make every weapon 3D on the first run, hold previews in textured colour, and a left-hand preview.
+- Art for coder-made content, later: projectiles as spec content (seen and edited in Spec before generation, A of the original proposal), 3D GeckoLib projectiles and entity models requested by the coder (today only flat textures), and showing pending and painted coder art on the feature card.
+- Bring back an earlier version of a model: every version now keeps its `.bbmodel`, geo and animation; a "use this version" button would reinstall one (and a side-by-side render of before and after a modification).
+- Recolour without an agent: the texture's real palette as chips, change one colour and keep each pixel's lightness (shading and detail stay).
+- Use my model, later: per-face UV models, Molang expressions in keyframes, and a model whose bones the entity code expects under other names (held_item).
+- A general `regenerate` for projects made by an older generator: rewrite only the files whose hash is still the generator's, and hand the rest to the coder as a diff. `edit-model` applies that rule to one line of one file.
+

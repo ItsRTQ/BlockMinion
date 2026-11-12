@@ -18,7 +18,7 @@ from .doctor import inspect
 from .workflow import new_project, plan_project, approve_spec, generate_project, summary
 from .build import request_build, build_project, tail_log
 from .diagnostics import project_diagnose
-from .dispatch import dispatch, orchestrate
+from .dispatch import dispatch, dispatch_with_retry, orchestrate
 from .guidance import guidance
 from .feedback import model_gallery, file_for_ui, give_model_feedback
 from .interpreter import answer
@@ -37,6 +37,7 @@ def serve(store: Store, port: int = 8765) -> None:
 
     inflight: dict[str, dict] = {}   # pid -> {"thread", "job", "started", "result", "error"}
     inflight_lock = threading.Lock()
+    finished_jobs: list[dict] = []   # the last jobs that ended, newest last: the banner shows what finished and where to look
 
     def start_job(pid: str, job: str, fn) -> dict:
         """The UI is the user: long operations (agent runs, builds, smokes, the game client) run in a
@@ -54,6 +55,12 @@ def serve(store: Store, port: int = 8765) -> None:
                     store.add_event(pid, "controller", "JOB_ERROR", {"job": job, "error": str(exc)[:400]})
                 finally:
                     entry["finished"] = time.time()
+                    try:
+                        from .activity import finished_entry
+                        with inflight_lock:
+                            finished_jobs.append(finished_entry(store, pid, entry)); del finished_jobs[:-30]
+                    except Exception:
+                        pass   # the banner is a convenience: it must never break a job
             th = threading.Thread(target=worker, name=f"{job}-{pid}", daemon=True)
             entry["thread"] = th
             inflight[pid] = entry
@@ -68,7 +75,7 @@ def serve(store: Store, port: int = 8765) -> None:
                 "result": e.get("result") if not e["thread"].is_alive() else None, "error": e.get("error")}
 
     def start_dispatch(pid: str, task_id: str | None) -> dict:
-        return start_job(pid, "dispatch", lambda: dispatch(store, pid, task_id=task_id))
+        return start_job(pid, "dispatch", lambda: dispatch_with_retry(store, pid, task_id=task_id))
 
     def run_detail(run_id: str) -> dict:
         for p in store.projects():
@@ -119,6 +126,11 @@ def serve(store: Store, port: int = 8765) -> None:
                             "choices": [n for n in PROVIDER_NAMES if n != "fake"],
                             "available": {"claude-code": ClaudeCodeProvider().available(), "gemini-cli": GeminiCliProvider().available(),
                                           "antigravity-cli": AntigravityCliProvider().available()}}
+                if path == "/api/activity":
+                    from .activity import snapshot
+                    with inflight_lock:
+                        done = list(finished_jobs)
+                    return snapshot(store, inflight, done)
                 if path == "/api/projects": return store.projects()
                 if path.startswith("/api/run/"):
                     run_id = path.removeprefix("/api/run/")
@@ -146,6 +158,16 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "map":
                         from .modmap import mod_map
                         return mod_map(store, pid)
+                    if op == "art":
+                        from .content import list_art
+                        return list_art(store, pid)
+                    if op == "projectiles":
+                        from .model3d import projectile_assets
+                        return projectile_assets(store, pid)
+                    if op == "hold-styles":
+                        from .model3d import _index as _m3d_index
+                        from .pose import STYLES, CONTEXTS
+                        return {"styles": _m3d_index(Path(store.project(pid)["root"]), pid)[1].get("styles") or {}, "all": list(STYLES), "contexts": list(CONTEXTS)}
                     if op == "features":
                         from .content import list_features
                         return list_features(store, pid)
@@ -279,9 +301,41 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "ask":
+                        from .ask import request_ask
+                        return request_ask(store, pid, str(payload.get("text", "")))
+                    if op == "animate":
+                        from .animate import request_animate
+                        return request_animate(store, pid, str(payload.get("kind", "")), str(payload.get("ident", "")), list(payload.get("anims") or []),
+                                               [str(r) for r in payload.get("remove") or []], str(payload.get("notes", "")))
+                    if op == "reinstall-3d":
+                        from .model3d import reinstall_item3d
+                        return reinstall_item3d(store, pid, str(payload.get("item", "")))
+                    if op == "item3d":
+                        from .model3d import request_item3d
+                        return request_item3d(store, pid, str(payload.get("item", "")), str(payload.get("notes", "")))
+                    if op == "proj3d":
+                        from .model3d import request_proj3d
+                        return request_proj3d(store, pid, str(payload.get("projectile", "")), str(payload.get("notes", "")))
+                    if op == "block3d":
+                        from .blocks3d import request_block3d
+                        return request_block3d(store, pid, str(payload.get("block", "")), str(payload.get("notes", "")))
+                    if op == "hold":
+                        from .model3d import set_hold
+                        return set_hold(store, pid, str(payload.get("item", "")), style=payload.get("style"), front=payload.get("front"), top=payload.get("top"),
+                                        size=payload.get("size"))
+                    if op == "hold-style":
+                        from .model3d import set_style_tweaks
+                        return set_style_tweaks(store, pid, str(payload.get("style", "")), dict(payload.get("tweaks") or {}))
+                    if op == "item3d-estimate":
+                        from .model3d import designer_cost
+                        return designer_cost(store)
+                    if op == "art-pass":
+                        from .artreq import request_art_pass
+                        return request_art_pass(store, pid, str(payload.get("card", "")))
                     if op == "change":
                         from .modmap import request_change
-                        return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")))
+                        return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")), [str(c) for c in payload.get("cards") or []])
                     if op == "card":
                         from .modmap import update_card
                         return update_card(store, pid, str(payload.get("card", "")), by="user", description=payload.get("description"),
@@ -310,6 +364,21 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "set-texture":
                         from .content import set_texture
                         return set_texture(store, pid, kind=str(payload.get("kind", "item")), identifier=str(payload.get("identifier", "")), png_base64=str(payload.get("png_base64", "")))
+                    if op == "reference":
+                        from .references import add_reference
+                        return add_reference(store, pid, str(payload.get("mob", "")), str(payload.get("data", "")))
+                    if op == "remove-reference":
+                        from .references import remove_reference
+                        return remove_reference(store, pid, str(payload.get("mob", "")), str(payload.get("name", "")))
+                    if op == "behavior-carriers":
+                        from .content import set_behavior_carriers
+                        return set_behavior_carriers(store, pid, str(payload.get("behavior", "")), list(payload.get("carriers") or []))
+                    if op == "set-art":
+                        from .content import set_art
+                        return set_art(store, pid, str(payload.get("kind", "")), str(payload.get("identifier", "")), concept=str(payload.get("concept", "")),
+                                       tags=payload.get("tags") or [], silhouette=str(payload.get("silhouette", "")),
+                                       reference=str(payload.get("reference", "")), avoid=payload.get("avoid") or [],
+                                       mood=payload.get("mood") if isinstance(payload.get("mood"), dict) else None)
                     if op == "rename-feature":
                         from .content import rename_feature
                         return rename_feature(store, pid, str(payload.get("identifier", "")), str(payload.get("label", "")))
@@ -318,11 +387,31 @@ def serve(store: Store, port: int = 8765) -> None:
                         return remove_feature(store, pid, str(payload.get("identifier", "")))
                     if op == "open-model":
                         from .feedback import open_in_blockbench
-                        return open_in_blockbench(store, pid, str(payload.get("mob", "")))
+                        kind = "item" if payload.get("item") else "projectile" if payload.get("projectile") else "block" if payload.get("block") else "mob"
+                        return open_in_blockbench(store, pid, str(payload.get(kind, "")), kind)
+                    if op in ("model-edit", "model-edit-cancel", "model-import", "model-reinstall"):
+                        from . import modeledit
+                        import base64 as _b64m
+                        mob = str(payload.get("mob", ""))
+                        if op == "model-edit":
+                            return modeledit.request_model_edit(store, pid, mob, str(payload.get("text", "")), may_change=[str(b) for b in payload.get("may_change") or []])
+                        if op == "model-edit-cancel":
+                            return modeledit.cancel_model_edit(store, pid, mob)
+                        if op == "model-reinstall":
+                            return modeledit.reinstall_from_blockbench(store, pid, mob)
+                        try:
+                            files = {k: _b64m.b64decode(str(payload.get(k + "_base64") or ""), validate=True) for k in ("bbmodel", "png")}
+                        except ValueError:
+                            raise InputError("the files must be base64") from None
+                        return modeledit.import_model(store, pid, mob, files)
+                    if op == "mob-scale":
+                        from .models import set_mob_scale
+                        return set_mob_scale(store, pid, str(payload.get("mob", "")), payload.get("scale"))
                     if op == "mob-drops":
                         from .models import set_mob_drops
                         return set_mob_drops(store, pid, str(payload.get("mob", "")), list(payload.get("drops") or []))
-                    if op == "feedback": return give_model_feedback(store, pid, str(payload.get("mob", "")), str(payload.get("text", "")))
+                    if op == "feedback": return give_model_feedback(store, pid, str(payload.get("mob", "")), str(payload.get("text", "")), scope=str(payload.get("scope") or "all"),
+                                                   take=payload.get("take"), mood=payload.get("mood") if isinstance(payload.get("mood"), dict) else None)
                     if op == "decide":
                         store.decide_approval(payload["approval_id"], bool(payload.get("grant", True)))
                         return {"id": payload["approval_id"], "status": "GRANT" if payload.get("grant", True) else "DENY"}
@@ -342,10 +431,10 @@ def serve(store: Store, port: int = 8765) -> None:
 
         def do_GET(self):
             path = urlparse(self.path).path
-            if path in ("/", "/app.js", "/style.css"):
+            if path in ("/", "/app.js", "/kit.js", "/style.css"):
                 if self.headers.get("Host") != f"127.0.0.1:{port}":
                     return self.response({"error": "Invalid host"}, 403)
-                resource = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}[path]
+                resource = {"/": "index.html", "/app.js": "app.js", "/kit.js": "kit.js", "/style.css": "style.css"}[path]
                 raw = files("mod_orchestra").joinpath("static", resource).read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8" if path == "/" else "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")

@@ -1,10 +1,12 @@
-# Minecraft Mod Orchestra
+# BlockMinion
+
+*Formerly "Minecraft Mod Orchestra". Same tool, same `craftctl`; see [CHANGELOG.md](CHANGELOG.md).*
 
 > New here? Start with **[docs/SETUP.md](docs/SETUP.md)** — a clean machine to a verified mod, step by step.
 
 **A local-first orchestration foundation for turning Minecraft Java ideas into managed Fabric mod projects.**
 
-[![CI](https://img.shields.io/badge/CI-Python%20unit%20tests-informational)](#testing) ![Version](https://img.shields.io/badge/version-0.1.0--prealpha-yellow) ![Loader](https://img.shields.io/badge/loader-Fabric-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://img.shields.io/badge/CI-Python%20unit%20tests-informational)](#testing) ![Version](https://img.shields.io/badge/version-0.14.0--prealpha-yellow) ![Loader](https://img.shields.io/badge/loader-Fabric-blue) ![License](https://img.shields.io/badge/license-source--available%20%7C%20no%20resale-blue)
 
 > **Status: Pre-alpha, working foundation—not a finished AI mod factory.** The current executable app can collect requirements, track tasks and approvals, produce simple Fabric **item/block source**, generate deterministic 16×16 placeholder textures, validate the output, inspect the environment, and request an explicitly approved local Gradle build. It **cannot yet turn an arbitrary creative prompt into an automatically implemented, game-tested mod**. Minecraft itself was not available to run build/runtime tests in the development environment.
 
@@ -124,6 +126,49 @@ python -m unittest discover -s tests -v
 ```
 
 Tests check intake, generated JSON/PNG/file integrity, safe workspace paths, task leases, approvals, MCP tool restrictions and CLI end-to-end creation. CI does **not** run Gradle or Minecraft; that remains an explicit milestone.
+
+## License: free to use, free to fork, never for sale
+
+BlockMinion is **source-available**: the code is public, and you may use it, change it and share it for free. It is **not**
+OSI "Open Source", because of one restriction: nobody may sell the software itself. Full terms in [LICENSE](LICENSE);
+attribution and third-party notices in [NOTICE.md](NOTICE.md); names and logo rules in [TRADEMARKS.md](TRADEMARKS.md).
+
+**You may**
+- download, install and use it for anything: personal, educational, research, professional, commercial;
+- create Minecraft mods with it and **sell them**, with no royalty or fee to this project (they are yours);
+- read and modify the code, make forks and derivative versions;
+- redistribute the original or your fork, **free of charge**;
+- charge for your own work around it: installation, configuration, customization, consulting, training, support;
+- accept donations for a free fork;
+- contribute (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+**You may not**
+- sell the software, or a renamed, rebranded or lightly modified copy of it, or charge for access to it or its features;
+- present a fork as the official project or claim to be its original author;
+- remove the copyright and license notices;
+- use the project's name or logo to impersonate its maintainers.
+
+**Before this license, the project was MIT.** Everything published up to tag `v0.13.4-prealpha` stays under MIT for anyone
+who received it ([legal/MIT.txt](legal/MIT.txt)); those permissions are not revoked. The new license applies from the
+commit that introduced it onward.
+
+### Licensing FAQ
+
+- **I modified BlockMinion, added features, and give my version away for free.** Allowed. Keep `LICENSE`, `legal/MIT.txt`
+  and `NOTICE.md`, add your copyright line to your parts, give your fork its own name and say it is based on BlockMinion.
+- **Someone renames BlockMinion and sells it for $20.** Prohibited for the code covered by the new license, unless the
+  copyright holder authorizes it separately. Code they obtained under the earlier MIT releases keeps MIT permissions, which
+  do allow selling that older code; the license cannot reach back.
+- **I built an RPG mod with BlockMinion and sell it for $15.** Allowed, with nothing owed to this project. Your mod is
+  Independent Content. Minecraft's EULA, the licenses of the libraries your mod uses (Fabric, GeckoLib, Player Animation
+  Library, each MIT or Apache) and any third-party content are separate obligations of yours.
+- **I charge a customer $50 to install, configure, customize or fix BlockMinion for them.** Allowed: that is a service,
+  as long as the customer is paying for your work and could get the software itself for free.
+- **I distribute a free fork and accept donations.** Allowed, provided no payment is required to get or use it.
+- **Someone publishes a free fork but advertises themselves as the original creator.** Not allowed: `LICENSE` section 3
+  forbids misrepresenting authorship, and `TRADEMARKS.md` requires a distinct name and a truthful "based on BlockMinion".
+- **Is this legal advice?** No. The license is a custom text; its enforceability has not been tested, and it has not been
+  reviewed by a licensing body. The project recommends professional review before relying on it in a dispute.
 
 ## Project status, development and contributions
 

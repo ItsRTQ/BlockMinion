@@ -41,8 +41,49 @@ TOOLS = [
     {"name": "orchestra_project_plan", "description": "Create task DAG, once per project", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_generate_source", "description": "Generate source only for previously USER-APPROVED, empty project; no overwrite or code execution", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_footprint", "description": "Bounded Markdown project state", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
+    {"name": "orchestra_paint_skin", "description": "Designer: paint models/<mob>.png from the mob's models/<mob>.bbmodel (box-UV cubes): zone colours, face shading, edges, a head face with eyes/brows/nose/mouth of guaranteed contrast, at `scale` pixels per UV unit (default 2 = 128x128 over a 64x64 layout). Returns the face-contrast report. Only writes that PNG.", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}, "palette": {"type": "object", "description": "{base: '#rrggbb', <name>: '#rrggbb', ...}"}, "zones": {"type": "array", "description": "[{bones: ['torso','*_arm*'], color: 'name or #hex', bands: {color, every, thickness}}]; the first matching zone wins, other bones use base", "items": {"type": "object"}}, "face": {"type": "object", "description": "{eyes, pupil, mouth, brow, teeth: '#hex', nose: bool, tusks: bool, style: 'angry'|'calm'|'grim'}; pass false to leave the head unpainted"}, "surface": {"description": "default surface of every zone without its own: a preset ('flesh', 'rotten', 'hide', 'cloth') or {preset, mottle, veins, blotches, scars, grime, streaks, weave, tears: numbers, ramp: bool}; a zone may carry its own `surface`"}, "scale": {"type": "integer", "minimum": 1, "maximum": 4}, "seed": {"type": "string"}, "only_bones": {"type": "array", "items": {"type": "string"}, "description": "modifications: paint only the cubes of these bones (names or * patterns) over the current PNG, keeping every other pixel; scale must be the PNG's"}}, "required": ["project", "mob", "palette"], "additionalProperties": False}},
+    {"name": "orchestra_check_skin", "description": "Designer: measure how much the head's front face stands out in models/<mob>.png (works for any PNG, painted by hand or by orchestra_paint_skin)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
+    {"name": "orchestra_preview_hold", "description": "Designer, on a 3D item: render the player holding models/items3d/<item>.bbmodel in third person and the first-person view for a declared hold (style aim|wield|carry, front axis, top axis), and say where the grip was taken from; look at it and fix the model or the declaration before finishing", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "item": {"type": "string"}, "style": {"type": "string", "enum": ["aim", "wield", "carry"]}, "front": {"type": "string"}, "top": {"type": "string"}}, "required": ["project", "item", "style", "front"], "additionalProperties": False}},
+    {"name": "orchestra_check_model_edit", "description": "Designer, on a modification: compare models/<mob>.geo.json, .animation.json and .png with the snapshot taken before the run and list everything the install would refuse (an existing part, keyframe, clip or texture pixel that changed without being opened for change, new UV over existing texture)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
+    {"name": "orchestra_grow_texture", "description": "Designer, on a modification with no free UV room: double the texture height of models/<mob>.bbmodel and models/<mob>.png; every existing UV and pixel stays in place and the new rows are free for new parts", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}, "mob": {"type": "string"}}, "required": ["project", "mob"], "additionalProperties": False}},
+    {"name": "orchestra_check_sprites", "description": "Designer: run the creative gates on models/sprites/*.png (not the stock template of its kind, not a copy of another sprite of the set, 4+ colours) and list what would be rejected and why; repaint those and call again", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_validate_source", "description": "Static manifest + JSON verification; not a build or runtime check", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
 ]
+
+def _skin_tool(store: Store, name: str, a: dict) -> object:
+    import re
+    from . import skin
+    from .models import MODEL_DIR
+    from .validation import InputError
+    mob = str(a.get("mob", ""))
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", mob):
+        raise InputError("mob must be the mob identifier (snake_case)")
+    models = Path(store.project(a["project"])["root"]) / MODEL_DIR
+    source = models / f"{mob}.bbmodel"
+    if not source.is_file():
+        raise StateError(f"models/{mob}.bbmodel does not exist yet: the MODEL task stages the base rig there")
+    model = json.loads(source.read_text(encoding="utf8"))
+    target = models / f"{mob}.png"
+    if name == "orchestra_check_skin":
+        if not target.is_file():
+            raise StateError(f"models/{mob}.png does not exist yet")
+        report = skin.face_report(model, target.read_bytes())
+        return report or {"face": None, "note": "no `head` bone with a box-UV cube, or the PNG is not the model resolution (or a 2x/4x multiple): nothing to judge"}
+    zones = a.get("zones") or []
+    if len(zones) > 32 or len(json.dumps(a)) > 20000:
+        raise InputError("too many zones or an oversized request")
+    only = a.get("only_bones")
+    if only is not None and (not isinstance(only, list) or not only or len(only) > 64):
+        raise InputError("only_bones is a non-empty list of bone names")
+    png, report = skin.paint_skin(model, palette=a["palette"], zones=zones, face=a.get("face", {}), scale=int(a.get("scale", 2)), seed=str(a.get("seed") or mob)[:64], surface=a.get("surface"),
+                                  only_bones=only, base_png=target.read_bytes() if only is not None and target.is_file() else None)
+    tmp = target.with_suffix(".png.tmp")
+    tmp.write_bytes(png)
+    tmp.replace(target)
+    report["file"] = f"{MODEL_DIR}/{mob}.png"
+    report["next"] = f"bbmodel_geckolib_set_texture {{file: \"{mob}.bbmodel\", png_file: \"{mob}.png\", expected_revision}} then bbmodel_render to look at it"
+    return report
+
 
 def invoke(store: Store, name: str, a: dict) -> object:
     if name == "orchestra_doctor":
@@ -67,6 +108,58 @@ def invoke(store: Store, name: str, a: dict) -> object:
         return generate_project(store, a["project"])
     if name == "orchestra_footprint":
         return export_state_markdown(store, a["project"])
+    if name in ("orchestra_paint_skin", "orchestra_check_skin"):
+        return _skin_tool(store, name, a)
+    if name == "orchestra_preview_hold":
+        import re as _re
+        from . import model3d, pose
+        from .validation import InputError as _IE
+        item = str(a.get("item", ""))
+        if not _re.fullmatch(r"[a-z][a-z0-9_]{1,49}", item):
+            raise _IE("item must be the item identifier (snake_case)")
+        ws = Path(store.project(a["project"])["root"]); bb = ws / model3d.DIR / f"{item}.bbmodel"
+        if not bb.is_file():
+            raise _IE(f"models/items3d/{item}.bbmodel does not exist yet")
+        model = json.loads(bb.read_text(encoding="utf8"))
+        hold, notes = model3d.hold_for(model, True, {"style": a["style"], "front": a["front"], **({"top": a["top"]} if a.get("top") else {})})
+        disp = pose.display(model, style=hold["style"], front=hold["front"], top=hold["top"])
+        previews = model3d.hold_previews(store, a["project"], item, model, disp, hold["style"])
+        geo_f = ws / model3d.DIR / f"{item}.geo.json"
+        if geo_f.is_file():
+            from . import zfight
+            try:
+                zf = zfight.describe(zfight.find(json.loads(geo_f.read_text(encoding="utf8"))))
+            except (ValueError, KeyError, IndexError, TypeError):
+                zf = ""
+            if zf:
+                notes.append(zf + ": they flicker in the game; offset the detail by 0.05 px or merge the cubes (the controller nudges them apart on install, but fix them)")
+        lo, hi = pose.bbox(model)
+        if any(lo[i] < model3d.ITEM_BOUNDS[i][0] or hi[i] > model3d.ITEM_BOUNDS[i][1] for i in range(3)):
+            notes.append(f"the model reaches {[round(v, 1) for v in lo]}..{[round(v, 1) for v in hi]}: the install refuses anything outside -32..32 on every axis")
+        return {"hold": hold | pose.describe(model, hold["style"], hold["front"], hold["top"]), "notes": notes, "previews": previews,
+                "look_for": "the barrel/tip pointing forward, the grip inside the hand, the top up; in first person the item low and to the right"}
+    if name in ("orchestra_check_model_edit", "orchestra_grow_texture"):
+        import re as _re
+        from . import modeledit
+        mob = str(a.get("mob", ""))
+        if not _re.fullmatch(r"[a-z][a-z0-9_]{1,49}", mob):
+            from .validation import InputError as _IE
+            raise _IE("mob must be the mob identifier (snake_case)")
+        if name == "orchestra_check_model_edit":
+            return modeledit.check_pending(store, a["project"], mob)
+        if modeledit.pending_edit(store, a["project"], mob) is None:
+            raise StateError("orchestra_grow_texture is for modifications; there is none pending for this mob")
+        return modeledit.grow_texture(store, a["project"], mob)
+    if name == "orchestra_check_sprites":
+        from .spec import read_spec
+        from .spritecheck import catalogue, check_sprites
+        proj = store.project(a["project"])
+        spec, folder = read_spec(proj["spec"]), Path(proj["root"]) / "models" / "sprites"
+        known = catalogue(spec)
+        files = {p.stem: p.read_bytes() for p in sorted(folder.glob("*.png")) if p.stem in known} if folder.is_dir() else {}
+        rejected = check_sprites(spec, files)
+        return {"checked": sorted(files), "ok": [i for i in sorted(files) if i not in rejected], "rejected": rejected,
+                "missing": sorted(set(known) - set(files)), "rule": "repaint every rejected sprite with a new silhouette and call this again; the install rejects them otherwise"}
     if name == "orchestra_validate_source":
         root = Path(store.project(a["project"])["root"])
         if not (root / ".mod-orchestra" / "generation-manifest.json").is_file():

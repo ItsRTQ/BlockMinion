@@ -18,7 +18,7 @@ from .diagnostics import project_diagnose
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="craftctl", description="Minecraft Mod Orchestra: local-first Fabric starter")
+    p = argparse.ArgumentParser(prog="craftctl", description="BlockMinion: local-first Fabric starter")
     p.add_argument("--state-db", type=Path, help="Override local SQLite location (for isolated testing)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="Inspect OS/JDK/Gradle/Git/Blockbench/Minecraft; no changes")
@@ -92,15 +92,63 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("add-mob", help="USER-ONLY (before generate): add a GeckoLib mob (idle+walk, basic AI, spawn egg, loot)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
     a.add_argument("--behavior", choices=["passive", "hostile"], default="passive"); a.add_argument("--health", type=float, default=10.0)
-    a.add_argument("--body-plan", choices=["quadruped", "biped", "bird", "fish", "serpent", "insect"], default="quadruped", help="base rig the model starts from")
+    a.add_argument("--body-plan", choices=["quadruped", "biped", "bird", "fish", "serpent", "insect", "primate"], default="quadruped", help="base rig the model starts from")
+    a.add_argument("--held-item", default="", help="what the mob carries in its main hand: an item id, none, or empty = the best tool/weapon among its drops (biped only)")
     a.add_argument("--speed", type=float, default=0.25); a.add_argument("--width", type=float, default=0.8); a.add_argument("--height", type=float, default=0.9)
     a.add_argument("--attack", type=float, default=3.0, help="hostile only"); a.add_argument("--drops", nargs="*", default=None, help="local ids or minecraft:ids dropped on death")
     a.add_argument("--egg-colors", nargs=2, default=None, help="two hex colors, e.g. 8A6DD1 E6D8FF")
     a.add_argument("--spawn", nargs="*", default=None, help="natural spawning: biomes (overworld | minecraft:plains | #minecraft:is_forest ...)")
     a.add_argument("--spawn-weight", type=int, default=10); a.add_argument("--spawn-group", nargs=2, type=int, default=(1, 3), metavar=("MIN", "MAX"))
     a = sub.add_parser("remove-mob", help="USER-ONLY (before generate)"); a.add_argument("project"); a.add_argument("--id", required=True)
+    a = sub.add_parser("set-art", help="USER-ONLY: write the art direction of one entity (what the designer paints it from); empty fields clear it")
+    a.add_argument("project"); a.add_argument("--kind", required=True, choices=["item", "block", "food", "mob", "set", "tool", "armor"]); a.add_argument("--id", required=True)
+    a.add_argument("--concept", default=""); a.add_argument("--tags", nargs="*", default=[]); a.add_argument("--silhouette", default="")
+    a.add_argument("--reference", default="", help="what it should resemble, e.g. 'the Tank from Left 4 Dead'"); a.add_argument("--avoid", nargs="*", default=[], help="what it must not look like, e.g. cartoon 'bright colours'")
+    a.add_argument("--mood", nargs="*", default=None, help="dials 0..1 as name=value, e.g. grotesque=0.8 toon=0 (omit to keep the current ones; pass none to clear)")
+    a = sub.add_parser("set-carriers", help="USER-ONLY: change which mobs carry a capability behavior (before generate it resets the spec approval; after, the coder wires the change)")
+    a.add_argument("project"); a.add_argument("--behavior", required=True, help="the behavior's card id, e.g. infection"); a.add_argument("--mobs", nargs="+", required=True)
+    a = sub.add_parser("paint-skin", help="USER-ONLY, no agent: paint models/<mob>.png from a skin recipe file (palette, zones, surface, face); --install also makes it the mob's texture in the game")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--recipe", required=True, type=Path, help="a JSON file: {palette, zones?, surface?, face?, scale?, seed?}"); a.add_argument("--install", action="store_true")
+    a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
+                       "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("change", help="USER-ONLY: a change request on one or several Map cards at once (one coder task with every card's context)")
+    a.add_argument("project"); a.add_argument("--cards", nargs="+", required=True, help="card ids; the first is the main one"); a.add_argument("--request", required=True)
+    a = sub.add_parser("ask", help="USER-ONLY: say what you want in your own words; a planner turns it into an ordered plan of the existing requests (coder, designer), chained")
+    a.add_argument("project"); a.add_argument("text")
+    a = sub.add_parser("animate", help="USER-ONLY: ask the designer for animations on an existing model (shape and texture locked); the coder plays each one "
+                       "when you say. --anim \"name|what it does|when it plays\" (add |loop for one that lasts while something holds)")
+    a.add_argument("project"); g = a.add_mutually_exclusive_group(required=True)
+    g.add_argument("--item"); g.add_argument("--projectile"); g.add_argument("--mob"); g.add_argument("--block")
+    a.add_argument("--anim", action="append", default=[]); a.add_argument("--remove", nargs="*", default=[]); a.add_argument("--notes", default="")
+    a.add_argument("--player", action="append", default=[], help='items: "name|what the player\'s body does" for an --anim of that name (Player Animation Library)')
+    a.add_argument("--no-escalate", action="store_true", help="do not send moments the code lacks to the coder first (you know the code has them)")
+    a = sub.add_parser("hold", help="USER-ONLY, no agent: declare or change how a 3D item is held (style aim|wield|carry, the axis its front points to, the axis its top points to); "
+                       "its model JSON and the in-hand previews are recomputed (F3+T in the game reloads it)")
+    a.add_argument("project"); a.add_argument("--item", required=True); a.add_argument("--style", choices=["aim", "wield", "carry"]); a.add_argument("--front"); a.add_argument("--top")
+    a.add_argument("--size", type=float, help="this item's size in the hand, 0.3-3 (1 = computed)")
+    a = sub.add_parser("hold-tweak", help="USER-ONLY, no agent: fine-tune a hold style for the whole project: --context thirdperson_righthand|firstperson_righthand|ground|fixed|head "
+                       "--rotation x y z --translation x y z --scale f (offsets added to the computed pose); --clear removes the style's tweaks")
+    a.add_argument("project"); a.add_argument("--style", required=True, choices=["aim", "wield", "carry"]); a.add_argument("--context")
+    a.add_argument("--rotation", nargs=3, type=float); a.add_argument("--translation", nargs=3, type=float); a.add_argument("--scale", type=float); a.add_argument("--clear", action="store_true")
+    a = sub.add_parser("reinstall-3d", help="USER-ONLY, no agent: run a 3D item's current model through today's installer (wires actions of older installs)")
+    a.add_argument("project"); a.add_argument("--item", required=True)
+    a = sub.add_parser("make-3d", help="USER-ONLY: ask the designer for a 3D model of one item, tool, weapon or food (costs a designer run; the inventory keeps the icon)")
+    a.add_argument("project"); a.add_argument("--item"); a.add_argument("--projectile", help="a projectile the coder gave its own art")
+    a.add_argument("--block", help="a block: drawn by its model through a block entity"); a.add_argument("--notes", default="")
+    a = sub.add_parser("request-art", help="USER-ONLY: give a custom feature that borrows vanilla visuals its own art (coder lists them -> designer paints -> coder wires)")
+    a.add_argument("project"); a.add_argument("--card", required=True)
+    a = sub.add_parser("modify-model", help="USER-ONLY: ask the designer to change a mob's existing model (add a tail...) and keep everything else; the install is refused if it "
+                       "touched a part you did not open for change. --cancel drops a pending modification")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--request", default="", help="what to change, in your words")
+    a.add_argument("--may-change", nargs="*", default=[], help="existing bones it may also change (default: none, it only adds)"); a.add_argument("--cancel", action="store_true")
+    a = sub.add_parser("import-model", help="USER-ONLY, no agent: install your own .bbmodel as a mob's model (exported, validated and installed like a designer delivery); "
+                       "--from-blockbench installs the edits you saved to models/<mob>.bbmodel")
+    a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--bbmodel", type=Path); a.add_argument("--png", type=Path, help="its texture, if not embedded")
+    a.add_argument("--from-blockbench", action="store_true")
+    a = sub.add_parser("show-art", help="The effective art direction of every entity of a project (written or derived from the theme)"); a.add_argument("project")
     a = sub.add_parser("set-body-plan", help="USER-ONLY (before generate): change the base rig of existing mobs (all when --mobs is omitted); the spec returns to DRAFT")
-    a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect"]); a.add_argument("--mobs", nargs="*", default=None)
+    a.add_argument("project"); a.add_argument("--plan", required=True, choices=["quadruped", "biped", "bird", "fish", "serpent", "insect", "primate"]); a.add_argument("--mobs", nargs="*", default=None)
     a = sub.add_parser("add-material", help="USER-ONLY (before generate): a tier + tool/armor set (sword, pickaxe, axe, shovel, hoe, helmet, chestplate, leggings, boots)")
     a.add_argument("project"); a.add_argument("--id", required=True); a.add_argument("--label", required=True)
     a.add_argument("--ingredient", required=True, help="local item id or minecraft:id used for repair and recipes")
@@ -306,9 +354,88 @@ def dispatch(args: argparse.Namespace) -> object:
             from .spec import Mob, coerce_spawn
             return add_mob_after_generation(store, args.project, Mob(identifier=args.id, label=args.label, behavior=args.behavior, health=args.health,
                                                                      speed=args.speed, width=args.width, height=args.height, attack_damage=args.attack,
-                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn), body_plan=args.body_plan))
+                                                                     drops=tuple(args.drops or ()), egg_colors=colors or (0x8A6DD1, 0xE6D8FF), spawn=coerce_spawn(spawn), body_plan=args.body_plan, held_item=args.held_item))
         return add_mob(store, args.project, identifier=args.id, label=args.label, behavior=args.behavior, health=args.health, speed=args.speed,
-                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn, body_plan=args.body_plan)
+                       width=args.width, height=args.height, attack_damage=args.attack, drops=args.drops, egg_colors=colors, spawn=spawn, body_plan=args.body_plan, held_item=args.held_item)
+    if args.command == "set-art":
+        from .content import set_art
+        return set_art(store, args.project, args.kind, args.id, concept=args.concept, tags=args.tags, silhouette=args.silhouette, reference=args.reference, avoid=args.avoid,
+                       mood=None if args.mood is None else {k.strip(): float(v) for k, v in (p.split("=", 1) for p in args.mood)})
+    if args.command == "set-carriers":
+        from .content import set_behavior_carriers
+        return set_behavior_carriers(store, args.project, args.behavior, args.mobs)
+    if args.command == "paint-skin":
+        from .content import paint_mob_skin
+        import json as _json
+        return paint_mob_skin(store, args.project, args.mob, _json.loads(args.recipe.read_text(encoding="utf8")), install=args.install)
+    if args.command == "edit-model":
+        from .models import set_mob_scale
+        return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "change":
+        from .modmap import request_change
+        return request_change(store, args.project, args.cards[0], args.request, args.cards[1:])
+    if args.command == "ask":
+        from .ask import request_ask
+        return request_ask(store, args.project, args.text)
+    if args.command == "animate":
+        from .animate import request_animate
+        kind = next(k for k in ("item", "projectile", "mob", "block") if getattr(args, k))
+        anims = []
+        for spec_ in args.anim:
+            parts = [x.strip() for x in spec_.split("|")]
+            if len(parts) < 2:
+                raise InputError('--anim "name|what it does|when it plays[|loop]"')
+            anims.append({"name": parts[0], "what": parts[1], "when": parts[2] if len(parts) > 2 else "", "loop": len(parts) > 3 and parts[3].lower() == "loop"})
+        for spec_ in args.player:
+            name, _, body = spec_.partition("|")
+            match = next((x for x in anims if x["name"] == name.strip()), None)
+            if match is None or not body.strip():
+                raise InputError('--player "name|what the body does" needs an --anim with that name')
+            match["player"] = body.strip()
+        return request_animate(store, args.project, kind, getattr(args, kind), anims, args.remove, args.notes, escalate=not args.no_escalate)
+    if args.command == "hold":
+        from .model3d import set_hold
+        return set_hold(store, args.project, args.item, style=args.style, front=args.front, top=args.top, size=args.size)
+    if args.command == "hold-tweak":
+        from .model3d import set_style_tweaks, style_tweaks
+        ws = Path(store.project(args.project)["root"])
+        current = {} if args.clear else style_tweaks(ws, args.project, args.style)
+        if args.context and not args.clear:
+            t = dict(current.get(args.context) or {})
+            if args.rotation: t["rotation"] = args.rotation
+            if args.translation: t["translation"] = args.translation
+            if args.scale: t["scale"] = args.scale
+            current[args.context] = t
+        return set_style_tweaks(store, args.project, args.style, current)
+    if args.command == "reinstall-3d":
+        from .model3d import reinstall_item3d
+        return reinstall_item3d(store, args.project, args.item)
+    if args.command == "make-3d":
+        from .model3d import request_item3d, request_proj3d
+        if sum(bool(x) for x in (args.item, args.projectile, args.block)) != 1:
+            raise InputError("give --item, --projectile or --block (one)")
+        if args.block:
+            from .blocks3d import request_block3d
+            return request_block3d(store, args.project, args.block, args.notes)
+        return request_proj3d(store, args.project, args.projectile, args.notes) if args.projectile else request_item3d(store, args.project, args.item, args.notes)
+    if args.command == "request-art":
+        from .artreq import request_art_pass
+        return request_art_pass(store, args.project, args.card)
+    if args.command == "modify-model":
+        from . import modeledit
+        if args.cancel:
+            return modeledit.cancel_model_edit(store, args.project, args.mob)
+        return modeledit.request_model_edit(store, args.project, args.mob, args.request, may_change=args.may_change)
+    if args.command == "import-model":
+        from . import modeledit
+        if args.from_blockbench:
+            return modeledit.reinstall_from_blockbench(store, args.project, args.mob)
+        if not args.bbmodel:
+            raise InputError("give --bbmodel <file> (or --from-blockbench)")
+        return modeledit.import_model(store, args.project, args.mob, {"bbmodel": args.bbmodel.read_bytes(), "png": args.png.read_bytes() if args.png else b""})
+    if args.command == "show-art":
+        from .content import list_art
+        return list_art(store, args.project)
     if args.command == "remove-mob":
         from .specedit import remove_mob
         return remove_mob(store, args.project, args.id)

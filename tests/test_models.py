@@ -88,6 +88,16 @@ class Deliverables(Base):
         self.assertEqual(out["handoff"]["model"]["bones"], sorted(b["name"] for b in recipe("quadruped")["bones"]))
         self.assertTrue((self.models / "sky_critter.bbmodel").is_file(), "editable source stays in models/")
 
+    def test_a_mob_that_holds_a_weapon_needs_the_held_item_bone(self):
+        quad = placeholder_geo(Mob(identifier="sky_critter", label="x"))            # quadruped rig: no held_item bone
+        self.deliver(geo=quad)
+        validate_model_files(self.ws, "sky_critter")                                   # nothing is held: fine
+        with self.assertRaisesRegex(InputError, "lacks the `held_item` bone"):
+            validate_model_files(self.ws, "sky_critter", needs_held_item=True)
+        biped = Mob(identifier="sky_critter", label="x", body_plan="biped")
+        self.deliver(geo=placeholder_geo(biped), anim=placeholder_animation(biped))
+        validate_model_files(self.ws, "sky_critter", needs_held_item=True)             # the biped rig carries it
+
     def test_missing_or_wrong_deliverables_fail_the_task_with_reason(self):
         out = dispatch(self.store, "c_mod", task_id="c_mod:MODEL:sky_critter", provider=FakeProvider(handoff("c_mod:MODEL:sky_critter")))
         self.assertEqual(out["task_state"], "FAILED"); self.assertIn("deliverables missing", out["error"])
@@ -138,7 +148,7 @@ class VendoredServer(unittest.TestCase):
 
     def test_server_has_no_dependencies_and_no_network_or_exec(self):
         pkg = json.loads((SAFE_DIR / "package.json").read_text())
-        self.assertFalse(pkg.get("dependencies")); self.assertEqual(pkg.get("license"), "MIT")
+        self.assertFalse(pkg.get("dependencies")); self.assertEqual(pkg.get("license"), "SEE LICENSE IN LICENSE", "the vendored server is licensed with the repository (LICENSE), no longer MIT on its own")
         src = "\n".join(p.read_text(encoding="utf8") for p in (SAFE_DIR / "src").glob("*.mjs"))
         for bad in ("child_process", "fetch(", "new Function", "node:http", "node:net", "eval("):
             self.assertNotIn(bad, src, bad)

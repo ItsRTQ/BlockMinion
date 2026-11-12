@@ -67,7 +67,7 @@ def guidance(store: Store, pid: str) -> dict:
 
     if stage == "idea":
         step("Let the interpreter propose a spec from your idea", "agent", action="dispatch", payload={"task": f"{pid}:SPEC"},
-             detail="One bounded worker reads the idea and proposes items, blocks, recipes, drops, a tab and mobs. It may ask up to 3 questions.")
+             detail="One bounded worker reads the idea and proposes the content (items, blocks, tool and armor sets, foods, mobs and their body plans), an art direction for each, and the behaviors (mechanics such as infection or projectiles) the coder will build after generation. It may ask up to 3 questions; you approve the result.")
         step("…or write the idea in grammar form", "user", command="craftctl new … --idea \"items: a, b; blocks: c; mobs: d; tab: Label\"")
     elif stage == "spec":
         for q in questions:
@@ -139,8 +139,8 @@ def guidance(store: Store, pid: str) -> dict:
             steps.insert(0, {"label": f"Dispatch the designer to paint worn armor ({t['id'].split(':ARMOR:')[1]})", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Paints both armor layers in the mod's theme, renders them worn on the player template, installs. ~$1."})
         elif ":SPRITES:" in t["id"]:
-            steps.insert(0, {"label": f"Dispatch the designer to paint sprites ({t['id']})", "who": "agent", "action": "dispatch",
-                             "payload": {"task": t["id"]}, "command": None, "detail": "Paints 16×16 icons by script and a contact sheet; the controller validates and installs. ~$0.5–1."})
+            steps.append({"label": f"Dispatch the designer to paint the icons ({t['id']})", "who": "agent", "action": "dispatch",
+                          "payload": {"task": t["id"]}, "command": None, "detail": "Designs every icon from its art direction (and the worn-armor layers) by script; the controller rejects copies of the stock shapes and installs the rest. Autopilot runs it by itself. ~$0.5–1."})   # cosmetic: never ahead of an approval, a build or a model
         elif ":MODEL:" in t["id"] and stage not in ("model",):
             steps.insert(0, {"label": f"Dispatch the designer for {t['id'].split(':MODEL:')[1]}", "who": "agent", "action": "dispatch",
                              "payload": {"task": t["id"]}, "command": None, "detail": "Authors the .bbmodel, texture, idle/walk; renders previews. ~$1–2."})

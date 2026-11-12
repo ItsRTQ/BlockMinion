@@ -48,11 +48,11 @@ def add_drop(store: Store, pid: str, *, block: str, item: str, count_min: int = 
 def add_mob(store: Store, pid: str, *, identifier: str, label: str, behavior: str = "passive", health: float = 10.0,
             speed: float = 0.25, width: float = 0.8, height: float = 0.9, attack_damage: float = 3.0,
             drops: list[str] | None = None, egg_colors: tuple[int, int] | None = None, spawn: dict | None = None,
-            body_plan: str = "quadruped") -> dict:
+            body_plan: str = "quadruped", held_item: str = "") -> dict:
     from .spec import coerce_spawn
     spec = _load(store, pid)
     mob = Mob(identifier=identifier, label=label, behavior=behavior, health=health, speed=speed, width=width, height=height,
-              attack_damage=attack_damage, drops=tuple(drops or ()), egg_colors=tuple(egg_colors or default_egg_colors(identifier, behavior)), spawn=coerce_spawn(spawn), body_plan=body_plan)
+              attack_damage=attack_damage, drops=tuple(drops or ()), egg_colors=tuple(egg_colors or default_egg_colors(identifier, behavior)), spawn=coerce_spawn(spawn), body_plan=body_plan, held_item=held_item)
     mobs = [m for m in spec.mobs if m.identifier != identifier] + [mob]
     return _save(store, pid, replace(spec, mobs=mobs), f"add mob {identifier}")
 

@@ -10,10 +10,17 @@ from .validation import safe_inside, InputError
 PREVIEW_SUFFIXES = ("_rest.png", "_walk.png", "_face.png", "_front.png", "_iso.png", "_preview.png")
 
 
+from .references import list_references
+from .modeledit import current_bones, pending_edit
+
+
 def model_gallery(store: Store, pid: str) -> list[dict]:
     """Per mob: source/export presence, installed state, previews and texture as UI-servable paths."""
     proj = store.project(pid)
     root = Path(proj["root"]); models = root / "models"; assets = root / "src/main/resources/assets" / pid
+    from .art import effective_art
+    from .spec import read_spec
+    spec_obj = read_spec(proj["spec"])
     out = []
     for m in proj["spec"].get("mobs", []):
         mid = m["identifier"]
@@ -24,20 +31,23 @@ def model_gallery(store: Store, pid: str) -> list[dict]:
         hist = root / ".mod-orchestra" / "previews"
         if hist.is_dir():
             runs = {r["id"]: r for r in store.runs(pid)}
-            for d in sorted(hist.iterdir(), key=lambda d: runs.get(d.name, {}).get("created_at", 0)):
+            for d in sorted(hist.iterdir(), key=lambda d: runs.get(d.name, {}).get("created_at") or d.stat().st_mtime):   # imports have no run
                 files = sorted(f.name for f in d.glob(f"{mid}*.png"))
                 if files:
                     r = runs.get(d.name, {})
                     versions.append({"run": d.name, "created_at": r.get("created_at"), "cost_usd": r.get("cost_usd"),
                                      "previews": [f".mod-orchestra/previews/{d.name}/{n}" for n in files]})
-        out.append({"mob": mid, "label": m["label"], "behavior": m["behavior"], "versions": versions, "drops": m.get("drops", []),
+        out.append({"mob": mid, "identifier": mid, "body_plan": m.get("body_plan") or "quadruped", "label": m["label"], "behavior": m["behavior"], "versions": versions, "drops": m.get("drops", []), "scale": float(m.get("scale") or 1.0),
+                    "bones": current_bones(store, pid, mid), "modification": _pending_view(store, pid, mid),
                     "bbmodel": (models / f"{mid}.bbmodel").is_file(), "geo": (models / f"{mid}.geo.json").is_file(),
                     "animation": (models / f"{mid}.animation.json").is_file(),
                     "texture": f"models/{mid}.png" if (models / f"{mid}.png").is_file() else None,
                     "installed_texture": f"src/main/resources/assets/{pid}/textures/entity/{mid}.png" if (assets / "textures/entity" / f"{mid}.png").is_file() else None,
                     "previews": [f"models/{n}" for n in previews],
                     "task_state": task["state"] if task else None, "task": task["id"] if task else None,
-                    "feedback": feedback[:10], "placeholder": not (models / f"{mid}.bbmodel").is_file()})
+                    "feedback": feedback[:10], "placeholder": not (models / f"{mid}.bbmodel").is_file(),
+                    "design_notes": latest_design_notes(store, pid, mid), "mood": effective_art(spec_obj, "mob", mid)["mood"],
+                    "references": list_references(store, pid, mid)})
     return out
 
 
@@ -45,26 +55,69 @@ def file_for_ui(store: Store, pid: str, relative: str) -> tuple[Path, str]:
     """Only PNG/JSON under models/ or assets/<mod>/ may be served to the local UI."""
     root = Path(store.project(pid)["root"])
     rel = relative.replace("\\", "/")
-    if not (rel.startswith("models/") or rel.startswith(f"src/main/resources/assets/{pid}/") or rel.startswith(".mod-orchestra/previews/")):
+    if not (rel.startswith("models/") or rel.startswith(f"src/main/resources/assets/{pid}/") or rel.startswith(".mod-orchestra/previews/") or rel.startswith("references/")):
         raise InputError("Not a servable path")
     path = safe_inside(root, rel)
-    if not path.is_file() or path.suffix.lower() not in (".png", ".json"):
+    if not path.is_file() or path.suffix.lower() not in (".png", ".json", ".jpg", ".webp") or (path.suffix.lower() in (".jpg", ".webp") and not rel.startswith("references/")):
         raise InputError("Not a servable file")
-    return path, ("image/png" if path.suffix.lower() == ".png" else "application/json")
+    return path, {".png": "image/png", ".json": "application/json", ".jpg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
 
 
-def give_model_feedback(store: Store, pid: str, mob: str, text: str) -> dict:
+def record_design_notes(store: Store, pid: str, mob: str, handoff: dict, run_id: str) -> dict | None:
+    """What the designer explored before building: `design_notes: {takes: [2-5 one-liners], chosen: n, why}` in its handoff. Lenient on purpose: it is
+    a thinking aid and a menu for the user's redesign, never a gate, so a missing or malformed one is simply not recorded."""
+    notes = handoff.get("design_notes") if isinstance(handoff, dict) else None
+    if not isinstance(notes, dict) or not isinstance(notes.get("takes"), list):
+        return None
+    takes = [" ".join(str(t).split())[:220] for t in notes["takes"] if str(t).strip()][:5]
+    if len(takes) < 2:
+        return None
+    chosen = notes.get("chosen")
+    chosen = chosen if isinstance(chosen, int) and not isinstance(chosen, bool) and 1 <= chosen <= len(takes) else None
+    out = {"mob": mob, "takes": takes, "chosen": chosen, "why": " ".join(str(notes.get("why") or "").split())[:400], "run": run_id}
+    store.add_event(pid, "agent:designer", "DESIGN_NOTES", out)
+    return out
+
+
+def latest_design_notes(store: Store, pid: str, mob: str) -> dict | None:
+    return next((e["payload"] for e in store.events(pid, 300) if e["kind"] == "DESIGN_NOTES" and e["payload"].get("mob") == mob), None)
+
+
+FEEDBACK_SCOPES = ("all", "shape", "skin")
+
+
+def _pending_view(store: Store, pid: str, mob: str) -> dict | None:
+    edit = pending_edit(store, pid, mob)
+    return None if edit is None else {"edit": edit["edit"], "text": edit["text"], "may_change": edit.get("may_change") or []}
+
+
+def give_model_feedback(store: Store, pid: str, mob: str, text: str = "", *, scope: str = "all", take: int | None = None, mood: dict | None = None) -> dict:
+    """USER-ONLY redesign request. Everything beyond the text is optional: `scope` (all, only the shape, only the skin), `take` (build another of the
+    designer's own explored ideas) and `mood` (new dial values, saved to the mob's art direction). At least one of them must say what should change."""
+    from .spec import coerce_mood
     text = text.strip()
-    if not text:
-        raise InputError("Feedback is empty")
+    if scope not in FEEDBACK_SCOPES:
+        raise InputError(f"scope must be one of {', '.join(FEEDBACK_SCOPES)}")
+    mood = coerce_mood(mood) if mood is not None else None
+    if not (text or scope != "all" or take is not None or mood is not None):
+        raise InputError("Say what should change: write it, pick another take, change the mood or limit it to the shape or the skin")
     proj = store.project(pid)
     if mob not in {m["identifier"] for m in proj["spec"].get("mobs", [])}:
         raise InputError(f"Unknown mob {mob!r}")
+    if take is not None:
+        notes = latest_design_notes(store, pid, mob)
+        if not notes:
+            raise InputError("This mob has no design notes yet: the designer has not explored takes for it")
+        if not isinstance(take, int) or isinstance(take, bool) or not 1 <= take <= len(notes["takes"]):
+            raise InputError(f"take is a number from 1 to {len(notes['takes'])}")
+    if mood is not None:
+        from .content import set_mood
+        set_mood(store, pid, "mob", mob, mood)
     task_id = f"{pid}:MODEL:{mob}"
     task = next((t for t in store.tasks(pid) if t["id"] == task_id), None)
     if task is None:
         raise StateError(f"No MODEL task for {mob}; plan the project first")
-    store.add_event(pid, "user", "MODEL_FEEDBACK", {"mob": mob, "text": text[:600], "task": task_id})
+    store.add_event(pid, "user", "MODEL_FEEDBACK", {"mob": mob, "text": text[:600], "task": task_id, "scope": scope, "take": take, "mood": mood})
     if task["state"] == "DONE":
         with store.tx() as con:
             con.execute("UPDATE tasks SET state='READY',version=version+1,lease_owner=NULL,lease_expiry=NULL,attempt=attempt+1 WHERE id=?", (task_id,))
@@ -75,11 +128,23 @@ def give_model_feedback(store: Store, pid: str, mob: str, text: str) -> dict:
 
 
 def feedback_context(store: Store, pid: str, mob: str) -> str:
-    notes = [e["payload"]["text"] for e in store.events(pid, 200) if e["kind"] == "MODEL_FEEDBACK" and e["payload"].get("mob") == mob]
-    if not notes:
+    from .art import mood_prose
+    events = [e["payload"] for e in store.events(pid, 200) if e["kind"] == "MODEL_FEEDBACK" and e["payload"].get("mob") == mob]
+    if not events:
         return ""
-    lines = ["", "## User feedback on the previous model (newest first) — apply it, keep what was not mentioned"]
-    lines += [f"- {n}" for n in notes[:8]]
+    notes = latest_design_notes(store, pid, mob)
+    lines = ["", "## User feedback on the previous model (newest first): apply it, keep what was not mentioned"]
+    for n in events[:8]:
+        parts = [n.get("text") or ""]
+        if n.get("scope") == "shape":
+            parts.append("[Change ONLY the shape: proportions, cubes, silhouette, animations. Keep the look of the current skin: its palette and surface, repainting only what the new UV layout requires.]")
+        elif n.get("scope") == "skin":
+            parts.append("[Change ONLY the skin and face: keep the geometry and the animations exactly as they are, repaint.]")
+        if n.get("take") and notes and n["take"] <= len(notes["takes"]):
+            parts.append(f"[The user prefers take {n['take']} from your own design notes: \"{notes['takes'][n['take'] - 1]}\". Build that one, in your own way.]")
+        if n.get("mood"):
+            parts.append(f"[The user adjusted the mood: {mood_prose(n['mood'])}.]")
+        lines.append("- " + " ".join(p for p in parts if p))
     lines += ["", f"The previous `models/{mob}.bbmodel` is still there: edit it (`bbmodel_edit`, `bbmodel_geckolib_upsert_animation` with `replace: true`) rather than starting over, unless the feedback asks for a different creature."]
     return "\n".join(lines)
 
@@ -100,15 +165,35 @@ def find_blockbench() -> str | None:
     return shutil.which("blockbench") or shutil.which("Blockbench")
 
 
-def open_in_blockbench(store: Store, pid: str, mob: str) -> dict:
-    """Open models/<mob>.bbmodel with the user's Blockbench (file association). Local, user-initiated, never run by agents."""
+def open_in_blockbench(store: Store, pid: str, name: str, kind: str = "mob") -> dict:
+    """Open a model's .bbmodel with the user's Blockbench (file association): a mob (models/<mob>.bbmodel), a 3D item
+    (models/items3d/<id>.bbmodel) or a 3D projectile (models/projectiles3d/<id>.bbmodel). Local, user-initiated, never run by agents."""
     import os, subprocess, sys
+    from . import model3d
+    from .spec import read_spec
     root = Path(store.project(pid)["root"])
-    if mob not in {m["identifier"] for m in store.project(pid)["spec"].get("mobs", [])}:
-        raise InputError(f"Unknown mob {mob!r}")
-    path = root / "models" / f"{mob}.bbmodel"
+    mob = name
+    if kind == "mob":
+        if name not in {m["identifier"] for m in store.project(pid)["spec"].get("mobs", [])}:
+            raise InputError(f"Unknown mob {name!r}")
+        path, missing = root / "models" / f"{name}.bbmodel", "No .bbmodel for this mob yet (the designer has not run)"
+    elif kind == "item":
+        if name not in model3d.candidates(read_spec(store.project(pid)["spec"])):
+            raise InputError(f"Unknown item {name!r}")
+        path, missing = root / model3d.DIR / f"{name}.bbmodel", "No 3D model for this item yet (Make it 3D first)"
+    elif kind == "projectile":
+        if name not in model3d.projectile_assets(store, pid):
+            raise InputError(f"Unknown projectile {name!r}")
+        path, missing = root / model3d.PDIR / f"{name}.bbmodel", "No 3D model for this projectile yet (Make it 3D first)"
+    elif kind == "block":
+        from . import blocks3d
+        if name not in blocks3d.candidates(read_spec(store.project(pid)["spec"])):
+            raise InputError(f"Unknown block {name!r}")
+        path, missing = root / blocks3d.BDIR / f"{name}.bbmodel", "No 3D model for this block yet (Make it 3D first)"
+    else:
+        raise InputError(f"kind must be mob, item, projectile or block, got {kind!r}")
     if not path.is_file():
-        raise InputError("No .bbmodel for this mob yet (the designer has not run)")
+        raise InputError(missing)
     app = find_blockbench()
     try:
         if os.name == "nt":
@@ -119,5 +204,5 @@ def open_in_blockbench(store: Store, pid: str, mob: str) -> dict:
             subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as exc:
         raise StateError(f"Could not open {path.name}: {exc}. Install Blockbench (https://www.blockbench.net) with the GeckoLib Animation Utils plugin, or open the file by hand.")
-    store.add_event(pid, "user", "OPENED_IN_BLOCKBENCH", {"mob": mob, "app": app})
+    store.add_event(pid, "user", "OPENED_IN_BLOCKBENCH", {"kind": kind, **({"mob": name} if kind == "mob" else {"name": name}), "app": app})
     return {"opened": str(path), "app": app, "note": None if app else "Opened with the system's default app for .bbmodel; if nothing appeared, install Blockbench."}

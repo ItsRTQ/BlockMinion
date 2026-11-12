@@ -39,10 +39,17 @@ export function gaitReport(model, clip, samples = 16) {
       return p;
     });
     const N = track.length, minY = Math.min(...track.map(p => p[1])), maxY = Math.max(...track.map(p => p[1])), range = maxY - minY;
-    const peak = track.findIndex(p => p[1] === maxY);
-    const travel = track[(peak + 1) % N][2] - track[(peak - 1 + N) % N][2];   // negative = forward
-    out.push({bone: leg.name, peak_while: travel < -1e-6 ? 'forward' : travel > 1e-6 ? 'backward' : 'turning', range: +range.toFixed(2),
-              ok: range < 0.15 || travel < -1e-6});   // a foot that barely lifts is not a gait problem; otherwise its highest point must be in the swing
+    // The highest point(s) of the foot: every sample within 3% of the range of the maximum (a limb that swings like a pendulum peaks at the end of its arc,
+    // where two neighbouring samples are nearly equally high and one travels forward while the other travels back). Where does that set of samples travel?
+    const step = i => track[(i + 1) % N][2] - track[i][2];                      // the creature faces -Z: negative = forward
+    const peaks = track.map((p, i) => i).filter(i => track[i][1] >= maxY - 0.03 * range);
+    const travel = peaks.reduce((sum, i) => sum + (track[(i + 1) % N][2] - track[(i - 1 + N) % N][2]), 0);
+    const lift = i => (track[i][1] + track[(i + 1) % N][1]) / 2 - minY, fwd = [], back = [];
+    for (let i = 0; i < N; i++) (step(i) < 0 ? fwd : back).push(lift(i));
+    const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+    const clearlyHigherInSwing = mean(fwd) >= 1.15 * mean(back);                // the second way to pass: on average well above the ground while travelling forward than while pushing back
+    const verdict = travel < -1e-6 ? 'forward' : clearlyHigherInSwing ? 'forward' : travel > 1e-6 ? 'backward' : 'turning';
+    out.push({bone: leg.name, peak_while: verdict, range: +range.toFixed(2), ok: range < 0.15 || travel < -1e-6 || clearlyHigherInSwing});   // a foot that barely lifts is not a gait problem; otherwise its highest point must be in the swing
   }
   return out;
 }

@@ -40,6 +40,43 @@ jobs:
         run: |
           craftctl doctor | python -c "import sys,json; w=json.load(sys.stdin)['wrapper']; print(json.dumps(w['files'], indent=1)); sys.exit(0 if w['ok'] else 1)"
 
+  ui:
+    name: The UI in a simulated browser, against the real server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install craftctl
+        run: python -m pip install -e .
+      - name: Install the test browser
+        run: npm ci
+        working-directory: tests/ui
+      - name: Dialogs, refresh safety, activity banner, Mobs and Items tours
+        shell: bash
+        run: npm run test:ci 2>&1 | tee ui.log
+        working-directory: tests/ui
+      - name: Show the failures as annotations
+        if: failure()
+        shell: bash
+        working-directory: tests/ui
+        run: |
+          python - <<'PY'
+          import os
+          def encode(text):
+              return text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          log = open("ui.log", encoding="utf8", errors="replace").read().splitlines() if os.path.exists("ui.log") else ["(no ui.log: the tests did not start)"]
+          tap = open("tap.log", encoding="utf8", errors="replace").read().splitlines() if os.path.exists("tap.log") else []
+          print("::error title=ui: the end of the run::" + encode("\n".join(log[-90:])[-6000:]))
+          bad = [i for i, l in enumerate(tap) if l.startswith("not ok")]
+          for i in bad[:6]:
+              print("::error title=ui: failing test::" + encode("\n".join(tap[i:i + 40])[:3500]))
+          PY
+
   fabric-build:
     name: Build examples/crystal_example (JDK 25, clean runner)
     runs-on: ubuntu-latest
@@ -106,6 +143,12 @@ jobs:
           craftctl build ci_mod --approval-id "$APPROVAL" | tee build.json
           python -c "import json; r=json.load(open('build.json')); assert r['status']=='BUILD_PASS', r; print('BUILD_PASS sha256', r['evidence']['artifact_sha256'])"
           craftctl status ci_mod | python -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='BUILD_PASSED_GAME_UNTESTED', d['status']; print('evidence:', [(e['level'], e['actor']) for e in d['evidence']])"
+          # a scaled mob and a 3D sword, wired the way the controller does it, must still build
+          python scripts/ci_item3d.py
+          APPROVAL=$(craftctl request-build ci_mod | python -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          craftctl decide "$APPROVAL" grant > /dev/null
+          craftctl build ci_mod --approval-id "$APPROVAL" | tee build3d.json
+          python -c "import json; r=json.load(open('build3d.json')); assert r['status']=='BUILD_PASS', r; print('3D item + scale BUILD_PASS')"
       - name: Mobs-and-gear-only mod (no free items or blocks, like an ork tribe with its weapons)
         env:
           CRAFTCTL_HOME: ${{ runner.temp }}/craft
@@ -113,6 +156,7 @@ jobs:
           set -euo pipefail
           craftctl new --name "CI Gear" --id ci_gear --package com.example.cigear --idea "hostile mobs: ci brute, ci scout"
           craftctl add-material ci_gear --id ci_tribe --label "CI Tribe" --ingredient minecraft:iron_ingot --tools sword axe --armor helmet boots --no-recipes > /dev/null
+          craftctl add-mob ci_gear --id ci_chief --label "CI Chief" --behavior hostile --body-plan biped --drops ci_tribe_helmet ci_tribe_sword > /dev/null   # a biped that holds its sword (BlockAndItemGeoLayer + finalizeSpawn must compile)
           craftctl plan ci_gear > /dev/null
           craftctl approve-spec ci_gear > /dev/null
           craftctl generate ci_gear > /dev/null

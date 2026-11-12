@@ -6,7 +6,7 @@
 
 ## M0 — Repository + audited design (DONE)
 
-- [x] GitHub-ready Python package with MIT license, CI, standard-library runtime, CLI and browser UI.
+- [x] GitHub-ready Python package with MIT license (until the licensing transition; see CHANGELOG.md), CI, standard-library runtime, CLI and browser UI.
 - [x] Preserve the original v2 design and user-selected hybrid/Fabric/approval decisions.
 - [x] Agent registry/skill playbooks (11 Claude agents, 12 skills), bounded Footprint summary.
 - [x] Metadata-only first-run doctor (Java, Gradle, Git, Blockbench, game launcher paths).

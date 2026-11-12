@@ -43,9 +43,10 @@ export function pngSize(buf) {
 }
 export function embedTexture(model,buf,pngName) {
   const dims=pngSize(buf);
-  if(dims.width!==model.resolution.width||dims.height!==model.resolution.height)fail(`PNG dimensions ${dims.width}x${dims.height} must equal model resolution ${model.resolution.width}x${model.resolution.height}`);
+  const scale=dims.width/model.resolution.width;
+  if(!Number.isInteger(scale)||scale<1||scale>8||dims.height!==model.resolution.height*scale)fail(`PNG dimensions ${dims.width}x${dims.height} must equal the model resolution ${model.resolution.width}x${model.resolution.height} or a uniform integer multiple of it (2x, 4x: a hi-res skin over the same UV layout)`);
   const uuid=model.textures?.[0]?.uuid || randomUUID();
-  model.textures=[{name:pngName,folder:'',namespace:'',id:'0',uuid,source:'data:image/png;base64,'+buf.toString('base64'),mode:'bitmap',saved:false,width:dims.width,height:dims.height,uv_width:dims.width,uv_height:dims.height}];
+  model.textures=[{name:pngName,folder:'',namespace:'',id:'0',uuid,source:'data:image/png;base64,'+buf.toString('base64'),mode:'bitmap',saved:false,width:dims.width,height:dims.height,uv_width:model.resolution.width,uv_height:model.resolution.height}];
   for(const element of model.elements)for(const face of Object.values(element.faces||{}))if(element.box_uv===true||face.texture!==null)face.texture=uuid;
-  return {texture_uuid:uuid,name:pngName,width:dims.width,height:dims.height,size:buf.length};
+  return {texture_uuid:uuid,name:pngName,width:dims.width,height:dims.height,scale,size:buf.length};
 }

@@ -107,6 +107,41 @@ class UiApi(unittest.TestCase):
         code, out = self.call("/api/settings", {"provider": None})
         self.assertEqual((code, out["saved"]), (200, None))
 
+    def test_the_ui_kit_is_served_and_loads_before_the_app(self):
+        """kit.js (dialogs, refresh guard, activity banner) must be reachable, never cached, and run before app.js, which uses it."""
+        import urllib.request
+        for path in ("/kit.js", "/app.js", "/style.css", "/"):
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}") as r:
+                self.assertEqual(r.status, 200, path); self.assertEqual(r.headers["Cache-Control"], "no-store", path)
+                if path == "/":
+                    html = r.read().decode(); self.assertLess(html.index('<script src="/kit.js">'), html.index('<script src="/app.js">'))
+                    for needle in ('id="dlg"', 'id="activity-bar"', 'id="activity-pill"', 'id="activity-panel"'):
+                        self.assertIn(needle, html)
+        self.assertEqual(self.call("/api/activity")[1].keys(), {"now", "projects", "recent"})
+
+    def test_gallery_entries_carry_what_the_mobs_tab_reads(self):
+        """Regression: the Art button and the body plan heading read `identifier` and `body_plan`, which the gallery did not send (they showed undefined)."""
+        code, p = self.call("/api/project/u_mod")
+        self.assertEqual(code, 200)
+        for entry in p["gallery"]:
+            self.assertEqual(entry["identifier"], entry["mob"]); self.assertIn(entry["body_plan"], ("quadruped", "biped", "bird", "fish", "serpent", "insect", "primate"))
+
+    def test_the_project_payload_is_stable_between_polls(self):
+        """The UI skips a re-render when nothing changed by comparing payloads, so nothing in them may move on its own (the job's elapsed time aside)."""
+        def stable(p):
+            p = dict(p); job = p.pop("job", None); p["job"] = None if not job else {k: job.get(k) for k in ("job", "running", "error")}; return p
+        a = stable(self.call("/api/project/u_mod")[1]); time.sleep(1.1); b = stable(self.call("/api/project/u_mod")[1])
+        self.assertEqual(a, b)
+
+    def test_2c_art_direction_routes(self):
+        code, art = self.call("/api/project/u_mod/art")
+        self.assertEqual(code, 200); self.assertIn("item:gem", art); self.assertEqual(art["item:gem"]["source"], "derived")
+        code, out = self.call("/api/project/u_mod/set-art", {"kind": "item", "identifier": "gem", "concept": "a cut crimson gem with a chipped corner", "tags": ["faceted", "chipped corner", "crimson"]})
+        self.assertEqual((code, out["art"]["source"], out["art"]["tags"]), (200, "authored", ["faceted", "chipped corner", "crimson"]))
+        self.assertEqual(self.call("/api/project/u_mod/art")[1]["item:gem"]["concept"], "a cut crimson gem with a chipped corner")
+        self.assertEqual(self.call("/api/project/u_mod/set-art", {"kind": "wand", "identifier": "gem", "concept": "x y"})[0], 400)
+        self.call("/api/project/u_mod/set-art", {"kind": "item", "identifier": "gem", "concept": "", "tags": []})
+
     def test_3_requeue_and_evidence_from_ui(self):
         code, out = self.call("/api/task/u_mod:WORK/requeue", {})
         self.assertEqual((code, out["state"]), (200, "READY"))

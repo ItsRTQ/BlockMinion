@@ -146,7 +146,7 @@ def mod_map(store: Store, pid: str) -> dict:
             edges.append({"from": c["id"], "to": dst, "kind": "related"})
     tasks = {t["id"]: t for t in store.tasks(pid)}
     for c in cards.values():
-        open_tasks = [t for t in tasks.values() if (":CHANGE:" + c["id"] + ":" in t["id"] + ":" or t["id"].endswith(":FEATURE:" + c["id"]) or t["id"].endswith(":MODEL:" + c["id"]) or t["id"].endswith(":ARMOR:" + c["id"]) or (":ARMOR3D:" + c["id"]) in t["id"]) and t["state"] not in ("DONE", "CANCELLED")]
+        open_tasks = [t for t in tasks.values() if ((":CHANGE:" in t["id"] and c["id"] in t["id"].split(":CHANGE:")[1].rsplit(":", 1)[0].split("+")) or t["id"].endswith(":FEATURE:" + c["id"]) or t["id"].endswith(":MODEL:" + c["id"]) or t["id"].endswith(":ARMOR:" + c["id"]) or (":ARMOR3D:" + c["id"]) in t["id"]) and t["state"] not in ("DONE", "CANCELLED")]
         c["open_tasks"] = [{"id": t["id"], "state": t["state"], "role": t["role"]} for t in open_tasks]
     layout = store.get_setting(pid, "map_layout", {}) or {}
     return {"project": pid, "cards": list(cards.values()), "edges": edges, "layout": layout, "edge_labels": EDGE_LABEL}
@@ -170,8 +170,8 @@ def map_text(store: Store, pid: str, limit_chars: int = 3500) -> str:
 
 # ---- custom cards and the tasks that create/change them ----
 def _slug(title: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
-    return s[:40] or "feature"
+    from .spec import behavior_id
+    return behavior_id(title)
 
 
 def create_feature_card(store: Store, pid: str, *, title: str, description: str, acceptance: list[str], derived_from: list[str] | None = None,
@@ -200,7 +200,8 @@ def create_feature_card(store: Store, pid: str, *, title: str, description: str,
 
 
 def update_card(store: Store, pid: str, cid: str, *, by: str, description: str | None = None, files: list[str] | None = None,
-                produces: list[str] | None = None, acceptance: list[str] | None = None, status: str | None = None, note: str | None = None) -> dict:
+                produces: list[str] | None = None, acceptance: list[str] | None = None, status: str | None = None, note: str | None = None,
+                derived_from: list[str] | None = None) -> dict:
     cards = custom_cards(store, pid)
     if cid not in cards:
         raise InputError(f"Unknown custom card {cid!r} (spec-derived cards are edited through the spec)")
@@ -209,43 +210,84 @@ def update_card(store: Store, pid: str, cid: str, *, by: str, description: str |
     if files is not None: c["files"] = sorted(set(c["files"]) | {f.replace("\\", "/") for f in files})
     if produces is not None: c["produces"] = list(produces)
     if acceptance is not None: c["acceptance"] = [a.strip() for a in acceptance if a.strip()][:12]
+    if derived_from is not None: c["derived_from"] = list(derived_from)
     if status is not None:
         if status not in STATUSES: raise InputError(f"status must be one of {STATUSES}")
         c["status"] = status
     c["history"].append({"at": time.time(), "by": by, "what": note or "updated"})
     with store.tx() as con:
-        con.execute("UPDATE feature_cards SET description=?, files_json=?, produces_json=?, acceptance_json=?, status=?, history_json=?, updated_at=? WHERE id=? AND project_id=?",
-                    (c["description"], json.dumps(c["files"]), json.dumps(c["produces"]), json.dumps(c["acceptance"]), c["status"], json.dumps(c["history"][-30:]), time.time(), cid, pid))
+        con.execute("UPDATE feature_cards SET description=?, files_json=?, produces_json=?, acceptance_json=?, status=?, history_json=?, derived_from_json=?, updated_at=? WHERE id=? AND project_id=?",
+                    (c["description"], json.dumps(c["files"]), json.dumps(c["produces"]), json.dumps(c["acceptance"]), c["status"], json.dumps(c["history"][-30:]), json.dumps(c["derived_from"]), time.time(), cid, pid))
         store.event(con, pid, by, "CARD_UPDATED", {"card": cid, "note": (note or "")[:200]})
     return c
 
 
-def request_feature(store: Store, pid: str, *, title: str, description: str, acceptance: list[str], derived_from: list[str] | None = None) -> dict:
+def feature_instructions(card: dict, *, kind: str = "mechanic", carriers: list[str] | None = None) -> list[str]:
+    """The coder's brief for a feature card; a capability also says who carries it and how to build it."""
+    instructions = ["Implement this feature card in the existing Fabric 1.21.1 (Mojang mappings) project:", f"Title: {card['title']}", f"Description: {card['description']}"]
+    if card["acceptance"]:
+        instructions += ["Acceptance criteria (the user will check each one in-game):"] + [f"- {a}" for a in card["acceptance"]]
+    if card["derived_from"]:
+        instructions += ["Builds on: " + ", ".join(card["derived_from"]) + " (see the mod map in your packet for what they are and where they live)."]
+    if kind == "capability" and carriers:
+        instructions += ["This is a CAPABILITY carried by: " + ", ".join(carriers) + ". Implement it ONCE as a reusable component (a class or interface plus the effect, projectile or registration it needs) and give it to each carrier by wiring only:",
+                         "a carrier's entity class gets a few lines that use the component, never a copy of the logic, so that adding or removing a carrier later is a small change. If the carriers apply it differently (a melee hit, a projectile), the description says how.",
+                         "Write one @GameTest per carrier proving that carrier has the capability (name it after the carrier), in addition to one per acceptance criterion."]
+    from .artreq import CODER_ART_RULE
+    instructions += ["Write one @GameTest per acceptance criterion that can be exercised server-side in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
+                     "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item."]
+    instructions += CODER_ART_RULE
+    instructions += [
+                     "Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
+                     "In your handoff include a `card` object: {\"files\": [every file you created or edited], \"description\": \"one paragraph of what you built and how it works\", \"produces\": [ids of new content you added]}.",
+                     "If the feature needs something the user must decide (keybind, GUI size, which block), report WAITING_USER with the question."]
+    return instructions
+
+
+def request_feature(store: Store, pid: str, *, title: str, description: str, acceptance: list[str], derived_from: list[str] | None = None,
+                    after: list[str] | None = None, kind: str = "mechanic", carriers: list[str] | None = None) -> dict:
     """Custom feature: a card (planned) + a coder task with the card as its brief. Carril 2, minimal loop."""
     proj = store.project(pid)
     if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
         raise StateError("Generate the project first; features are implemented on top of the generated source")
     card = create_feature_card(store, pid, title=title, description=description, acceptance=acceptance, derived_from=derived_from)
     task_id = f"{pid}:FEATURE:{card['id']}"
-    instructions = ["Implement this feature card in the existing Fabric 1.21.1 (Mojang mappings) project:", f"Title: {card['title']}", f"Description: {card['description']}"]
-    if card["acceptance"]:
-        instructions += ["Acceptance criteria (the user will check each one in-game):"] + [f"- {a}" for a in card["acceptance"]]
-    if card["derived_from"]:
-        instructions += ["Builds on: " + ", ".join(card["derived_from"]) + " (see the mod map in your packet for what they are and where they live)."]
-    instructions += ["Write one @GameTest per acceptance criterion that can be exercised server-side in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
-                     "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item.",
-                     "Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
-                     "In your handoff include a `card` object: {\"files\": [every file you created or edited], \"description\": \"one paragraph of what you built and how it works\", \"produces\": [ids of new content you added]}.",
-                     "If the feature needs something the user must decide (keybind, GUI size, which block), report WAITING_USER with the question."]
-    store.add_task(pid, task_id, "coder", f"Implement feature: {card['title']}")
+    instructions = feature_instructions(card, kind=kind, carriers=carriers)
+    store.add_task(pid, task_id, "coder", f"Implement feature: {card['title']}", after=after)
     with store.tx() as con:
         con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
     store.add_event(pid, "user", "FEATURE_REQUESTED", {"card": card["id"], "task": task_id})
     return {"card": card, "task": task_id, "next": {"action": "dispatch", "payload": {"task": task_id}}}
 
 
-def request_change(store: Store, pid: str, cid: str, request: str) -> dict:
-    """Change an existing card (spec-derived or custom): one coder task with the card's own context."""
+def plan_behaviors(store: Store, pid: str) -> list[str]:
+    """Turn the approved spec's `behaviors` into custom cards and coder tasks (the same ones the user's "add a feature" makes), once each, in dependency order:
+    a behavior's task waits for the tasks of the behaviors it is `after`. Returns the task ids created."""
+    from .spec import behavior_id, read_spec
+    proj = store.project(pid)
+    spec = read_spec(proj["spec"])
+    pending = [b for b in spec.behaviors if behavior_id(b.title) not in custom_cards(store, pid)]
+    created: list[str] = []
+    while pending:
+        progressed = False
+        for b in list(pending):
+            waits = [f"{pid}:FEATURE:{behavior_id(t)}" for t in b.after]
+            if any(w.rsplit(":", 1)[1] in {behavior_id(x.title) for x in pending} for w in waits):
+                continue                                  # a predecessor is not planned yet
+            out = request_feature(store, pid, title=b.title, description=b.description, acceptance=list(b.acceptance), derived_from=list(b.affects), after=waits,
+                                  kind=b.kind, carriers=list(b.affects) if b.kind == "capability" else None)
+            created.append(out["task"]); pending.remove(b); progressed = True
+        if not progressed:
+            raise InputError("behaviors depend on each other in a loop")
+    return created
+
+
+MAX_CARDS_PER_CHANGE = 24
+
+
+def request_change(store: Store, pid: str, cid: str, request: str, more: list[str] | None = None) -> dict:
+    """Change one existing card, or several at once (`more`): one coder task that carries every card's own context, so a change
+    that cuts across the mod (every weapon's ammo, every mob's drops) is one coherent piece of work, not one task per card."""
     request = request.strip()
     if not request:
         raise InputError("Describe the change")
@@ -253,11 +295,41 @@ def request_change(store: Store, pid: str, cid: str, request: str) -> dict:
     if proj["status"] not in ("SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"):
         raise StateError("Generate the project first")
     m = mod_map(store, pid)
-    card = next((c for c in m["cards"] if c["id"] == cid), None)
-    if card is None or card["kind"] == "vanilla":
-        raise InputError(f"Unknown card {cid!r}")
-    n = sum(1 for t in store.tasks(pid) if f":CHANGE:{cid}:" in t["id"]) + 1
-    task_id = f"{pid}:CHANGE:{cid}:{n}"
+    cards_by_id = {c["id"]: c for c in m["cards"]}
+    cids = list(dict.fromkeys([cid] + [str(x) for x in (more or []) if str(x) != cid]))
+    if len(cids) > MAX_CARDS_PER_CHANGE:
+        raise InputError(f"At most {MAX_CARDS_PER_CHANGE} cards in one change")
+    for c in cids:
+        if c not in cards_by_id or cards_by_id[c]["kind"] == "vanilla" or "+" in c:
+            raise InputError(f"Unknown card {c!r}")
+    card = cards_by_id[cid]
+    key = "+".join(cids)   # one task id names every card it touches
+    n = sum(1 for t in store.tasks(pid) if f":CHANGE:{key}:" in t["id"]) + 1
+    task_id = f"{pid}:CHANGE:{key}:{n}"
+    if len(cids) > 1:
+        instructions = [f"Change request across {len(cids)} feature cards. Make ONE coherent change that applies to all of them, consistently:"]
+        for c in cids:
+            cc = cards_by_id[c]; rel = [e for e in m["edges"] if c in (e["from"], e["to"])]
+            instructions += [f"- `{c}` ({cc['kind']}): {cc['title']}. Today: {cc.get('description', '')}",
+                             "  files: " + (", ".join(cc.get("files", [])) or "see the mod map"),
+                             "  relations: " + ("; ".join(f"{e['from']} --{EDGE_LABEL.get(e['kind'], e['kind'])}--> {e['to']}" for e in rel) or "none")]
+        instructions += ["", "REQUESTED CHANGE (for every card above):", request[:1500], "",
+                         "Where the cards share code (a base class, a helper, a registry), change it once there rather than per card. If a card cannot take the change,",
+                         "say which and why in `risks` instead of changing it halfway.",
+                         "In your handoff include `cards`: {card id: {files: [...], description: \"one sentence\"}} for every card you changed (or a single `card` object if the same applies to all)."]
+        if any(cards_by_id[c]["kind"] in ("item", "block", "mob", "material", "food") for c in cids):
+            instructions.append("Note: spec-generated content: edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")
+        from .artreq import CODER_ART_RULE
+        instructions += CODER_ART_RULE
+        store.add_task(pid, task_id, "coder", f"Change {len(cids)} cards: {request[:60]}")
+        with store.tx() as con:
+            con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
+        custom = custom_cards(store, pid)
+        for c in cids:
+            if c in custom:
+                update_card(store, pid, c, by="user", note=f"change requested (with {len(cids) - 1} other card(s)): {request[:120]}")
+        store.add_event(pid, "user", "CHANGE_REQUESTED", {"card": cid, "cards": cids, "task": task_id, "request": request[:300]})
+        return {"card": cid, "cards": cids, "task": task_id, "next": {"action": "dispatch", "payload": {"task": task_id}}}
     related = [e for e in m["edges"] if cid in (e["from"], e["to"])]
     instructions = [f"Change request on feature card `{cid}` ({card['kind']}): {card['title']}", f"What it is today: {card.get('description', '')}",
                     "Files that implement it (start here, do not go through the whole project): " + (", ".join(card.get("files", [])) or "see the mod map"),
@@ -267,6 +339,8 @@ def request_change(store: Store, pid: str, cid: str, request: str) -> dict:
                     "In your handoff include a `card` object with `files` (every file you edited) and a one-sentence `description` of the new behaviour."]
     if card["kind"] in ("item", "block", "mob", "material", "food"):
         instructions.append("Note: this content is generated from the spec. Edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")
+    from .artreq import CODER_ART_RULE
+    instructions += CODER_ART_RULE
     store.add_task(pid, task_id, "coder", f"Change {card['title']}: {request[:60]}")
     with store.tx() as con:
         con.execute("INSERT OR IGNORE INTO task_instructions(task_id, text) VALUES(?,?)", (task_id, "\n".join(instructions)))
@@ -286,8 +360,17 @@ def apply_card_handoff(store: Store, pid: str, task_id: str, handoff: dict, run_
         cid = task_id.split(":FEATURE:")[1]
         return update_card(store, pid, cid, by=f"run:{run_id}", description=desc, files=files, produces=produces, status="generated", note="implemented by a coder run")
     if ":CHANGE:" in task_id:
-        cid = task_id.split(":CHANGE:")[1].rsplit(":", 1)[0]
-        if cid in custom_cards(store, pid):
-            return update_card(store, pid, cid, by=f"run:{run_id}", description=desc, files=files, status="generated", note="changed by a coder run")
-        store.add_event(pid, "controller", "CARD_CHANGED", {"card": cid, "run": run_id, "files": files[:20], "description": (desc or "")[:300]})
+        key = task_id.split(":CHANGE:")[1].rsplit(":", 1)[0]
+        custom = custom_cards(store, pid)
+        per_card = handoff.get("cards") if isinstance(handoff.get("cards"), dict) else {}
+        last = None
+        for cid in key.split("+"):   # one task may have changed several cards
+            own = per_card.get(cid) if isinstance(per_card.get(cid), dict) else {}
+            c_files = [f for f in (own.get("files") or files) if isinstance(f, str)]
+            c_desc = own.get("description") if isinstance(own.get("description"), str) else desc
+            if cid in custom:
+                last = update_card(store, pid, cid, by=f"run:{run_id}", description=c_desc, files=c_files, status="generated", note="changed by a coder run")
+            else:
+                store.add_event(pid, "controller", "CARD_CHANGED", {"card": cid, "run": run_id, "files": c_files[:20], "description": (c_desc or "")[:300]})
+        return last
     return None

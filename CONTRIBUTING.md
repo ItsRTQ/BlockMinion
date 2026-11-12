@@ -10,3 +10,11 @@ Contributions should advance an evidence-based, local-first Minecraft Java moddi
 6. Keep the root CLAUDE instructions and agent skill responsibilities consistent with implemented tools. Agent prompts are not a security mechanism.
 
 Please include a summary, affected files, checks run, failure cases and any user-visible security/compatibility changes in your pull request.
+
+## License of contributions
+
+By submitting a contribution you agree that it is licensed under the project's `LICENSE` (section 6): it stays yours, it is
+licensed to the project and to every recipient under those terms, and the copyright holder may license it under other terms
+as part of the software. If you cannot agree to that for a particular contribution, say so when you submit it, and it will
+not be merged under those terms. Do not submit code you do not have the right to license this way, and do not bundle
+third-party code without its license and a line in `NOTICE.md`.

@@ -68,7 +68,7 @@ class Generated(unittest.TestCase):
         self.assertIn("dl.cloudsmith.io/public/geckolib3/geckolib/maven", g); self.assertIn("geckolib-fabric-${project.minecraft_version}:${project.geckolib_version}", g)
         self.assertIn("geckolib_version=4.7.3", (self.root / "gradle.properties").read_text())
         mj = json.loads((self.res / "fabric.mod.json").read_text())
-        self.assertEqual(mj["entrypoints"]["client"], ["com.x.c.client.ModClient"]); self.assertEqual(mj["depends"]["geckolib"], ">=4.7")
+        self.assertEqual(mj["entrypoints"]["client"][0], "com.x.c.client.ModClient"); self.assertEqual(mj["depends"]["geckolib"], ">=4.7")
 
     def test_java_files_and_registrations(self):
         main = (self.java / "ModMain.java").read_text()
@@ -112,12 +112,14 @@ class Generated(unittest.TestCase):
         lang = json.loads((a / "lang/en_us.json").read_text())
         self.assertEqual(lang["entity.c_mod.sky_critter"], "Sky Critter"); self.assertEqual(lang["item.c_mod.sky_critter_spawn_egg"], "Sky Critter Spawn Egg")
 
-    def test_project_without_mobs_has_no_geckolib(self):
+    def test_project_without_mobs_still_carries_geckolib_and_the_3d_support_but_no_mob_client(self):
         workflow.new_project(self.store, name="P", mod_id="p_mod", package="com.x.p", idea="items: gem")
         workflow.plan_project(self.store, "p_mod"); workflow.approve_spec(self.store, "p_mod"); workflow.generate_project(self.store, "p_mod")
         root = Path(self.store.project("p_mod")["root"])
-        self.assertNotIn("geckolib", (root / "build.gradle").read_text().lower())
-        self.assertNotIn("client", json.loads((root / "src/main/resources/fabric.mod.json").read_text())["entrypoints"])
+        self.assertIn("geckolib", (root / "build.gradle").read_text().lower(), "3D items and the animation contract need it from day one")
+        eps = json.loads((root / "src/main/resources/fabric.mod.json").read_text())["entrypoints"]
+        self.assertNotIn("com.x.p.client.ModClient", eps["client"]); self.assertIn("com.x.p.client.Model3DClient", eps["client"])
+        self.assertTrue((root / "src/main/java/com/x/p/model3d/Item3DBase.java").is_file())
 
 
 if __name__ == "__main__":
@@ -175,3 +177,72 @@ class TestContentWithoutItemsOrBlocks(unittest.TestCase):
         from mod_orchestra.validation import InputError
         with self.assertRaisesRegex(InputError, "Nothing to generate"):
             self.generate(self.spec(mobs=[], materials=[]))
+
+
+
+class TestHeldWeapon(unittest.TestCase):
+    """A biped carries the best weapon of its drop table in its right hand and the renderer draws it on the model's held_item bone."""
+
+    DROPS = [{"item": "groko_tribe_helmet", "count_min": 1, "count_max": 1, "chance": 0.2}, {"item": "groko_tribe_pickaxe", "count_min": 1, "count_max": 1, "chance": 0.25},
+             {"item": "groko_tribe_sword", "count_min": 1, "count_max": 1, "chance": 0.25}]
+
+    def spec(self, drops=None, **over):
+        from mod_orchestra.spec import read_spec
+        mob = {"identifier": "tall_groko", "label": "Tall Groko", "behavior": "hostile", "health": 24, "speed": 0.28, "width": 0.7, "height": 2.4, "attack_damage": 5,
+               "drops": self.DROPS if drops is None else drops, "egg_colors": [1, 2], "spawn": None, "body_plan": "biped"}
+        mob.update(over)
+        raw = {"schema_version": 2, "name": "Grokos", "mod_id": "grokos", "package": "com.example.grokos", "idea": "orks", "profile": "fabric-1.21.1-candidate", "features": [],
+               "questions": [], "assumptions": [], "tab": None, "tab_icon": None, "recipes": [], "drops": [], "mobs": [mob],
+               "materials": [{"identifier": "groko_tribe", "label": "Groko Tribe", "ingredient": "minecraft:iron_ingot", "tools": ["sword", "pickaxe", "axe"], "armor": ["helmet"],
+                              "durability": 350, "mining_speed": 6.5, "attack_damage_bonus": 2.5, "mining_level": "iron", "enchantability": 12, "armor_defense": [2, 6, 5, 2],
+                              "armor_durability": 18, "toughness": 1.0, "knockback_resistance": 0.0, "recipes": False, "armor_style": "textured"}],
+               "foods": [], "sounds": [], "enchantments": [], "structures": [], "biomes": [], "dimensions": [], "ores": [], "theme": "tribal"}
+        return read_spec(raw)
+
+    def held(self, spec):
+        from mod_orchestra.geckolib import held_item_for
+        return held_item_for(spec, spec.mobs[0])
+
+    def test_picks_the_best_weapon_among_the_drops(self):
+        self.assertEqual(self.held(self.spec()), "grokos:groko_tribe_sword")                                   # sword before pickaxe before helmet
+        self.assertEqual(self.held(self.spec(drops=self.DROPS[:2])), "grokos:groko_tribe_pickaxe")
+        self.assertIsNone(self.held(self.spec(drops=self.DROPS[:1])))                                          # armor alone is nothing to hold
+        self.assertEqual(self.held(self.spec(drops=[{"item": "minecraft:iron_axe"}, {"item": "minecraft:bone"}])), "minecraft:iron_axe")
+
+    def test_only_bipeds_derive_one_but_any_mob_can_be_told(self):
+        self.assertIsNone(self.held(self.spec(body_plan="quadruped")))
+        self.assertEqual(self.held(self.spec(body_plan="quadruped", held_item="groko_tribe_axe")), "grokos:groko_tribe_axe")
+        self.assertIsNone(self.held(self.spec(held_item="none")))
+        self.assertEqual(self.held(self.spec(held_item="minecraft:stick")), "minecraft:stick")
+        from mod_orchestra.validation import InputError
+        with self.assertRaises(InputError):
+            self.spec(held_item="not_an_item")
+
+    def test_entity_equips_it_at_spawn_without_a_second_drop(self):
+        from mod_orchestra.geckolib import entity_java
+        spec = self.spec(); java = entity_java(spec, spec.mobs[0])
+        for needle in ("public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType, SpawnGroupData spawnGroupData)",
+                       "super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData)", 'ResourceLocation.parse("grokos:groko_tribe_sword")',
+                       "this.setItemSlot(EquipmentSlot.MAINHAND", "this.setDropChance(EquipmentSlot.MAINHAND, 0.0F)", "this.setLeftHanded(false)",
+                       "import net.minecraft.world.entity.MobSpawnType;", "import net.minecraft.world.level.ServerLevelAccessor;"):
+            self.assertIn(needle, java)
+        empty = self.spec(held_item="none"); self.assertNotIn("finalizeSpawn", entity_java(empty, empty.mobs[0]))
+
+    def test_renderer_draws_it_on_the_held_item_bone(self):
+        from mod_orchestra.geckolib import renderer_java
+        spec = self.spec(); java = renderer_java(spec, spec.mobs[0])
+        for needle in ("addRenderLayer(new BlockAndItemGeoLayer<>(this) {", 'protected ItemStack getStackForBone(GeoBone bone, TallGrokoEntity animatable)',
+                       '"held_item".equals(bone.getName())', "ItemDisplayContext.THIRD_PERSON_RIGHT_HAND", "Axis.XP.rotationDegrees(-90.0F)",
+                       "import software.bernie.geckolib.renderer.layer.BlockAndItemGeoLayer;"):
+            self.assertIn(needle, java)
+        none = self.spec(held_item="none"); self.assertNotIn("BlockAndItemGeoLayer", renderer_java(none, none.mobs[0]))
+
+    def test_the_whole_project_carries_it(self):
+        import tempfile
+        from mod_orchestra import fabric
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        fabric._generate_into(self.spec(), Path(tmp.name) / "out")
+        java = Path(tmp.name) / "out/src/main/java/com/example/grokos"
+        self.assertIn("setItemSlot", (java / "entity/TallGrokoEntity.java").read_text()); self.assertIn("BlockAndItemGeoLayer", (java / "client/TallGrokoRenderer.java").read_text())
+        geo = json.loads((Path(tmp.name) / "out/src/main/resources/assets/grokos/geo/entity/tall_groko.geo.json").read_text())
+        self.assertIn("held_item", [b["name"] for b in geo["minecraft:geometry"][0]["bones"]])   # the placeholder already has the bone it draws on

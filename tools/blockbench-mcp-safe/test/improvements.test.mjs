@@ -83,7 +83,7 @@ test('Embedding verified PNG sets all cube face UUIDs and new cubes inherit text
 test('PNG safety: rejects mismatched resolution, tampered CRC, disguised file and symlink',async t=>{
   const {root,store,revision}=await setup(t);
   const call=()=>runTool(store,true,'bbmodel_geckolib_set_texture',{file:'mob.bbmodel',expected_revision:revision,png_file:'skin.png'});
-  await fs.writeFile(path.join(root,'skin.png'),makePNG(16,16));await assert.rejects(call(),/must equal model resolution/);
+  await fs.writeFile(path.join(root,'skin.png'),makePNG(16,16));await assert.rejects(call(),/uniform integer multiple/);
   const corrupted=makePNG();corrupted[29]^=1;await fs.writeFile(path.join(root,'skin.png'),corrupted);await assert.rejects(call(),/CRC mismatch/);
   await fs.writeFile(path.join(root,'skin.png'),Buffer.from('not-png'));await assert.rejects(call(),/not a valid PNG/);
   const invalidZlib=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',(()=>{const b=Buffer.alloc(13);b.writeUInt32BE(64);b.writeUInt32BE(64,4);b[8]=8;b[9]=6;return b;})()),chunk('IDAT',Buffer.from('not-zlib')),chunk('IEND',Buffer.alloc(0))]);
@@ -178,4 +178,20 @@ test('Bundled textured example has embedded PNG, UUID-referenced faces and same 
   assert.match(model.textures[0].source,/^data:image\/png;base64,/);
   assert.ok(model.elements.every(c=>Object.values(c.faces).every(f=>f.texture===model.textures[0].uuid)));
   assert.deepEqual(pngSize(await fs.readFile(path.join(folder,'checker_64.png'))),model.resolution);
+});
+
+test('hi-res skin: a PNG at 2x the project resolution is embedded over the same UV layout and previewed at full detail',async t=>{
+  const {root,store,revision}=await setup(t);
+  const call=()=>runTool(store,true,'bbmodel_geckolib_set_texture',{file:'mob.bbmodel',expected_revision:revision,png_file:'skin.png'});
+  await fs.writeFile(path.join(root,'skin.png'),makePNG(128,64));await assert.rejects(call(),/uniform integer multiple/);   // not uniform
+  await fs.writeFile(path.join(root,'skin.png'),makePNG(128,128));
+  const result=await call();
+  assert.equal(result.change.width,128);assert.equal(result.change.scale,2);
+  const m=parseModel((await readRaw(store,'mob.bbmodel')).raw);
+  assert.deepEqual([m.textures[0].width,m.textures[0].height,m.textures[0].uv_width,m.textures[0].uv_height],[128,128,64,64]);   // UV space stays the project's
+  assert.equal(m.resolution.width,64);
+  assert.equal((await runTool(store,false,'bbmodel_geckolib_validate',{file:'mob.bbmodel'})).valid,true);
+  const {renderModel}=await import('../src/render.mjs');
+  const rendered=renderModel(m,{views:['front'],size:96});
+  assert.equal(rendered.texture_applied,true);
 });

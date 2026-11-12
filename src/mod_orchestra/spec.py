@@ -23,6 +23,168 @@ def default_egg_colors(identifier: str, behavior: str = "passive") -> tuple[int,
     return pack(base), pack(spot)
 
 @dataclass(frozen=True)
+class Art:
+    """Art direction for one entity (item, block, tool/armor set, food, mob): what it looks like and why, as concrete visual cues the designer
+    paints from. Written by the interpreter from the idea and the theme, editable in the UI; a deterministic derivation fills the gaps (art.py)."""
+    concept: str = ""            # one or two sentences: what it is and how it looks
+    tags: tuple = ()             # concrete cues: shapes, materials, colours, wear ("serrated edge", "bone teeth", "rust red"), not "cool" or "epic"
+    silhouette: str = ""         # optional: the shape in a phrase ("cleaver", "crescent blade", "spiked club")
+    pieces: dict = field(default_factory=dict)   # material sets only: tool/armor kind -> its own concept ({"sword": "...", "helmet": "..."})
+    mood: dict = field(default_factory=dict)     # open-vocabulary dials 0..1 (grotesque, gore, toon, cute, menace, worn ...): suggestions in prose for the artists, never rules
+    reference: str = ""          # what it should resemble, named by the user ("the Tank from Left 4 Dead", "a vanilla pig"); the designer cannot see it, so the cues spell it out
+    avoid: tuple = ()            # what it must not look like ("cartoon", "bright saturated colours", "stripes"): honoured over every default
+
+
+ART_TEXT = re.compile(r"^[^\x00-\x1f<>{}\[\]\\]+$")
+
+
+MOOD_KEY = re.compile(r"^[a-z][a-z '\-]{1,23}$")
+
+
+def coerce_mood(value) -> dict:
+    """Mood dials: {"grotesque": 0.8, "toon": 0.0, ...}. The vocabulary is open (any word the user's description needs), the values are 0 to 1."""
+    if value in (None, "", {}):
+        return {}
+    if not isinstance(value, dict):
+        raise InputError("mood is an object of dials, e.g. {\"grotesque\": 0.8, \"toon\": 0}")
+    if len(value) > 12:
+        raise InputError("mood has at most 12 dials")
+    out = {}
+    for key, v in value.items():
+        k = re.sub(r"\s+", " ", str(key).strip().lower())
+        if not MOOD_KEY.match(k):
+            raise InputError(f"mood dial {key!r}: a word or two of 2-24 letters")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1:
+            raise InputError(f"mood dial {k!r} is a number from 0 to 1, got {v!r}")
+        out[k] = round(float(v), 2)
+    return out
+
+
+def coerce_art(value) -> "Art | None":
+    """None, "", {} -> None; a string is a concept; a dict is read field by field; an Art passes through."""
+    if value is None or value == "" or value == {} or value == []:
+        return None
+    if isinstance(value, Art):
+        return value
+    if isinstance(value, str):
+        return Art(concept=value.strip())
+    if not isinstance(value, dict):
+        raise InputError(f"Bad art: {value!r}")
+    tags = value.get("tags") or ()
+    if isinstance(tags, str):
+        tags = [t for t in re.split(r"[,;\n]", tags)]
+    pieces = value.get("pieces") or {}
+    if not isinstance(pieces, dict):
+        raise InputError("art.pieces must map a tool/armor kind to a sentence")
+    avoid = value.get("avoid") or ()
+    if isinstance(avoid, str):
+        avoid = [t for t in re.split(r"[,;\n]", avoid)]
+    art = Art(concept=str(value.get("concept") or "").strip(), tags=tuple(str(t).strip() for t in tags if str(t).strip()),
+              silhouette=str(value.get("silhouette") or "").strip(), pieces={str(k): str(v).strip() for k, v in pieces.items() if str(v).strip()},
+              reference=str(value.get("reference") or "").strip(), avoid=tuple(str(t).strip() for t in avoid if str(t).strip()), mood=coerce_mood(value.get("mood")))
+    return art if (art.concept or art.tags or art.silhouette or art.pieces or art.reference or art.avoid or art.mood) else None      # all fields empty is no art, not an empty sheet
+
+
+def validate_art(art: "Art | None", label: str, piece_kinds: tuple = ()) -> None:
+    if art is None:
+        return
+    if len(art.concept) > 320 or (art.concept and not ART_TEXT.match(art.concept)):
+        raise InputError(f"{label}: art.concept must be plain text up to 320 characters")
+    if len(art.tags) > 16 or any(not (2 <= len(t) <= 48) or not ART_TEXT.match(t) for t in art.tags):
+        raise InputError(f"{label}: art.tags are at most 16 phrases of 2-48 characters")
+    if len(art.silhouette) > 60 or (art.silhouette and not ART_TEXT.match(art.silhouette)):
+        raise InputError(f"{label}: art.silhouette is a short phrase (up to 60 characters)")
+    if len(art.reference) > 120 or (art.reference and not ART_TEXT.match(art.reference)):
+        raise InputError(f"{label}: art.reference is a short phrase naming what it should resemble (up to 120 characters)")
+    if len(art.avoid) > 8 or any(not (2 <= len(t) <= 48) or not ART_TEXT.match(t) for t in art.avoid):
+        raise InputError(f"{label}: art.avoid is at most 8 phrases of 2-48 characters")
+    for kind, text in art.pieces.items():
+        if kind not in piece_kinds:
+            raise InputError(f"{label}: art.pieces has {kind!r}, which is not one of this set's pieces {list(piece_kinds)}")
+        if len(text) > 320 or not ART_TEXT.match(text):
+            raise InputError(f"{label}: art.pieces.{kind} must be plain text up to 320 characters")
+
+
+@dataclass(frozen=True)
+class Behavior:
+    """A mechanic the generator cannot express (an infection that converts mobs, a projectile, a new effect, custom targeting, block breaking): the interpreter
+    proposes it here, the user approves it with the spec, and after generation the controller turns it into a custom feature card plus a coder task. Every
+    acceptance criterion becomes a GameTest, so each behavior must be small enough to be proved server-side."""
+    title: str
+    description: str                 # what must happen, in the user's terms, with every number the user gave
+    acceptance: tuple = ()           # 1-12 observable criteria, one GameTest each ("a villager hit by a runner converts to a variant after 10 s")
+    affects: tuple = ()              # identifiers of the mobs/items/blocks/sets it is about; for a capability, exactly the mobs that CARRY it
+    after: tuple = ()                # titles of behaviors it builds on: its task waits for theirs
+    kind: str = "mechanic"           # "capability": something mobs carry (infection, a freezing touch, an explosion on death), built once and wired to each carrier,
+                                     # whose carriers the user checks and edits; "mechanic": a one-off (one mob's movement, one projectile)
+
+
+def behavior_id(title: str) -> str:
+    """The card id of a behavior: the title as snake_case (the Mod Map and the FEATURE task use it)."""
+    return re.sub(r"[^a-z0-9]+", "_", str(title).lower()).strip("_")[:40] or "feature"
+
+
+def coerce_behavior(value) -> "Behavior":
+    if isinstance(value, Behavior):
+        return value
+    if not isinstance(value, dict):
+        raise InputError(f"Bad behavior: {value!r}")
+    def many(key):
+        v = value.get(key) or ()
+        return tuple(str(x).strip() for x in ([v] if isinstance(v, str) else v) if str(x).strip())
+    return Behavior(title=str(value.get("title") or "").strip(), description=str(value.get("description") or "").strip(),
+                    acceptance=many("acceptance"), affects=many("affects"), after=many("after"), kind=str(value.get("kind") or "mechanic").strip().lower())
+
+
+def validate_behaviors(spec: "Spec") -> None:
+    if len(spec.behaviors) > 12:
+        raise InputError("At most 12 behaviors: group related mechanics into one card")
+    entity_ids = {f.identifier for f in spec.features} | {m.identifier for m in spec.mobs} | {f.identifier for f in spec.foods}
+    for mat in spec.materials:
+        entity_ids |= {mat.identifier} | {f"{mat.identifier}_{k}" for k in tuple(mat.tools) + tuple(mat.armor)}
+    ids: dict[str, Behavior] = {}
+    for b in spec.behaviors:
+        label = f"behavior {b.title!r}"
+        if not (3 <= len(b.title) <= 60) or not ART_TEXT.match(b.title):
+            raise InputError(f"{label}: the title is plain text of 3-60 characters")
+        bid = behavior_id(b.title)
+        if bid in ids:
+            raise InputError(f"{label}: two behaviors become the same card id {bid!r}")
+        if bid in entity_ids:
+            raise InputError(f"{label}: its card id {bid!r} is already the identifier of a mob, item or set; rename the behavior")
+        if not (20 <= len(b.description) <= 1500) or not ART_TEXT.match(b.description):
+            raise InputError(f"{label}: the description is plain text of 20-1500 characters")
+        if not (1 <= len(b.acceptance) <= 12) or any(not (5 <= len(a) <= 300) or not ART_TEXT.match(a) for a in b.acceptance):
+            raise InputError(f"{label}: give 1-12 acceptance criteria of 5-300 characters (each one becomes a GameTest)")
+        if b.kind not in ("mechanic", "capability"):
+            raise InputError(f"{label}: kind is capability or mechanic")
+        if b.kind == "capability":
+            mob_ids = {m.identifier for m in spec.mobs}
+            if not b.affects or [a for a in b.affects if a not in mob_ids]:
+                raise InputError(f"{label}: a capability lists the mobs that carry it in `affects` (at least one, and only mobs of this spec: {sorted(mob_ids)})")
+        bad = [a for a in b.affects if a not in entity_ids]
+        if bad:
+            raise InputError(f"{label}: affects unknown identifiers {bad}; use the identifier of a mob, item, block, food or set of this spec")
+        ids[bid] = b
+    for b in spec.behaviors:
+        bad = [t for t in b.after if behavior_id(t) not in ids or behavior_id(t) == behavior_id(b.title)]
+        if bad:
+            raise InputError(f"behavior {b.title!r}: after names {bad}, which are not other behaviors of this spec")
+    state: dict[str, int] = {}
+    def visit(bid: str, path: tuple) -> None:
+        if state.get(bid) == 2:
+            return
+        if state.get(bid) == 1:
+            raise InputError("behaviors depend on each other in a loop: " + " -> ".join(path + (bid,)))
+        state[bid] = 1
+        for t in ids[bid].after:
+            visit(behavior_id(t), path + (bid,))
+        state[bid] = 2
+    for bid in ids:
+        visit(bid, ())
+
+
+@dataclass(frozen=True)
 class Feature:
     kind: str
     identifier: str
@@ -32,6 +194,7 @@ class Feature:
     tool: str = ""         # blocks: pickaxe | axe | shovel | hoe | none (default pickaxe); "none" = breaks by hand
     mining_level: str = "" # blocks: wood | stone | iron | diamond | netherite (default wood = any pickaxe)
     variants: tuple = ()   # blocks: subset of stairs | slab | fence | wall — generated as <id>_stairs etc. with recipes
+    art: object = None     # Art direction (concept, tags, silhouette) the sprite designer paints from
 
 @dataclass(frozen=True)
 class Recipe:
@@ -104,6 +267,11 @@ class Mob:
     spawn: object = None               # Spawn or None (egg-only)
     egg_colors: tuple[int, int] = DEFAULT_EGG_COLORS
     body_plan: str = "quadruped"      # base rig the model starts from: quadruped | biped | bird | fish | serpent | insect
+    art: object = None                # Art direction: concept, tags and silhouette; feeds the skin's palette, zones and face
+    held_item: str = ""               # what the mob carries in its main hand and draws on the model's `held_item` bone: "" = the best tool/weapon in
+                                      # its drops (biped plan only), "none" = empty-handed, or an item id (local or minecraft:...)
+    scale: float = 1.0                # overall size: vanilla's Attributes.SCALE, so the hitbox, eye height and step grow with it and GeckoLib
+                                      # draws the model at that size (geometry and texture untouched). 1.0 = as modeled
 
 
 TOOL_KINDS = ("sword", "pickaxe", "axe", "shovel", "hoe")
@@ -132,6 +300,7 @@ class Material:
     color: str = ""                       # optional hex tint for tool/armor textures (default: stable hue from identifier)
     accent: str = ""                      # optional hex highlight
     armor_style: str = "textured"         # textured (vanilla layers) | 3d (GeckoLib armor model designed in Blockbench)
+    art: object = None                    # Art direction of the whole set; art.pieces gives a piece its own concept
 
     def item_ids(self) -> list[str]:
         return [f"{self.identifier}_{k}" for k in self.tools] + [f"{self.identifier}_{k}" for k in self.armor]
@@ -147,6 +316,7 @@ class Food:
     always_edible: bool = False
     fast: bool = False
     color: str = ""
+    art: object = None
 
 
 BLOCK_VARIANTS = ("stairs", "slab", "fence", "wall")
@@ -247,12 +417,14 @@ class Spec:
     materials: list[Material] = field(default_factory=list)
     foods: list[Food] = field(default_factory=list)
     theme: str = ""               # visual brief every designer task receives: era, palette, motifs, mood
+    mood: dict = field(default_factory=dict)     # the same dials for the whole mod; an entity's own art.mood overrides them one by one
     sounds: list[Sound] = field(default_factory=list)
     ores: list[Ore] = field(default_factory=list)
     enchantments: list[Enchantment] = field(default_factory=list)
     structures: list[Structure] = field(default_factory=list)
     biomes: list[Biome] = field(default_factory=list)
     dimensions: list[Dimension] = field(default_factory=list)
+    behaviors: list[Behavior] = field(default_factory=list)   # mechanics beyond the generator: custom cards + coder tasks after generation
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -269,6 +441,7 @@ class Spec:
 
 
 SCHEMA_VERSION = 2
+SCALE_MIN, SCALE_MAX = 0.0625, 16.0   # vanilla clamps Attributes.SCALE to this range
 RECIPE_KINDS = ("shaped", "shapeless", "smelting", "blasting", "smoking", "campfire_cooking")
 INGREDIENT_RE = re.compile(r"^#?[a-z0-9_.-]+:[a-z0-9_./-]+$")
 
@@ -360,6 +533,7 @@ def coerce_spawn(value):
 
 
 def validate_mob(spec: "Spec", m: Mob) -> None:
+    validate_art(m.art, f"mob {m.identifier}")
     if not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", m.identifier):
         raise InputError(f"Mob identifier must be snake_case (2-50 chars): {m.identifier!r}")
     if m.identifier in spec.local_ids() or f"{m.identifier}_spawn_egg" in spec.local_ids():
@@ -369,10 +543,14 @@ def validate_mob(spec: "Spec", m: Mob) -> None:
     from .rigs import BODY_PLANS
     if m.body_plan not in BODY_PLANS:
         raise InputError(f"Mob body_plan must be one of {BODY_PLANS}")
+    if m.held_item not in ("", "none"):
+        resolve_result(spec.local_ids(), spec.mod_id, m.held_item)   # same rule as a drop: an item of this mod or a namespaced id
     if not (1 <= m.health <= 1024) or not (0.05 <= m.speed <= 1.5) or not (0.1 <= m.width <= 4) or not (0.1 <= m.height <= 4):
         raise InputError("Mob health 1-1024, speed 0.05-1.5, width/height 0.1-4")
     if not (0 <= m.attack_damage <= 100):
         raise InputError("Mob attack_damage 0-100")
+    if not (SCALE_MIN <= float(m.scale) <= SCALE_MAX):
+        raise InputError(f"Mob scale {SCALE_MIN}-{SCALE_MAX} (the range of Minecraft's scale attribute)")
     for d in m.drops:
         d = coerce_mob_drop(d)
         resolve_result(spec.local_ids(), spec.mod_id, d.item)
@@ -427,6 +605,7 @@ def validate_food(spec: "Spec", f: Food) -> None:
 
 def validate_spec_content(spec: "Spec") -> None:
     ids = spec.local_ids()
+    validate_behaviors(spec)
     seen_all: dict[str, str] = {}
     for f in spec.features:
         seen_all[f.identifier] = "feature"
@@ -441,7 +620,12 @@ def validate_spec_content(spec: "Spec") -> None:
                 raise InputError(f"Block {f.identifier}: tool must be one of {TOOLS_FOR_BLOCKS}")
             if f.mining_level and f.mining_level not in MINING_LEVELS:
                 raise InputError(f"Block {f.identifier}: mining_level must be one of {MINING_LEVELS}")
+    for f in spec.features:
+        validate_art(f.art, f"{f.kind} {f.identifier}")
+    for fd in spec.foods:
+        validate_art(fd.art, f"food {fd.identifier}")
     for mat in spec.materials:
+        validate_art(mat.art, f"material {mat.identifier}", tuple(mat.tools) + tuple(mat.armor))
         validate_material(spec, mat)
         for i in mat.item_ids():
             if i in seen_all: raise InputError(f"Material item {i!r} collides with {seen_all[i]}")
@@ -651,23 +835,24 @@ def read_spec(raw: dict) -> Spec:
         schema_version=SCHEMA_VERSION, name=str(raw["name"]), mod_id=normalize_id(raw["mod_id"]),
         package=validate_package(raw["package"]), idea=str(raw["idea"]),
         profile=str(raw["profile"]),
-        features=[Feature(**{**f, "variants": tuple(f.get("variants", ()))}) for f in raw.get("features", [])],
+        features=[Feature(**{**f, "variants": tuple(f.get("variants", ())), "art": coerce_art(f.get("art"))}) for f in raw.get("features", [])],
         questions=list(raw.get("questions", [])), assumptions=list(raw.get("assumptions", [])),
         recipes=[Recipe(**{**r, "pattern": tuple(r.get("pattern", ())), "ingredients": tuple(r.get("ingredients", ()))}) for r in raw.get("recipes", [])],
         drops=[Drop(**d) for d in raw.get("drops", [])],
         tab=raw.get("tab"), tab_icon=raw.get("tab_icon"),
-        materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2)))}) for m in raw.get("materials", [])],
-        foods=[Food(**{**f, "effects": tuple(f.get("effects", ()))}) for f in raw.get("foods", [])],
-        theme=str(raw.get("theme") or "")[:600],
+        materials=[Material(**{**m, "tools": tuple(m.get("tools", ())), "armor": tuple(m.get("armor", ())), "armor_defense": tuple(m.get("armor_defense", (2, 6, 5, 2))), "art": coerce_art(m.get("art"))}) for m in raw.get("materials", [])],
+        foods=[Food(**{**f, "effects": tuple(f.get("effects", ())), "art": coerce_art(f.get("art"))}) for f in raw.get("foods", [])],
+        theme=str(raw.get("theme") or "")[:600], mood=coerce_mood(raw.get("mood")),
         sounds=[Sound(**x) for x in raw.get("sounds", [])],
         ores=[Ore(**{**o, "biomes": tuple(o.get("biomes", ("overworld",)))}) for o in raw.get("ores", [])],
         enchantments=[Enchantment(**e) for e in raw.get("enchantments", [])],
         structures=[Structure(**{**x, "layers": tuple(tuple(l) for l in x.get("layers", ())), "biomes": tuple(x.get("biomes", ("overworld",)))}) for x in raw.get("structures", [])],
         biomes=[Biome(**{**b, "mobs": tuple(b.get("mobs", ()))}) for b in raw.get("biomes", [])],
         dimensions=[Dimension(**{**d, "biomes": tuple(d.get("biomes", ()))}) for d in raw.get("dimensions", [])],
-        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")),
+        mobs=[Mob(**{**m, "drops": tuple(coerce_mob_drop(d) for d in m.get("drops", ())), "spawn": coerce_spawn(m.get("spawn")), "art": coerce_art(m.get("art")),
                       "egg_colors": tuple(m.get("egg_colors") or default_egg_colors(m.get("identifier", ""), m.get("behavior", "passive")))})
               for m in raw.get("mobs", [])],
+        behaviors=[coerce_behavior(b) for b in raw.get("behaviors", [])],
     )
     validate_spec_content(spec)
     return spec

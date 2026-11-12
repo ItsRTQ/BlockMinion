@@ -39,8 +39,8 @@ Linux/macOS: the same tools from your package manager (`python3.12`, `git`, Temu
 In **Git Bash** (Windows) or a terminal (Linux/macOS):
 
 ```bash
-git clone https://github.com/ItsRTQ/Minecraft-Modding-Minion.git
-cd Minecraft-Modding-Minion
+git clone https://github.com/ItsRTQ/BlockMinion.git
+cd BlockMinion
 python -m venv .venv
 source .venv/Scripts/activate          # Linux/macOS: source .venv/bin/activate
 python -m pip install -e .
@@ -93,7 +93,7 @@ The `items: …; blocks: …; mobs: …; tab: …` grammar skips the interpreter
 ## 5. Keeping up to date
 
 ```bash
-cd Minecraft-Modding-Minion && git checkout prod && git pull
+cd BlockMinion && git checkout prod && git pull
 python -m pip install -e .
 ```
 

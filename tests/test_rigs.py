@@ -74,6 +74,15 @@ class TestRecipes(unittest.TestCase):
         self.assertEqual([x["name"] for x in b], ["left_x", "left_x_lower"]); self.assertEqual(b[1]["parent"], "left_x"); self.assertEqual(c[1]["bone"], "left_x_lower")
 
 
+    def test_biped_carries_an_empty_held_item_bone_at_the_right_palm(self):
+        rec = rigs.recipe("biped"); bones = {b["name"]: b for b in rec["bones"]}
+        self.assertEqual((bones["held_item"]["parent"], bones["held_item"]["origin"]), ("right_arm_forearm", [-6, 12, 0]))   # the forearm ends at y 12
+        self.assertFalse([c for c in rec["cubes"] if c["bone"] == "held_item"])
+        geo = {b["name"]: b for b in rigs.load_rig("biped", "geo")["minecraft:geometry"][0]["bones"]}
+        self.assertEqual((geo["held_item"]["parent"], geo["held_item"]["pivot"]), ("right_arm_forearm", [6, 12, 0]))         # exported with the X mirror
+        for plan in ("quadruped", "bird", "fish", "serpent", "insect", "primate"):
+            self.assertNotIn("held_item", [b["name"] for b in rigs.recipe(plan)["bones"]], plan)
+
     def test_combine_drift_lift_helpers(self):
         a = rigs.swing("b", 1.0, 20, 1, axis=1); b = rigs.lift("b", 1.0, 10, 1, axis=2)
         c = rigs.combine(a, b)
@@ -116,7 +125,7 @@ class TestRecipes(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_every_foot_lifts_in_the_forward_swing(self):
         """Regression: knees flexed in the push-off half of the cycle (foot raised while it travels backward) on every walking rig."""
-        for plan in ("quadruped", "biped", "insect"):
+        for plan in ("quadruped", "biped", "insect", "primate"):
             proc = subprocess.run(["node", str(ROOT / "scripts/gait_check.mjs"), str(rigs.rig_path(plan, "bbmodel")), f"animation.{plan}.walk"], capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             legs = json.loads(proc.stdout)["legs"]
@@ -229,7 +238,7 @@ class TestIntegration(unittest.TestCase):
     def test_rig_block_stages_source_once(self):
         from mod_orchestra.models import rig_block, MODEL_DIR
         text = rig_block(self.store, "r_mod", "cave_golem", self.root)
-        self.assertIn("Base rig: biped", text); self.assertIn("placed now", text); self.assertIn("left_arm (child of body)", text)
+        self.assertIn("Optional scaffold: biped", text); self.assertIn("placed now", text); self.assertIn("left_arm (child of body)", text)
         src = self.root / MODEL_DIR / "cave_golem.bbmodel"
         m = json.loads(src.read_text())
         self.assertEqual((m["model_identifier"], m["mod_id"], m["meta"]["model_format"]), ("cave_golem", "r_mod", "geckolib_model"))
