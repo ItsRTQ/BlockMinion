@@ -1039,7 +1039,7 @@ function renderTasks(p) {
 })();
 
 // ---------- mod map ----------
-const mapState = { data: null, pid: null, sel: null, view: { x: 0, y: 0, k: 1 }, pos: {}, dirty: false };
+const mapState = { data: null, pid: null, sel: null, view: { x: 0, y: 0, k: 1 }, pos: {}, dirty: false, multi: false, picked: new Set() };
 const NODE_W = 190, NODE_H = 54, COL_GAP = 110, ROW_GAP = 26;
 function layoutMap(cards, edges) {
   const ids = cards.map(c => c.id), inSet = new Set(ids);
@@ -1064,6 +1064,7 @@ async function renderMap(p) {
   mapState.pos = Object.fromEntries(cards.map(c => [c.id, (data.layout && data.layout[c.id]) || mapState.pos[c.id] || auto[c.id]]));
   drawMap(p);
   qs("map-fit").onclick = () => { mapState.view = { x: 0, y: 0, k: 1 }; drawMap(p); };
+  qs("map-multi").onclick = () => { mapState.multi = !mapState.multi; if (!mapState.multi) mapState.picked.clear(); qs("map-multi").classList.toggle("active", mapState.multi); drawMap(p); if (mapState.multi) openMulti(p); else if (mapState.sel) openCard(p, mapState.sel); };
   qs("map-new-feature").onclick = () => { qs("modal-feature").classList.remove("hidden"); qs("ft-title").focus(); };
   if (mapState.sel) openCard(p, mapState.sel);
 }
@@ -1082,16 +1083,16 @@ function drawMap(p) {
     g.append(t); const bb = { w: lbl.length * 5.6 + 8, h: 14 }; const bg = svgEl("rect", { x: mx - bb.w / 2, y: my - 15, width: bb.w, height: bb.h, class: "edge-label-bg", rx: 3 }); g.insertBefore(bg, t);
   }
   for (const c of cards) {
-    const pos = mapState.pos[c.id]; const node = svgEl("g", { class: "node " + c.kind + (c.id === mapState.sel ? " sel" : ""), transform: `translate(${pos.x},${pos.y})` });
+    const pos = mapState.pos[c.id]; const node = svgEl("g", { class: "node " + c.kind + (c.id === mapState.sel ? " sel" : "") + (mapState.picked.has(c.id) ? " picked" : ""), transform: `translate(${pos.x},${pos.y})`, "data-id": c.id });
     node.append(svgEl("rect", { width: NODE_W, height: NODE_H }));
     const kind = svgEl("text", { x: 12, y: 16, class: "kind" }); kind.textContent = (c.kind === "material" ? "TOOL & ARMOR SET" : c.kind.toUpperCase()) + (c.open_tasks?.length ? " · " + c.open_tasks.length + " task" : ""); node.append(kind);
     const title = svgEl("text", { x: 12, y: 34 }); title.textContent = (c.title || c.id).slice(0, 24); node.append(title);
     const sub = svgEl("text", { x: 12, y: 47, class: "sub" }); sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? (c.status || "") : c.id; node.append(sub);
     node.append(svgEl("circle", { cx: NODE_W - 12, cy: 12, r: 4, class: "dot " + (c.status || "vanilla") }));
     let drag = null;
-    node.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); drag = { sx: ev.clientX, sy: ev.clientY, ox: pos.x, oy: pos.y, moved: false }; node.setPointerCapture(ev.pointerId); });
+    node.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); drag = { sx: ev.clientX, sy: ev.clientY, ox: pos.x, oy: pos.y, moved: false }; node.setPointerCapture?.(ev.pointerId); });
     node.addEventListener("pointermove", (ev) => { if (!drag) return; const k = mapState.view.k; const nx = drag.ox + (ev.clientX - drag.sx) / k, ny = drag.oy + (ev.clientY - drag.sy) / k; if (Math.abs(nx - drag.ox) + Math.abs(ny - drag.oy) > 2) drag.moved = true; mapState.pos[c.id] = { x: nx, y: ny }; node.setAttribute("transform", `translate(${nx},${ny})`); });
-    node.addEventListener("pointerup", async (ev) => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) { drawMap(p); api(`/api/project/${p.id}/map-layout`, { layout: mapState.pos }).catch(() => {}); } else { mapState.sel = c.id; drawMap(p); openCard(p, c.id); } });
+    node.addEventListener("pointerup", async (ev) => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) { drawMap(p); api(`/api/project/${p.id}/map-layout`, { layout: mapState.pos }).catch(() => {}); } else if (mapState.multi) { mapPick(p, c.id); } else { mapState.sel = c.id; drawMap(p); openCard(p, c.id); } });
     g.append(node);
   }
   let pan = null;
@@ -1099,6 +1100,31 @@ function drawMap(p) {
   svg.onpointermove = (ev) => { if (!pan) return; mapState.view.x = pan.ox + (ev.clientX - pan.sx); mapState.view.y = pan.oy + (ev.clientY - pan.sy); g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})`); };
   svg.onpointerup = () => { pan = null; };
   svg.onwheel = (ev) => { ev.preventDefault(); const k = Math.max(0.3, Math.min(2.5, mapState.view.k * (ev.deltaY < 0 ? 1.1 : 0.9))); mapState.view.k = k; g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${k})`); };
+}
+// Select cards: click several cards on the map, then send ONE change to all of them (one coder task with every card's context).
+function mapPick(p, cid) {
+  const c = (mapState.data?.cards || []).find((x) => x.id === cid); if (!c || c.kind === "vanilla" || c.kind === "tab") { toast("Vanilla and tab cards cannot be changed.", "bad"); return; }
+  if (mapState.picked.has(cid)) mapState.picked.delete(cid); else mapState.picked.add(cid);
+  drawMap(p); openMulti(p);
+}
+function openMulti(p) {
+  const side = qs("map-side"); side.replaceChildren(); side.classList.remove("hidden");
+  const ids = [...mapState.picked]; const cards = ids.map((id) => (mapState.data?.cards || []).find((c) => c.id === id)).filter(Boolean);
+  side.append(el("div", "SELECT CARDS", "eyebrow"), el("h3", ids.length ? `${ids.length} card${ids.length === 1 ? "" : "s"} selected` : "Click cards on the map"));
+  side.append(el("div", "Every card you click joins the selection; click again to drop it. One change request goes to all of them as a single coder task, with each card's files and relations.", "muted"));
+  const list = el("div", null, "picked-list");
+  for (const c of cards) { const row = el("div", null, "picked-row"); row.append(el("span", `${c.title || c.id} `), el("small", c.kind, "muted"), btn("×", () => mapPick(p, c.id), "mini secondary")); list.append(row); }
+  side.append(list);
+  const ta = el("textarea"); ta.placeholder = "the change, once, for all of them"; ta.rows = 4; ta.className = "multi-request"; side.append(el("div", "Request a change", "eyebrow"), ta);
+  const acts = el("div", null, "actions");
+  acts.append(btn(ids.length ? `Send to a coder (${ids.length})` : "Send to a coder", async () => {
+    if (!ids.length) throw new Error("Click at least one card on the map first"); if (!ta.value.trim()) throw new Error("Describe the change first");
+    const out = await api(`/api/project/${p.id}/change`, { card: ids[0], request: ta.value.trim(), cards: ids.slice(1) });
+    if (await confirmBox(`Task ${out.task} created for ${ids.length} card(s). Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); }
+    mapState.picked.clear(); mapState.multi = false; qs("map-multi").classList.remove("active"); await openProject(p.id);
+  }, "primary"));
+  acts.append(btn("Clear", () => { mapState.picked.clear(); drawMap(p); openMulti(p); }, "secondary"));
+  side.append(acts);
 }
 function openCard(p, cid) {
   const side = qs("map-side"); const c = mapState.data.cards.find(x => x.id === cid); if (!c) { side.classList.add("hidden"); return; }

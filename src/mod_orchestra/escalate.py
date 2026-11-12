@@ -93,7 +93,7 @@ NEED_ROLES = ("coder",)
 def _own_card(store: Store, pid: str, task_id: str) -> str | None:
     from .modmap import mod_map
     parts = task_id.split(":")
-    cid = parts[2] if len(parts) >= 3 and parts[1] in ("FEATURE", "CHANGE", "MODEL", "ITEM3D", "BLOCK3D", "ANIMATE") else None
+    cid = parts[2].split("+")[0] if len(parts) >= 3 and parts[1] in ("FEATURE", "CHANGE", "MODEL", "ITEM3D", "BLOCK3D", "ANIMATE") else None
     if parts[1:2] == ["ANIMATE"] and len(parts) >= 4:
         cid = parts[3]
     cards = {c["id"]: c for c in mod_map(store, pid)["cards"]}

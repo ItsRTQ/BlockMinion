@@ -303,3 +303,8 @@ button.danger{background:linear-gradient(135deg,#ff5c7a,#c2304f);color:#fff;bord
 .hold-step{margin:10px 0 4px}.hold-choices{display:flex;flex-direction:column;gap:4px;margin:4px 0 6px}.hold-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
 .anim-rows{display:flex;flex-direction:column;gap:10px}.anim-row{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid var(--line-2);border-radius:var(--radius-s)}
 .anim-row .opt-field{display:flex;flex-direction:column;gap:3px}.anim-row input[type=text],.anim-row input:not([type]),.anim-row textarea,.anim-remove{width:100%;box-sizing:border-box;resize:vertical}
+
+/* Select cards on the map */
+#map-multi.active{border-color:rgba(var(--cyan-rgb),.8);background:rgba(var(--cyan-rgb),.12);box-shadow:var(--glow)}
+.node.picked rect{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:4 3}
+.picked-list{display:flex;flex-direction:column;gap:4px;margin:6px 0 10px}.picked-row{display:flex;align-items:center;gap:6px}.picked-row button{margin-left:auto}

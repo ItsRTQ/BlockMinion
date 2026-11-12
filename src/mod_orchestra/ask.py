@@ -27,7 +27,8 @@ the user did not ask for; when the request is unclear, ask with status WAITING_U
 guessing. Order: code before art that depends on it (a mechanic before the animation of its moments; an entity before its model),
 art before code that only wires it. Keep each step's `text` in the user's own words plus only what the step needs to be concrete.
 Actions and their fields:
-- change: {"card": an existing card id, "text": what to change}   (any behaviour, mechanic, or fix on something that exists)
+- change: {"card": an existing card id, "cards": [more card ids, optional], "text": what to change}   (any behaviour, mechanic, or fix on
+  something that exists; list every card the same change applies to, so the coder does it once and consistently)
 - feature: {"title": short, "text": what it does, "acceptance": [testable sentences]}   (new behaviour that belongs to no card)
 - make_3d: {"kind": "item|block|projectile", "target": id, "text": notes for the designer}
 - animate: {"kind": "item|mob|block|projectile", "target": id, "anims": [{"name": snake, "what": ..., "when": ..., "loop": bool}]}
@@ -99,7 +100,7 @@ def apply_plan(store: Store, pid: str, task_id: str, handoff: dict) -> dict:
         after = [t for k in (step.get("after") or []) if isinstance(k, int) for t in created.get(k, [])]
         try:
             if action == "change":
-                tid = request_change(store, pid, str(step.get("card", "")), str(step.get("text", "")))["task"]; tids = [tid]
+                tid = request_change(store, pid, str(step.get("card", "")), str(step.get("text", "")), [str(c) for c in (step.get("cards") or [])])["task"]; tids = [tid]
             elif action == "feature":
                 tid = request_feature(store, pid, title=str(step.get("title") or step.get("text", ""))[:80], description=str(step.get("text", "")),
                                       acceptance=[str(a) for a in (step.get("acceptance") or [])], after=after or None)["task"]; tids = [tid]

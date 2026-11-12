@@ -212,7 +212,7 @@ def after_coder_done(store: Store, pid: str, task_id: str, handoff: dict) -> dic
         store.add_event(pid, "controller", "ART_REQUEST_DROPPED", {"task": task_id, "dropped": dropped})
     if not assets:
         return None
-    card = task_id.split(":")[2] if task_id.count(":") >= 2 else "feature"
+    card = task_id.split(":")[2].split("+")[0] if task_id.count(":") >= 2 else "feature"
     return request_art(store, pid, task_id, card, assets)
 
 
