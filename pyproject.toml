@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Local-first agent orchestration foundation for Minecraft Java mod projects"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
-authors = [{name = "Minecraft Mod Orchestra Contributors"}]
+license = {file = "LICENSE"}
+authors = [{name = "ItsRTQ (HCoding)"}]
 keywords = ["minecraft", "fabric", "mcp", "modding", "agents"]
 classifiers = ["Programming Language :: Python :: 3", "Operating System :: OS Independent"]
 

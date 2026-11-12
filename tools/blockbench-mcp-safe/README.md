@@ -149,7 +149,7 @@ The X-axis mirror convention is unchanged from v0.2.0; do not pre-mirror user co
 
 ## License
 
-MIT. Independently authored implementation. No source from the original GPL-3.0 project is bundled. Trademarks remain with their respective owners. This is not an official GeckoLib or Blockbench product.
+BlockMinion Source-Available License (see the repository `LICENSE`; earlier versions were MIT). Independently authored implementation. No source from the original GPL-3.0 project is bundled. Trademarks remain with their respective owners. This is not an official GeckoLib or Blockbench product.
 
 ## v0.5.0 usage: textured, pose-aware visual feedback and desktop bridge
 

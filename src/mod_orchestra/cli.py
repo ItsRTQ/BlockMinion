@@ -18,7 +18,7 @@ from .diagnostics import project_diagnose
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="craftctl", description="Minecraft Mod Orchestra: local-first Fabric starter")
+    p = argparse.ArgumentParser(prog="craftctl", description="BlockMinion: local-first Fabric starter")
     p.add_argument("--state-db", type=Path, help="Override local SQLite location (for isolated testing)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="Inspect OS/JDK/Gradle/Git/Blockbench/Minecraft; no changes")

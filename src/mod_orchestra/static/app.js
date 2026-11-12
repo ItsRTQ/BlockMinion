@@ -1,5 +1,5 @@
 "use strict";
-// Minecraft Mod Orchestra — local UI. Vanilla JS, no dependencies. The token lives only in memory.
+// BlockMinion — local UI. Vanilla JS, no dependencies. The token lives only in memory.
 const token = (location.hash || "").slice(1);
 let selected = null, pollTimer = null, activeTab = "activity", lastProject = null;
 const openLogs = new Set();  // run ids whose worker log the user keeps open across refreshes

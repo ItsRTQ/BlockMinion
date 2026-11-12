@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Security-first local MCP server for editing Blockbench .bbmodel files (limited, independent implementation)",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": ">=20"
   },

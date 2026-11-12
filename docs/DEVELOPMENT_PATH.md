@@ -1,4 +1,4 @@
-# Minecraft Mod Orchestra — Build & Development Path
+# BlockMinion — Build & Development Path
 
 **Document type:** Execution roadmap / implementation contract  
 **Baseline:** `Minecraft_Mod_Orchestra_v0.1.0_GitHub_Ready.zip`  

@@ -148,7 +148,7 @@ class VendoredServer(unittest.TestCase):
 
     def test_server_has_no_dependencies_and_no_network_or_exec(self):
         pkg = json.loads((SAFE_DIR / "package.json").read_text())
-        self.assertFalse(pkg.get("dependencies")); self.assertEqual(pkg.get("license"), "MIT")
+        self.assertFalse(pkg.get("dependencies")); self.assertEqual(pkg.get("license"), "SEE LICENSE IN LICENSE", "the vendored server is licensed with the repository (LICENSE), no longer MIT on its own")
         src = "\n".join(p.read_text(encoding="utf8") for p in (SAFE_DIR / "src").glob("*.mjs"))
         for bad in ("child_process", "fetch(", "new Function", "node:http", "node:net", "eval("):
             self.assertNotIn(bad, src, bad)
