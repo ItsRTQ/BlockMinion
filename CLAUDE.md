@@ -1,4 +1,4 @@
-# Minecraft Mod Orchestra — Claude Code orchestration instructions
+# BlockMinion — Claude Code orchestration instructions
 
 ## What this repository is
 

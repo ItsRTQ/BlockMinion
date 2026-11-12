@@ -1,5 +1,5 @@
 "use strict";
-// Minecraft Mod Orchestra — UI kit, loaded before app.js. Vanilla JS, no dependencies.
+// BlockMinion — UI kit, loaded before app.js. Vanilla JS, no dependencies.
 //   1. Dialogs: confirmBox / promptBox / formBox / noticeBox replace the browser's confirm(), prompt() and alert() with ones in the page's own style.
 //   2. Refresh guard: Guard.busy() says when a re-render would hurt the user (typing, a dialog or a modal is open); snapshot()/restore() keep the scroll,
 //      the open <details> and the focus around a render that does go ahead.

@@ -1,6 +1,6 @@
 # Gradle wrapper provenance
 
-These are the only third-party binaries shipped by Minecraft Mod Orchestra. They are copied
+These are the only third-party binaries shipped by BlockMinion. They are copied
 verbatim into every generated workspace so `craftctl build` can run without a system Gradle.
 
 | File | SHA-256 | Source |

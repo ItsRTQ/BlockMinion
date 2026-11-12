@@ -1,21 +1,231 @@
-MIT License
+BlockMinion Source-Available License
+Version 1.0, November 2026
 
-Copyright (c) 2026 Minecraft Mod Orchestra contributors
+Copyright (c) 2026 ItsRTQ (HCoding)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+THIS IS A SOURCE-AVAILABLE LICENSE. IT IS NOT AN OPEN SOURCE LICENSE AS DEFINED BY
+THE OPEN SOURCE INITIATIVE, BECAUSE IT RESTRICTS SELLING THE SOFTWARE. IT HAS NOT
+BEEN REVIEWED OR APPROVED BY ANY LICENSING BODY. NOTHING IN IT IS LEGAL ADVICE.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+----------------------------------------------------------------------------------
+0. Summary (not part of the license terms)
+----------------------------------------------------------------------------------
+
+You may use BlockMinion for free, for anything, including making Minecraft mods
+you sell. You may read, change, fork and redistribute it, for free. You may charge
+for your own services around it (installing, configuring, customizing, teaching,
+supporting). You may not sell the software itself, or a renamed or lightly changed
+copy of it, or charge people for access to it. You must keep the notices and must
+not pretend to be the original project or its authors. The mods you make with it
+are yours. Code published earlier under the MIT License stays under the MIT License
+for anyone who already received it (see section 11).
+
+----------------------------------------------------------------------------------
+1. Definitions
+----------------------------------------------------------------------------------
+
+"Software" means BlockMinion (formerly distributed as "Minecraft Mod Orchestra"):
+the source code, scripts, resources, documentation and build files distributed
+under this License by the Licensor, in the form they are distributed.
+
+"Licensor" means the copyright holder named above, and any other copyright holder
+who distributes a Contribution under this License.
+
+"You" means the individual or entity exercising rights under this License.
+
+"Derivative Version" means any work based on the Software: a modified copy, a fork,
+a translation, a port, a repackaging, a rebranding, or any work that incorporates
+all or a substantial part of the Software's code or resources. Independent Content
+(below) is not a Derivative Version.
+
+"Independent Content" means anything You create by using the Software as a tool,
+including Minecraft mods, their source code, assets, models, textures, animations,
+data, configuration and documentation, as well as the output of agents, scripts or
+generators that the Software runs on Your behalf. Independent Content is not a
+Derivative Version merely because the Software produced, generated, scaffolded,
+built, validated or packaged it, even where the Software's templates contributed
+boilerplate to it.
+
+"Redistribute" means to give, publish, host, mirror or otherwise make the Software
+or a Derivative Version available to anyone else, in source or binary form.
+
+"Software Resale" means any of the following, whether done directly or through an
+intermediary, and whether the thing sold is the Software, a Derivative Version, or
+a product or service whose main purpose is to deliver the Software or a Derivative
+Version:
+  (a) selling, licensing or renting copies of the Software or a Derivative Version
+      for a fee, a subscription or any other consideration;
+  (b) charging a fee for access to, download of, unlocking of, or use of the
+      Software or a Derivative Version, including "pro", "premium", "early access"
+      or "paid tier" gating of its features;
+  (c) renaming, rebranding, re-skinning, obfuscating or lightly modifying the
+      Software and doing (a) or (b) with the result;
+  (d) bundling the Software or a Derivative Version into a paid product in which
+      the Software or Derivative Version is the main thing being paid for.
+
+"Commercial Services" means services You sell to others that are genuinely
+distinct from Software Resale: installing, configuring, hosting for a specific
+customer, customizing, integrating, extending, troubleshooting, maintaining,
+operating, teaching or supporting the Software or a Derivative Version, where the
+customer pays for Your work and could have obtained the Software or Derivative
+Version itself for free.
+
+"Contribution" means any work of authorship submitted by You to the Licensor for
+inclusion in the Software.
+
+"Official Marks" means the names, logos and other brand identifiers of the project
+described in TRADEMARKS.md.
+
+----------------------------------------------------------------------------------
+2. Grant
+----------------------------------------------------------------------------------
+
+Subject to the conditions and restrictions of this License, the Licensor grants
+You a worldwide, royalty-free, non-exclusive, non-transferable, non-sublicensable
+(except as section 5 allows) license to:
+  (a) download, install, run and use the Software, for any purpose, including
+      personal, educational, research, professional and commercial purposes;
+  (b) create Independent Content with the Software, and to use, sell, license,
+      distribute or otherwise exploit that Independent Content on any terms You
+      choose, with no royalty, fee or notice owed to the Licensor;
+  (c) study, modify and adapt the Software and create Derivative Versions;
+  (d) Redistribute the Software and Derivative Versions free of charge, under
+      section 5;
+  (e) sell Commercial Services;
+  (f) accept voluntary donations, sponsorships or tips for Your work on the
+      Software or a Derivative Version, provided that no payment is required to
+      obtain, access or use them.
+
+----------------------------------------------------------------------------------
+3. Restrictions
+----------------------------------------------------------------------------------
+
+You may not:
+  (a) engage in Software Resale;
+  (b) remove, hide or alter the copyright notices, license notices, attribution
+      notices, NOTICE.md, or this License in copies You Redistribute;
+  (c) claim or imply that You are the author of the Software or of parts You did
+      not write, or that the Licensor authored parts You wrote;
+  (d) present a Derivative Version as the official project, or use the Official
+      Marks to suggest that a Derivative Version, a service or a person is
+      endorsed by, affiliated with or the same as the project or its maintainers,
+      except as TRADEMARKS.md permits;
+  (e) use the Software to circumvent, or help others circumvent, this License.
+
+Nothing in this License restricts fair use, fair dealing, or other rights You have
+under applicable law, and nothing in it restricts Independent Content.
+
+----------------------------------------------------------------------------------
+4. Independent Content and third-party terms
+----------------------------------------------------------------------------------
+
+The Licensor claims no copyright, ownership or license interest in Independent
+Content. Independent Content is subject only to the terms You choose and to the
+separate obligations You may have to third parties: for example the Minecraft End
+User License Agreement and brand guidelines, the licenses of mod loaders and
+libraries the Software downloads into Your projects (such as Fabric, GeckoLib or
+Player Animation Library, each under its own license), and the rights of anyone
+whose material You include. Those obligations are Yours and are not granted,
+waived or altered by this License.
+
+----------------------------------------------------------------------------------
+5. Conditions on Redistribution
+----------------------------------------------------------------------------------
+
+When You Redistribute the Software or a Derivative Version You must:
+  (a) do so free of charge, without any payment required to obtain, access or use
+      it (donations under section 2(f) are allowed);
+  (b) include a complete copy of this License, of legal/MIT.txt and of NOTICE.md;
+  (c) keep every copyright, license and attribution notice intact, and add Your
+      own copyright notice to the parts You wrote;
+  (d) state clearly, if it is a Derivative Version, that it is a modified version,
+      who modified it, and that it is not the official project, as TRADEMARKS.md
+      describes;
+  (e) license the Derivative Version as a whole under this License, so that
+      recipients receive the same rights and restrictions. You may add Your own
+      terms for Your own parts only where they do not restrict rights granted here
+      and do not permit Software Resale.
+Recipients of a Redistributed copy receive a license directly from each Licensor
+under this License.
+
+----------------------------------------------------------------------------------
+6. Contributions
+----------------------------------------------------------------------------------
+
+Unless You state otherwise in writing when You submit it, every Contribution You
+submit for inclusion in the Software is licensed by You to the Licensor and to all
+recipients under this License, and You additionally grant the copyright holder
+named above a perpetual, worldwide, non-exclusive, royalty-free right to license
+Your Contribution under other terms, including commercial terms, as part of the
+Software. You keep the copyright in Your Contribution. You represent that You have
+the right to grant these licenses.
+
+----------------------------------------------------------------------------------
+7. Trademarks
+----------------------------------------------------------------------------------
+
+This License does not grant any right to use the Official Marks, except for the
+nominative uses that TRADEMARKS.md permits (such as truthfully stating that a
+Derivative Version is "based on BlockMinion"). "Minecraft" and other third-party
+names are trademarks of their respective owners; the Software is not affiliated
+with, endorsed by or sponsored by them.
+
+----------------------------------------------------------------------------------
+8. Commercial licensing by the Licensor
+----------------------------------------------------------------------------------
+
+The copyright holder named above keeps the right to license the parts of the
+Software it owns under other terms, including terms that permit Software Resale,
+to anyone it chooses. Such a separate license does not change this License for
+anyone else.
+
+----------------------------------------------------------------------------------
+9. Termination
+----------------------------------------------------------------------------------
+
+If You violate section 3 or section 5, Your rights under this License end
+automatically. If You stop the violation within 30 days of becoming aware of it
+(or of being notified of it), Your rights are reinstated unless the Licensor tells
+You otherwise in writing within that period. Rights that ended are not restored
+for a repeated violation. Sections 4, 7, 10, 11 and 12 survive termination, and
+termination does not affect Independent Content or the rights of anyone who
+received a copy from You in compliance with this License.
+
+----------------------------------------------------------------------------------
+10. Disclaimer of warranty and limitation of liability
+----------------------------------------------------------------------------------
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE LICENSOR OR
+CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH
+THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. SOME JURISDICTIONS DO
+NOT ALLOW THESE LIMITATIONS; IN THAT CASE THEY APPLY TO THE FULLEST EXTENT THE
+LAW ALLOWS.
+
+----------------------------------------------------------------------------------
+11. Code previously published under the MIT License
+----------------------------------------------------------------------------------
+
+Before this License was adopted, the Software was distributed under the MIT
+License (the full text is in legal/MIT.txt), including the tagged releases up to
+and including v0.13.4-prealpha and every commit of the repository up to the commit
+that introduced this file. This License does not, and cannot, revoke the
+permissions the MIT License granted: anyone who received that code under the MIT
+License keeps all MIT rights over that code, including the right to sell it. This
+License applies to the Software as distributed from this commit onward, including
+every later change and Contribution. Where a file or part of the Software is still
+governed by the MIT License or by a third-party license, NOTICE.md says so and
+that license controls for that part.
+
+----------------------------------------------------------------------------------
+12. General
+----------------------------------------------------------------------------------
+
+If any provision of this License is held unenforceable, the rest remains in
+effect and the provision is to be read as narrowly as needed to be enforceable.
+This License is the entire agreement about the Software between You and the
+Licensor and may only be changed in writing by the copyright holder named above.
+Later versions of this License may be published; the Software is licensed under
+the version included with it unless the copyright holder states otherwise.
