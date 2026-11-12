@@ -149,12 +149,12 @@ attribution and third-party notices in [NOTICE.md](NOTICE.md); names and logo ru
 - use the project's name or logo to impersonate its maintainers.
 
 **Before this license, the project was MIT.** Everything published up to tag `v0.13.4-prealpha` stays under MIT for anyone
-who received it ([LICENSE-MIT.txt](LICENSE-MIT.txt)); those permissions are not revoked. The new license applies from the
+who received it ([legal/MIT.txt](legal/MIT.txt)); those permissions are not revoked. The new license applies from the
 commit that introduced it onward.
 
 ### Licensing FAQ
 
-- **I modified BlockMinion, added features, and give my version away for free.** Allowed. Keep `LICENSE`, `LICENSE-MIT.txt`
+- **I modified BlockMinion, added features, and give my version away for free.** Allowed. Keep `LICENSE`, `legal/MIT.txt`
   and `NOTICE.md`, add your copyright line to your parts, give your fork its own name and say it is based on BlockMinion.
 - **Someone renames BlockMinion and sells it for $20.** Prohibited for the code covered by the new license, unless the
   copyright holder authorizes it separately. Code they obtained under the earlier MIT releases keeps MIT permissions, which

@@ -10,10 +10,10 @@
   make and sell Minecraft mods; the software itself (or a renamed or lightly changed copy of it) may not be sold, and the
   official name may not be used to impersonate the project. It is source-available, **not** OSI Open Source.
 - **MIT permissions remain:** everything published before this change, including every tag up to `v0.13.4-prealpha`, was
-  released under the MIT License, kept verbatim in `LICENSE-MIT.txt`. Those permissions are not and cannot be revoked:
+  released under the MIT License, kept verbatim in `legal/MIT.txt`. Those permissions are not and cannot be revoked:
   anyone who received that code under MIT keeps all MIT rights over it. The new license governs the software as distributed
   from this change onward.
-- **New files:** `LICENSE` (new terms), `LICENSE-MIT.txt` (the previous license, unchanged), `NOTICE.md` (authorship,
+- **New files:** `LICENSE` (new terms), `legal/MIT.txt` (the previous license, unchanged), `NOTICE.md` (authorship,
   earlier MIT releases, third-party material and the licenses of what generated projects download), `TRADEMARKS.md`
   (branding rules for forks and services), a licensing section and FAQ in `README.md`, a contribution-license rule in
   `CONTRIBUTING.md`.

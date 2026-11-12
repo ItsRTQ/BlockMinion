@@ -19,7 +19,7 @@ This file must be kept with every copy and Derivative Version.
 
 Everything published before the commit that introduced the current `LICENSE`, including the tagged releases
 `v0.1.0-prealpha` through `v0.13.4-prealpha`, was released under the MIT License, whose text is kept verbatim in
-`LICENSE-MIT.txt`. Those permissions are not revoked (see `LICENSE` section 11).
+`legal/MIT.txt`. Those permissions are not revoked (see `LICENSE` section 11).
 
 ## Third-party material shipped in this repository
 

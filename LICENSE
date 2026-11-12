@@ -135,7 +135,7 @@ waived or altered by this License.
 When You Redistribute the Software or a Derivative Version You must:
   (a) do so free of charge, without any payment required to obtain, access or use
       it (donations under section 2(f) are allowed);
-  (b) include a complete copy of this License, of LICENSE-MIT.txt and of NOTICE.md;
+  (b) include a complete copy of this License, of legal/MIT.txt and of NOTICE.md;
   (c) keep every copyright, license and attribution notice intact, and add Your
       own copyright notice to the parts You wrote;
   (d) state clearly, if it is a Derivative Version, that it is a modified version,
@@ -209,7 +209,7 @@ LAW ALLOWS.
 ----------------------------------------------------------------------------------
 
 Before this License was adopted, the Software was distributed under the MIT
-License (the full text is in LICENSE-MIT.txt), including the tagged releases up to
+License (the full text is in legal/MIT.txt), including the tagged releases up to
 and including v0.13.4-prealpha and every commit of the repository up to the commit
 that introduced this file. This License does not, and cannot, revoke the
 permissions the MIT License granted: anyone who received that code under the MIT

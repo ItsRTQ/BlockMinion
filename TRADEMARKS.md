@@ -34,7 +34,7 @@ The `LICENSE` grants rights to the software, not to these marks (section 7).
 ## For forks, in practice
 
 1. Pick your own name. Keep "Based on BlockMinion (ItsRTQ/HCoding)" visible in your README and your distribution.
-2. Keep `LICENSE`, `LICENSE-MIT.txt` and `NOTICE.md`, and add your own copyright line to the parts you wrote.
+2. Keep `LICENSE`, `legal/MIT.txt` and `NOTICE.md`, and add your own copyright line to the parts you wrote.
 3. State that your version is modified and not the official project, and where the official project lives.
 4. Do not reuse the project's logo as your own.
 
