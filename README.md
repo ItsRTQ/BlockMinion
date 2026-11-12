@@ -6,7 +6,7 @@
 
 **A local-first orchestration foundation for turning Minecraft Java ideas into managed Fabric mod projects.**
 
-[![CI](https://img.shields.io/badge/CI-Python%20unit%20tests-informational)](#testing) ![Version](https://img.shields.io/badge/version-0.1.0--prealpha-yellow) ![Loader](https://img.shields.io/badge/loader-Fabric-blue) ![License](https://img.shields.io/badge/license-source--available%20%7C%20no%20resale-blue)
+[![CI](https://img.shields.io/badge/CI-Python%20unit%20tests-informational)](#testing) ![Version](https://img.shields.io/badge/version-0.14.0--prealpha-yellow) ![Loader](https://img.shields.io/badge/loader-Fabric-blue) ![License](https://img.shields.io/badge/license-source--available%20%7C%20no%20resale-blue)
 
 > **Status: Pre-alpha, working foundation—not a finished AI mod factory.** The current executable app can collect requirements, track tasks and approvals, produce simple Fabric **item/block source**, generate deterministic 16×16 placeholder textures, validate the output, inspect the environment, and request an explicitly approved local Gradle build. It **cannot yet turn an arbitrary creative prompt into an automatically implemented, game-tested mod**. Minecraft itself was not available to run build/runtime tests in the development environment.
 
