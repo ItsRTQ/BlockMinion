@@ -519,12 +519,13 @@ function animatePanel(p, kind, ident, title) {
   const rows = el("div", null, "anim-rows"); box.append(rows);
   const addRow = () => {
     const r = el("div", null, "anim-row");
-    const name = el("input"); name.placeholder = "name"; name.className = "anim-name"; name.maxLength = 24;
-    const what = el("textarea"); what.placeholder = "what it does"; what.className = "anim-what"; what.rows = 2; what.maxLength = 800;
-    const when = el("input"); when.placeholder = "when it plays"; when.className = "anim-when"; when.maxLength = 300;
+    const field = (label, input) => { const w = el("label", null, "opt-field"); w.append(el("span", label, "dlg-label"), input); return w; };
+    const name = el("input"); name.placeholder = "reload, open, roar…"; name.className = "anim-name"; name.maxLength = 24;
+    const what = el("textarea"); what.placeholder = "what moves, and how"; what.className = "anim-what"; what.rows = 2; what.maxLength = 800;
+    const when = el("input"); when.placeholder = "what happens in the game at that moment"; when.className = "anim-when"; when.maxLength = 300;
     const loopL = el("label", null, "part-choice"); const loop = el("input"); loop.type = "checkbox"; loop.className = "anim-loop"; loopL.append(loop, el("span", " lasts while it happens (loops)"));
-    r.append(name, what, when, loopL);
-    if (kind === "item") { const body = el("textarea"); body.placeholder = "the player's body during it (optional): arms, torso, head"; body.className = "anim-player"; body.rows = 2; body.maxLength = 800; r.append(body); }
+    r.append(field("Name (one word)", name), field("What it does", what), field("When it plays", when), loopL);
+    if (kind === "item") { const body = el("textarea"); body.placeholder = "optional: arms, torso, head"; body.className = "anim-player"; body.rows = 2; body.maxLength = 800; r.append(field("The player's body during it", body)); }
     rows.append(r);
   };
   addRow();
