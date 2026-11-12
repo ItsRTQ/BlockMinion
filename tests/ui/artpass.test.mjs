@@ -72,3 +72,14 @@ test('a 3D projectile is animated with one question: how it moves in flight', as
   const b = posts('/animate')[0].body; assert.deepEqual({kind: b.kind, ident: b.ident, what: b.anims[0].what}, {kind: 'projectile', ident: 'bile_glob', what: 'it tumbles end over end'});
   await page.waitFor(dlgOpen, 'start now?'); press('Not now'); await page.waitFor(() => !dlgOpen());
 });
+
+test('a change request can also apply to other cards: one task, every card listed', async () => {
+  page.overrides['/api/project/infect/change'] = {card: 'infection', cards: ['infection', 'runner'], task: 'infect:CHANGE:infection+runner:1'};
+  await open();
+  const also = side().querySelector('.also-cards'); assert.ok(also, 'the Also apply to panel');
+  const box = [...also.querySelectorAll('.also-card')].find((c) => c.value === 'runner'); assert.ok(box, 'other cards listed'); box.checked = true; box.onchange();
+  side().querySelector('textarea').value = 'all zombies reload their bile from a pouch';
+  page.click(btnOf(side(), 'Send to a coder')); await page.waitFor(() => posts('/change').length === 1, 'the request');
+  const b = posts('/change')[0].body; assert.equal(b.card, 'infection'); assert.deepEqual([...b.cards], ['runner']);
+  await page.waitFor(dlgOpen); press('Cancel');
+});

@@ -112,6 +112,8 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("edit-model", help="USER-ONLY, no agent: edit an existing mob's model without redesigning it. --scale resizes the model and its hitbox "
                        "together (1.0 = as modeled); before generate it resets the spec approval, after it patches the entity class (or asks the coder when the class has edits)")
     a.add_argument("project"); a.add_argument("--mob", required=True); a.add_argument("--scale", required=True, type=float, help="0.0625-16, e.g. 1.5 for half again as big")
+    a = sub.add_parser("change", help="USER-ONLY: a change request on one or several Map cards at once (one coder task with every card's context)")
+    a.add_argument("project"); a.add_argument("--cards", nargs="+", required=True, help="card ids; the first is the main one"); a.add_argument("--request", required=True)
     a = sub.add_parser("ask", help="USER-ONLY: say what you want in your own words; a planner turns it into an ordered plan of the existing requests (coder, designer), chained")
     a.add_argument("project"); a.add_argument("text")
     a = sub.add_parser("animate", help="USER-ONLY: ask the designer for animations on an existing model (shape and texture locked); the coder plays each one "
@@ -369,6 +371,9 @@ def dispatch(args: argparse.Namespace) -> object:
     if args.command == "edit-model":
         from .models import set_mob_scale
         return set_mob_scale(store, args.project, args.mob, args.scale)
+    if args.command == "change":
+        from .modmap import request_change
+        return request_change(store, args.project, args.cards[0], args.request, args.cards[1:])
     if args.command == "ask":
         from .ask import request_ask
         return request_ask(store, args.project, args.text)

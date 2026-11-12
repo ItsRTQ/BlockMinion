@@ -1118,7 +1118,20 @@ function openCard(p, cid) {
     const ta = el("textarea"); ta.rows = 3; ta.placeholder = c.kind === "custom" ? "e.g. make the inventory 25 slots instead of 20" : c.kind === "mob" ? "e.g. make it drop 2 scrap instead of 1 and walk faster" : "e.g. 1500 durability instead of 1200";
     side.append(ta);
     const acts = el("div", null, "actions");
-    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
+    // the same change on several cards at once: one coder task with every card's context (a change that cuts across the mod)
+    const others = (mapState.data?.cards || []).filter((o) => o.id !== cid && o.kind !== "vanilla" && o.kind !== "tab");
+    const also = document.createElement("details"); also.className = "also-cards"; also.append(el("summary", "Also apply to other cards…"));
+    const filt = el("input"); filt.placeholder = "filter by name or kind"; filt.className = "also-filter";
+    const listB = el("div", null, "also-list");
+    const draw = () => { listB.replaceChildren(); const q = filt.value.trim().toLowerCase();
+      for (const o of others) { if (q && !(`${o.id} ${o.title} ${o.kind}`.toLowerCase().includes(q))) continue;
+        const l = el("label", null, "part-choice"); const c = el("input"); c.type = "checkbox"; c.value = o.id; c.className = "also-card"; c.checked = also.dataset[o.id] === "1";
+        c.onchange = () => { also.dataset[o.id] = c.checked ? "1" : ""; }; l.append(c, el("span", ` ${o.title} `), el("small", o.kind, "muted")); listB.append(l); } };
+    filt.oninput = draw; draw();
+    const allBtn = btn("Select all shown", () => { for (const c of listB.querySelectorAll(".also-card")) { c.checked = true; also.dataset[c.value] = "1"; } }, "mini secondary");
+    also.append(filt, allBtn, listB); side.append(also);
+    const chosen = () => others.map((o) => o.id).filter((id) => also.dataset[id] === "1");
+    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim(), cards: chosen() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
     if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
     if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
     if (c.kind === "custom") {   // its projectiles (once they have their own art) can fly as 3D models

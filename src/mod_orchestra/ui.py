@@ -335,7 +335,7 @@ def serve(store: Store, port: int = 8765) -> None:
                         return request_art_pass(store, pid, str(payload.get("card", "")))
                     if op == "change":
                         from .modmap import request_change
-                        return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")))
+                        return request_change(store, pid, str(payload.get("card", "")), str(payload.get("request", "")), [str(c) for c in payload.get("cards") or []])
                     if op == "card":
                         from .modmap import update_card
                         return update_card(store, pid, str(payload.get("card", "")), by="user", description=payload.get("description"),
