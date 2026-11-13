@@ -157,7 +157,8 @@ def serve(store: Store, port: int = 8765) -> None:
                         return item_catalog(store, pid)
                     if op == "map":
                         from .modmap import mod_map
-                        return mod_map(store, pid)
+                        from .mapmeta import load as load_map_meta
+                        return mod_map(store, pid) | {"meta": load_map_meta(store, pid)}   # the user's organisation rides beside the graph, never inside it
                     if op == "art":
                         from .content import list_art
                         return list_art(store, pid)
@@ -300,6 +301,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "map-layout":
                         store.set_setting(pid, "map_layout", {str(k): v for k, v in (payload.get("layout") or {}).items() if isinstance(v, dict)})
                         return {"saved": True}
+                    if op == "map-meta":   # folders, tags and positions: view metadata only, no file of the mod changes
+                        from .mapmeta import save as save_map_meta
+                        return {"meta": save_map_meta(store, pid, payload.get("meta"))}
                     if op == "feature":
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
@@ -448,10 +452,10 @@ def serve(store: Store, port: int = 8765) -> None:
                 self.send_response(200); self.send_header("Content-Type", "image/x-icon" if path.endswith(".ico") else "image/png")
                 self.send_header("Cache-Control", "private, max-age=86400"); self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw); return
-            if path in ("/", "/app.js", "/kit.js", "/style.css"):
+            if path in ("/", "/app.js", "/kit.js", "/mapcore.js", "/mapview.js", "/style.css"):
                 if self.headers.get("Host") != f"127.0.0.1:{port}":
                     return self.response({"error": "Invalid host"}, 403)
-                resource = {"/": "index.html", "/app.js": "app.js", "/kit.js": "kit.js", "/style.css": "style.css"}[path]
+                resource = "index.html" if path == "/" else path[1:]
                 raw = files("mod_orchestra").joinpath("static", resource).read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8" if path == "/" else "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")

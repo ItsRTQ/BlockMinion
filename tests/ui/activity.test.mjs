@@ -48,7 +48,7 @@ test('a coder step takes you to its card on the Map', async () => {
   page.overrides['/api/activity'] = runningFeed({task: 'infect:FEATURE:infection', role: 'coder', label: 'Coder · infection', target: {tab: 'map', focus: 'infection'}});
   await poll(); page.click(pill()); page.click([...panel().querySelectorAll('button')].find((b) => b.textContent === 'Watch it'));
   await page.waitFor(() => page.$('.tab[data-tab="map"]').classList.contains('active'), 'the Map tab');
-  await page.waitFor(() => page.eval('mapState.sel') === 'infection', 'the card selected'); assert.ok(!page.hidden('#map-side'), 'its details are open');
+  await page.waitFor(() => page.eval('mapState.sel') === 'infection', 'the card selected'); assert.ok(!page.hidden('#map-inspector'), 'its details are open');
 });
 
 test('it works from another view too: Environment is left for the project', async () => {
