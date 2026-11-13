@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS feature_cards (
     (8, "global settings (agent runtime chosen from the UI)", """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
 """),
+    (9, "chat with the coordinator (the project's main panel)", """
+CREATE TABLE IF NOT EXISTS chat (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), role TEXT NOT NULL,
+  text TEXT NOT NULL, meta_json TEXT NOT NULL DEFAULT '{}', task_id TEXT, created_at TEXT NOT NULL);
+"""),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 
@@ -268,6 +273,17 @@ class Store:
             self.event(con, row["project_id"], worker, "TASK_LEASED", {"task": task_id})
             return dict(con.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
 
+    def chat_add(self, pid: str, role: str, text: str, *, meta: dict | None = None, task_id: str | None = None) -> int:
+        with self.tx() as con:
+            cur = con.execute("INSERT INTO chat(project_id, role, text, meta_json, task_id, created_at) VALUES(?,?,?,?,?,?)",
+                              (pid, role, text, json.dumps(meta or {}), task_id, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
+            return int(cur.lastrowid)
+
+    def chat_messages(self, pid: str, limit: int = 200) -> list[dict]:
+        with self.tx() as con:
+            rows = con.execute("SELECT id, role, text, meta_json, task_id, created_at FROM chat WHERE project_id=? ORDER BY id DESC LIMIT ?", (pid, limit)).fetchall()
+        return [{"id": r["id"], "role": r["role"], "text": r["text"], "meta": json.loads(r["meta_json"] or "{}"), "task": r["task_id"], "at": r["created_at"]} for r in reversed(rows)]
+
     def get_setting(self, pid: str, key: str, default=None):
         with self.tx() as con:
             row = con.execute("SELECT value_json FROM project_settings WHERE project_id=? AND key=?", (pid, key)).fetchone()
@@ -327,6 +343,7 @@ class Store:
             counts = {}
             # every table that references the project or its tasks (schema v1-v4); children first
             counts["project_settings"] = con.execute("DELETE FROM project_settings WHERE project_id=?", (pid,)).rowcount
+            counts["chat"] = con.execute("DELETE FROM chat WHERE project_id=?", (pid,)).rowcount
             counts["feature_cards"] = con.execute("DELETE FROM feature_cards WHERE project_id=?", (pid,)).rowcount
             counts["task_instructions"] = con.execute("DELETE FROM task_instructions WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)", (pid,)).rowcount
             counts["runs"] = con.execute("DELETE FROM runs WHERE project_id=?", (pid,)).rowcount

@@ -308,3 +308,31 @@ button.danger{background:linear-gradient(135deg,#ff5c7a,#c2304f);color:#fff;bord
 #map-multi.active{border-color:rgba(var(--cyan-rgb),.8);background:rgba(var(--cyan-rgb),.12);box-shadow:var(--glow)}
 .node.picked rect{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:4 3}
 .picked-list{display:flex;flex-direction:column;gap:4px;margin:6px 0 10px}.picked-row{display:flex;align-items:center;gap:6px}.picked-row button{margin-left:auto}
+
+/* Chat: the project's main panel */
+.chat-layout{display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start}
+.chat-messages{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:8px;border:1px solid var(--line-2);border-radius:var(--radius-s);background:var(--panel-2)}
+.chat-msg{padding:8px 10px;border-radius:var(--radius-s);max-width:92%}.chat-msg.user{align-self:flex-end;background:rgba(var(--cyan-rgb),.12)}.chat-msg.coordinator{align-self:flex-start;background:rgba(255,255,255,.04)}.chat-msg.system{align-self:center;font-size:12px;color:var(--muted)}.chat-msg.thinking{align-self:flex-start;color:var(--muted);font-style:italic}
+.chat-who{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}.chat-text{white-space:pre-wrap}
+.chat-compose{display:flex;gap:8px;margin-top:8px}.chat-compose textarea{flex:1;resize:vertical}
+.chat-right{position:sticky;top:12px;border:1px solid var(--line-2);border-radius:var(--radius-s);padding:12px;background:var(--panel-2)}
+.plan-result{font-weight:600;margin-bottom:8px}.plan-steps{padding-left:18px;display:flex;flex-direction:column;gap:6px}.plan-problems{color:var(--bad);margin:8px 0}.ok-note{color:var(--ok)}
+@media (max-width:900px){.chat-layout{grid-template-columns:1fr}.chat-right{position:static}}
+
+/* The project's navbar: tabs directly under the header; the stages and Now live in Activity */
+#view-project .tabs{position:sticky;top:0;z-index:5;margin:6px 0 14px;padding:6px 0;background:var(--bg);border-bottom:1px solid var(--line-2)}
+#tab-activity .stepper{margin-top:4px}
+
+/* Use the width: the project view spans the page; the chat's plan column is wider; the map fits the screen without scrolling */
+.main{max-width:none}
+#view-project .chat-layout{grid-template-columns:minmax(0,1.15fr) minmax(360px,1fr)}
+.chat-compose{align-items:flex-start}.chat-compose button{height:44px;align-self:flex-start;white-space:nowrap}
+.chat-messages{max-height:calc(100vh - 380px);min-height:220px}
+.map-wrap{height:calc(100vh - 330px);min-height:420px}
+#tab-map .actions{gap:10px;flex-wrap:wrap;justify-content:flex-end}#tab-map .actions button{margin:0}
+
+/* Items: create first, then search and pages, then the list */
+#sub-items .add-bar{margin:0 0 10px;display:flex;flex-wrap:wrap;gap:10px}
+.features-toolbar{display:flex;align-items:center;gap:12px;margin:0 0 12px}.features-toolbar input{flex:1;max-width:420px}.pager{display:flex;align-items:center;gap:8px;margin-left:auto}
+
+.logo-img{width:40px;height:40px;object-fit:contain;background:transparent;border:0;box-shadow:none;image-rendering:auto}

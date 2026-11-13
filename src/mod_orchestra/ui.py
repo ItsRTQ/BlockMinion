@@ -161,6 +161,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "art":
                         from .content import list_art
                         return list_art(store, pid)
+                    if op == "chat":
+                        from .chat import view
+                        return view(store, pid)
                     if op == "projectiles":
                         from .model3d import projectile_assets
                         return projectile_assets(store, pid)
@@ -301,6 +304,15 @@ def serve(store: Store, port: int = 8765) -> None:
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "chat":
+                        from .chat import send
+                        return send(store, pid, str(payload.get("text", "")))
+                    if op == "chat-launch":
+                        from .chat import launch
+                        return launch(store, pid)
+                    if op == "chat-discard":
+                        from .chat import discard
+                        return discard(store, pid)
                     if op == "ask":
                         from .ask import request_ask
                         return request_ask(store, pid, str(payload.get("text", "")))
@@ -431,6 +443,11 @@ def serve(store: Store, port: int = 8765) -> None:
 
         def do_GET(self):
             path = urlparse(self.path).path
+            if path in ("/favicon.ico", "/favicon.png", "/apple-touch-icon.png", "/blockminion.png"):   # the BlockMinion mark
+                raw = files("mod_orchestra").joinpath("static", path[1:]).read_bytes()
+                self.send_response(200); self.send_header("Content-Type", "image/x-icon" if path.endswith(".ico") else "image/png")
+                self.send_header("Cache-Control", "private, max-age=86400"); self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw); return
             if path in ("/", "/app.js", "/kit.js", "/style.css"):
                 if self.headers.get("Host") != f"127.0.0.1:{port}":
                     return self.response({"error": "Invalid host"}, 403)

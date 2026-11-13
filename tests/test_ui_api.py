@@ -119,6 +119,15 @@ class UiApi(unittest.TestCase):
                         self.assertIn(needle, html)
         self.assertEqual(self.call("/api/activity")[1].keys(), {"now", "projects", "recent"})
 
+    def test_the_blockminion_mark_is_served_as_favicon_and_brand(self):
+        import urllib.request
+        for path, ctype in (("/favicon.png", "image/png"), ("/favicon.ico", "image/x-icon"), ("/apple-touch-icon.png", "image/png"), ("/blockminion.png", "image/png")):
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}") as r:
+                self.assertEqual((r.status, r.headers["Content-Type"]), (200, ctype), path); self.assertGreater(len(r.read()), 1000, path)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/") as r:
+            html = r.read().decode()
+        self.assertIn('<link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">', html); self.assertIn('src="/blockminion.png" alt="BlockMinion"', html)
+
     def test_gallery_entries_carry_what_the_mobs_tab_reads(self):
         """Regression: the Art button and the body plan heading read `identifier` and `body_plan`, which the gallery did not send (they showed undefined)."""
         code, p = self.call("/api/project/u_mod")
