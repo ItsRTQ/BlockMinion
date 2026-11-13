@@ -85,11 +85,35 @@
       <div id="tab-map" class="tabpane hidden">
         <div class="card map-card">
           <div class="card-head map-head">
-            <div><h3>Mod map</h3><p class="muted">Every feature as a card; arrows show what derives from what. Click a card for details and to request a change — the coder gets that card's files and relations, not the whole project. Drag to arrange, wheel to zoom.</p></div>
-            <div class="actions" style="margin:0"><button type="button" class="primary" id="map-new-feature">＋ New feature</button><button type="button" class="secondary" id="map-multi" title="Click several cards, then send one change to all of them">Select cards</button><button type="button" class="secondary" id="map-fit">Fit</button></div>
+            <div><h3>Mod map</h3><p class="muted"><b>Zoom</b> to travel · <b>click</b> to inspect · <b>Expand</b> to understand · <b>Focus</b> to investigate · <b>Modify with Minion</b> to ask a coder. Folders and tags only organise this map.</p></div>
+            <div class="actions map-tools">
+              <span class="map-searchbox"><input id="map-search" type="search" placeholder="Search features, folders, #tags…" aria-label="Search the map" autocomplete="off"><select id="map-scope" aria-label="Where to search"><option value="all">Entire mod</option><option value="here">Current folder</option></select></span>
+              <button type="button" class="secondary" id="map-filter-btn" title="Choose what the map shows">Filters</button>
+              <button type="button" class="secondary" id="map-new-folder" title="A folder organises the map; it never moves the mod's files">＋ Folder</button>
+              <button type="button" class="primary" id="map-new-feature">＋ New feature</button>
+              <button type="button" class="secondary" id="map-multi" title="Click several cards, then send one change to all of them">Select cards</button>
+              <button type="button" class="secondary" id="map-fit" title="See the entire mod (0)">Fit all</button>
+            </div>
           </div>
-          <div class="map-wrap">
+          <div class="map-wrap" id="map-wrap" tabindex="0" aria-label="Mod map. Scroll to zoom, drag to move, arrow keys to pan, plus and minus to zoom, Enter on a folder to go in, Backspace to go out.">
+            <canvas id="map-canvas" class="map-canvas" aria-hidden="true"></canvas>
             <svg id="map-svg" class="map-svg"></svg>
+            <div class="map-topbar">
+              <div class="map-navbtns" role="toolbar" aria-label="Map navigation">
+                <button type="button" class="mini secondary" id="map-back" title="Back" aria-label="Back">←</button>
+                <button type="button" class="mini secondary" id="map-fwd" title="Forward" aria-label="Forward">→</button>
+                <button type="button" class="mini secondary" id="map-up" title="Out to the parent folder (Backspace)" aria-label="Parent folder">↑</button>
+                <button type="button" class="mini secondary" id="map-home" title="Out to the whole mod" aria-label="Whole mod">⌂</button>
+                <button type="button" class="mini secondary" id="map-fit-region" title="Fit the folder you are in">Fit folder</button>
+              </div>
+              <nav id="map-crumbs" class="map-crumbs" aria-label="Where you are"></nav>
+            </div>
+            <div id="map-focusbar" class="map-focusbar hidden" role="toolbar" aria-label="Focus"></div>
+            <div id="map-results" class="map-pop map-results hidden" role="listbox" aria-label="Search results"></div>
+            <div id="map-filters" class="map-pop map-filters hidden" role="dialog" aria-label="Filters"></div>
+            <div id="map-count" class="map-count" aria-live="polite"></div>
+            <div id="map-empty" class="map-empty hidden">Nothing on the map yet. Add a feature, or create a folder to start organising.</div>
+            <div id="map-inspector" class="map-inspector hidden"></div>
             <aside id="map-side" class="map-side hidden"></aside>
           </div>
         </div>
@@ -422,6 +446,8 @@
   <div id="dlg-actions" class="actions dlg-actions"></div>
 </div></div>
 <script src="/kit.js"></script>
+<script src="/mapcore.js"></script>
+<script src="/mapview.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (on `dev` after merge)
+
+- **Mod Map 2.0**: the map is a space you travel through. Folders are dots; zooming into one enters it (no double click), zooming out leaves it; a feature
+  is a dot, then a compact card, then a full card. Click a card for a small note beside it, **Expand** for its details, **Focus** for only what it
+  connects to (Direct, Extended, Custom), **Modify with Minion** to write a change for a coder. Smart folders (Auto, Suggest, Manual; a feature can be
+  shown in several), tags (inferred and your own), search, filters (types, relations, recipes, tags; hide or dim), relations bundled by scale, a
+  breadcrumb with Back and Forward. Folders, tags and positions are saved as view metadata: they never change the mod and are never sent to an agent.
+
 ## v0.14.0-prealpha — 2026-11-12
 
 The first release as **BlockMinion**, under the new license. Everything below landed on `dev` since `v0.13.4-prealpha`.

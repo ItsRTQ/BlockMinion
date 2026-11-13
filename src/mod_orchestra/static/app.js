@@ -179,7 +179,7 @@ async function goTo(pid, target = {}) {
     const n = document.querySelector(`[data-focus="${focus}"]`);
     if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("flash"); setTimeout(() => n.classList.remove("flash"), 1800); }
   } else if (focus && target.tab === "map" && mapState.data && mapState.data.cards.some(c => c.id === focus)) {
-    mapState.sel = focus; drawMap(lastProject); openCard(lastProject, focus);
+    openCard(lastProject, focus);
   }
 }
 
@@ -1103,142 +1103,7 @@ function renderTasks(p) {
 })();
 
 // ---------- mod map ----------
-const mapState = { data: null, pid: null, sel: null, view: { x: 0, y: 0, k: 1 }, pos: {}, dirty: false, multi: false, picked: new Set() };
-const NODE_W = 190, NODE_H = 54, COL_GAP = 110, ROW_GAP = 26;
-function layoutMap(cards, edges) {
-  const ids = cards.map(c => c.id), inSet = new Set(ids);
-  const preds = Object.fromEntries(ids.map(i => [i, []])); const succs = Object.fromEntries(ids.map(i => [i, []]));
-  for (const e of edges) if (inSet.has(e.from) && inSet.has(e.to)) { preds[e.to].push(e.from); succs[e.from].push(e.to); }
-  const depth = {}; const visiting = new Set();
-  const d = (id) => { if (depth[id] != null) return depth[id]; if (visiting.has(id)) return 0; visiting.add(id); const v = preds[id].length ? 1 + Math.max(...preds[id].map(d)) : 0; visiting.delete(id); depth[id] = v; return v; };
-  for (const id of ids) d(id);
-  const cols = {}; for (const id of ids) { const isolated = !preds[id].length && !succs[id].length; const col = isolated ? -1 : depth[id]; (cols[col] ||= []).push(id); }
-  const pos = {}; const colKeys = Object.keys(cols).map(Number).sort((a, b) => a - b);
-  colKeys.forEach((col, ci) => { const list = cols[col].sort(); list.forEach((id, ri) => { pos[id] = { x: 40 + ci * (NODE_W + COL_GAP), y: 40 + ri * (NODE_H + ROW_GAP) }; }); });
-  return pos;
-}
-function svgEl(tag, attrs = {}) { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; }
-async function renderMap(p) {
-  const svg = qs("map-svg"); if (!svg) return;
-  let data; try { data = await api(`/api/project/${p.id}/map`); } catch (e) { toast("map: " + e.message, "bad"); return; }
-  const cards = data.cards.filter(c => c.kind !== "tab"), edges = data.edges;
-  if (mapState.pid !== p.id) { mapState.pid = p.id; mapState.view = { x: 0, y: 0, k: 1 }; mapState.sel = null; }
-  mapState.data = data;
-  const auto = layoutMap(cards, edges);
-  mapState.pos = Object.fromEntries(cards.map(c => [c.id, (data.layout && data.layout[c.id]) || mapState.pos[c.id] || auto[c.id]]));
-  drawMap(p);
-  qs("map-fit").onclick = () => { mapState.view = { x: 0, y: 0, k: 1 }; drawMap(p); };
-  qs("map-multi").onclick = () => { mapState.multi = !mapState.multi; if (!mapState.multi) mapState.picked.clear(); qs("map-multi").classList.toggle("active", mapState.multi); drawMap(p); if (mapState.multi) openMulti(p); else if (mapState.sel) openCard(p, mapState.sel); };
-  qs("map-new-feature").onclick = () => { qs("modal-feature").classList.remove("hidden"); qs("ft-title").focus(); };
-  if (mapState.sel) openCard(p, mapState.sel);
-}
-function drawMap(p) {
-  const svg = qs("map-svg"); svg.replaceChildren();
-  const { cards, edges } = { cards: mapState.data.cards.filter(c => c.kind !== "tab"), edges: mapState.data.edges };
-  const g = svgEl("g", { transform: `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})` }); svg.append(g);
-  const defs = svgEl("defs"); defs.innerHTML = '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-2)"/></marker>'; svg.prepend(defs);
-  const byId = Object.fromEntries(cards.map(c => [c.id, c]));
-  for (const e of edges) {
-    const a = mapState.pos[e.from], b = mapState.pos[e.to]; if (!a || !b) continue;
-    const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2; const dx = Math.max(40, (x2 - x1) / 2);
-    const path = svgEl("path", { d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`, class: "edge " + e.kind, "marker-end": "url(#arrow)" }); g.append(path);
-    const lbl = (mapState.data.edge_labels[e.kind] || e.kind) + (e.label ? " · " + e.label : ""); const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-    const t = svgEl("text", { x: mx, y: my - 4, "text-anchor": "middle", class: "edge-label" }); t.textContent = lbl;
-    g.append(t); const bb = { w: lbl.length * 5.6 + 8, h: 14 }; const bg = svgEl("rect", { x: mx - bb.w / 2, y: my - 15, width: bb.w, height: bb.h, class: "edge-label-bg", rx: 3 }); g.insertBefore(bg, t);
-  }
-  for (const c of cards) {
-    const pos = mapState.pos[c.id]; const node = svgEl("g", { class: "node " + c.kind + (c.id === mapState.sel ? " sel" : "") + (mapState.picked.has(c.id) ? " picked" : ""), transform: `translate(${pos.x},${pos.y})`, "data-id": c.id });
-    node.append(svgEl("rect", { width: NODE_W, height: NODE_H }));
-    const kind = svgEl("text", { x: 12, y: 16, class: "kind" }); kind.textContent = (c.kind === "material" ? "TOOL & ARMOR SET" : c.kind.toUpperCase()) + (c.open_tasks?.length ? " · " + c.open_tasks.length + " task" : ""); node.append(kind);
-    const title = svgEl("text", { x: 12, y: 34 }); title.textContent = (c.title || c.id).slice(0, 24); node.append(title);
-    const sub = svgEl("text", { x: 12, y: 47, class: "sub" }); sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? (c.status || "") : c.id; node.append(sub);
-    node.append(svgEl("circle", { cx: NODE_W - 12, cy: 12, r: 4, class: "dot " + (c.status || "vanilla") }));
-    let drag = null;
-    node.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); drag = { sx: ev.clientX, sy: ev.clientY, ox: pos.x, oy: pos.y, moved: false }; node.setPointerCapture?.(ev.pointerId); });
-    node.addEventListener("pointermove", (ev) => { if (!drag) return; const k = mapState.view.k; const nx = drag.ox + (ev.clientX - drag.sx) / k, ny = drag.oy + (ev.clientY - drag.sy) / k; if (Math.abs(nx - drag.ox) + Math.abs(ny - drag.oy) > 2) drag.moved = true; mapState.pos[c.id] = { x: nx, y: ny }; node.setAttribute("transform", `translate(${nx},${ny})`); });
-    node.addEventListener("pointerup", async (ev) => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) { drawMap(p); api(`/api/project/${p.id}/map-layout`, { layout: mapState.pos }).catch(() => {}); } else if (mapState.multi) { mapPick(p, c.id); } else { mapState.sel = c.id; drawMap(p); openCard(p, c.id); } });
-    g.append(node);
-  }
-  let pan = null;
-  svg.onpointerdown = (ev) => { pan = { sx: ev.clientX, sy: ev.clientY, ox: mapState.view.x, oy: mapState.view.y }; };
-  svg.onpointermove = (ev) => { if (!pan) return; mapState.view.x = pan.ox + (ev.clientX - pan.sx); mapState.view.y = pan.oy + (ev.clientY - pan.sy); g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})`); };
-  svg.onpointerup = () => { pan = null; };
-  svg.onwheel = (ev) => { ev.preventDefault(); const k = Math.max(0.3, Math.min(2.5, mapState.view.k * (ev.deltaY < 0 ? 1.1 : 0.9))); mapState.view.k = k; g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${k})`); };
-}
-// Select cards: click several cards on the map, then send ONE change to all of them (one coder task with every card's context).
-function mapPick(p, cid) {
-  const c = (mapState.data?.cards || []).find((x) => x.id === cid); if (!c || c.kind === "vanilla" || c.kind === "tab") { toast("Vanilla and tab cards cannot be changed.", "bad"); return; }
-  if (mapState.picked.has(cid)) mapState.picked.delete(cid); else mapState.picked.add(cid);
-  drawMap(p); openMulti(p);
-}
-function openMulti(p) {
-  const side = qs("map-side"); side.replaceChildren(); side.classList.remove("hidden");
-  const ids = [...mapState.picked]; const cards = ids.map((id) => (mapState.data?.cards || []).find((c) => c.id === id)).filter(Boolean);
-  side.append(el("div", "SELECT CARDS", "eyebrow"), el("h3", ids.length ? `${ids.length} card${ids.length === 1 ? "" : "s"} selected` : "Click cards on the map"));
-  side.append(el("div", "Every card you click joins the selection; click again to drop it. One change request goes to all of them as a single coder task, with each card's files and relations.", "muted"));
-  const list = el("div", null, "picked-list");
-  for (const c of cards) { const row = el("div", null, "picked-row"); row.append(el("span", `${c.title || c.id} `), el("small", c.kind, "muted"), btn("×", () => mapPick(p, c.id), "mini secondary")); list.append(row); }
-  side.append(list);
-  const ta = el("textarea"); ta.placeholder = "the change, once, for all of them"; ta.rows = 4; ta.className = "multi-request"; side.append(el("div", "Request a change", "eyebrow"), ta);
-  const acts = el("div", null, "actions");
-  acts.append(btn(ids.length ? `Send to a coder (${ids.length})` : "Send to a coder", async () => {
-    if (!ids.length) throw new Error("Click at least one card on the map first"); if (!ta.value.trim()) throw new Error("Describe the change first");
-    const out = await api(`/api/project/${p.id}/change`, { card: ids[0], request: ta.value.trim(), cards: ids.slice(1) });
-    if (await confirmBox(`Task ${out.task} created for ${ids.length} card(s). Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); }
-    mapState.picked.clear(); mapState.multi = false; qs("map-multi").classList.remove("active"); await openProject(p.id);
-  }, "primary"));
-  acts.append(btn("Clear", () => { mapState.picked.clear(); drawMap(p); openMulti(p); }, "secondary"));
-  side.append(acts);
-}
-function openCard(p, cid) {
-  const side = qs("map-side"); const c = mapState.data.cards.find(x => x.id === cid); if (!c) { side.classList.add("hidden"); return; }
-  side.replaceChildren(); side.classList.remove("hidden");
-  const close = btn("✕", () => { mapState.sel = null; side.classList.add("hidden"); drawMap(p); }, "mini secondary"); close.style.float = "right"; side.append(close);
-  side.append(el("div", (c.kind === "material" ? "tool & armor set" : c.kind) + (c.status ? " · " + c.status : ""), "eyebrow"), el("h3", c.title || c.id), el("div", c.id, "fid"));
-  const descBox = el("p", c.description || ""); side.append(descBox);
-  if (c.pieces) { const ul = el("ul"); for (const pc of c.pieces) ul.append(el("li", `${pc.id} (${pc.kind})`)); side.append(el("div", "Pieces", "eyebrow"), ul); }
-  const rel = mapState.data.edges.filter(e => e.from === cid || e.to === cid);
-  if (rel.length) { const ul = el("ul"); for (const e of rel) ul.append(el("li", e.from === cid ? `→ ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""} → ${e.to}` : `← ${e.from} ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""}`)); side.append(el("div", "Relations", "eyebrow"), ul); }
-  if (c.acceptance?.length) { const ul = el("ul"); for (const a of c.acceptance) ul.append(el("li", a)); side.append(el("div", "Acceptance criteria", "eyebrow"), ul); }
-  if (c.files?.length) { const ul = el("ul", null, "files"); for (const f of c.files.slice(0, 12)) ul.append(el("li", f)); side.append(el("div", "Implemented in", "eyebrow"), ul); }
-  if (c.open_tasks?.length) { const ul = el("ul"); for (const t of c.open_tasks) ul.append(el("li", `${t.id} · ${t.state}`)); side.append(el("div", "Open tasks", "eyebrow"), ul); }
-  if (c.history?.length) { const ul = el("ul", null, "hist"); for (const h of c.history.slice(-5).reverse()) ul.append(el("li", `${ago(h.at)} · ${h.by}: ${h.what}`)); side.append(el("div", "History", "eyebrow"), ul); }
-  if (c.kind !== "vanilla") {
-    side.append(el("div", "Request a change", "eyebrow"));
-    const ta = el("textarea"); ta.rows = 3; ta.placeholder = c.kind === "custom" ? "e.g. make the inventory 25 slots instead of 20" : c.kind === "mob" ? "e.g. make it drop 2 scrap instead of 1 and walk faster" : "e.g. 1500 durability instead of 1200";
-    side.append(ta);
-    const acts = el("div", null, "actions");
-    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
-    if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
-    if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
-    if (c.kind === "custom") {   // its projectiles (once they have their own art) can fly as 3D models
-      const box = el("div", null, "card-projectiles"); side.append(box);
-      api(`/api/project/${p.id}/projectiles`).then((all) => {
-        const mine = Object.entries(all || {}).filter(([, a]) => a.card === cid); if (!mine.length) return;
-        box.append(el("div", "Projectiles", "eyebrow"));
-        for (const [pid3, a] of mine) {
-          const line = el("div", null, "proj-line"); line.append(el("span", `${pid3}: ${a.what}`, "muted"));
-          line.append(btn(a.model3d ? "3D model…" : "Make it 3D", () => make3d(p, { identifier: pid3, label: pid3, model3d: a.model3d, projectile: true }), "mini"));
-          if (a.model3d) line.append(btn("Open in Blockbench", () => openModel(p, { projectile: pid3 }), "mini secondary"));
-          if (a.model3d) line.append(btn("Animate", async () => {
-            const v = await promptBox("How does it move while it flies? (the designer animates it; its shape and texture stay as they are)", "", { title: `Animate ${pid3}`, ok: "Animate", multiline: true, required: true });
-            if (v == null) return;
-            const out = await api(`/api/project/${p.id}/animate`, { kind: "projectile", ident: pid3, anims: [{ name: "flight", what: v.trim() }] });
-            if (await confirmBox("Saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await api(`/api/project/${p.id}/dispatch`, { task: out.first || out.task }); toast("Designer animating…", "ok"); }
-          }, "mini secondary"));
-          box.append(line);
-        }
-      }).catch(() => {});
-    }
-    if (c.kind === "custom") acts.append(btn("Give it its own art", async () => {
-      if (!await confirmBox("A coder finds every visual this feature borrows from vanilla and gives it its own placeholder; then the designer paints them and the coder wires them in. Nothing else changes. Start the coder now?", { title: "Own art for this feature", ok: "Start coder", cancel: "Not now" })) return;
-      const out = await api(`/api/project/${p.id}/art-pass`, { card: cid });
-      await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started: it lists what needs art; the designer follows.", "ok"); await refreshProject(p.id);
-    }, "secondary"));
-    if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = await promptBox("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
-    side.append(acts);
-  }
-}
+// The map lives in mapcore.js (logic) and mapview.js (drawing): renderMap, openCard and mapState come from there.
 qs("feature-form").onsubmit = async (e) => {
   e.preventDefault(); if (!selected) return;
   const acceptance = qs("ft-accept").value.split("\n").map(s => s.trim()).filter(Boolean);

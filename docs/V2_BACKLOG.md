@@ -40,4 +40,4 @@ Ideas that do not advance a v1 criterion (`docs/V1_DEFINITION.md`). Nothing here
 - Recolour without an agent: the texture's real palette as chips, change one colour and keep each pixel's lightness (shading and detail stay).
 - Use my model, later: per-face UV models, Molang expressions in keyframes, and a model whose bones the entity code expects under other names (held_item).
 - A general `regenerate` for projects made by an older generator: rewrite only the files whose hash is still the generator's, and hand the rest to the coder as a diff. `edit-model` applies that rule to one line of one file.
-
+- Mod Map 2.0 follow-ups (2026-11-13): persist the automatic cell of each card (today remembered per session, so a reload can move cards the user never placed when a card is added); nest a folder by dropping it on another (today: "Move into…" in its inspector); curved or routed bundles when several share an axis; a "classic" flat view if anyone misses it; touch pinch; rule editor for user-defined tag inference; AI-suggested classification kept reviewable (nothing uses an agent to classify today); `craftctl` commands for folders.
