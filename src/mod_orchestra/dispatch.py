@@ -174,6 +174,10 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
             return {"task_state": "FAILED", "error": error, "handoff": h}
         h = h | {"armor": ad}
         h["changed_files"] = sorted(set(h.get("changed_files") or []) | set(ad["installed"]))
+    if ":CHAT:" in task["id"] and status in ("DONE", "WAITING_USER"):
+        from .chat import receive
+        h = h | {"chat": receive(store, pid, task["id"], h)}
+        status = "DONE"   # a coordinator's question is still a finished turn
     if ":ASK:" in task["id"] and status == "DONE":
         from .ask import apply_plan
         from .validation import InputError

@@ -45,6 +45,11 @@ own licenses, which bind the mod's author:
 Generated mods are **Independent Content** (see `LICENSE` section 1): they belong to their author, whose `fabric.mod.json`
 defaults to `"license": "ARR"` until the author chooses otherwise.
 
+## The BlockMinion mark
+
+The logo (`src/mod_orchestra/static/blockminion.png`, with the favicons derived from it) was created for the project by ItsRTQ. It is an
+Official Mark under `TRADEMARKS.md`, not licensed with the code.
+
 ## Trademarks
 
 "Minecraft" is a trademark of Mojang Synergies AB / Microsoft. "Fabric" and "Forge"/"NeoForge" belong to their respective

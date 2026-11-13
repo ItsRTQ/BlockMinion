@@ -139,6 +139,9 @@ const fingerprint = (p) => JSON.stringify({ ...p, job: p.job ? { job: p.job.job,
 async function openProject(id) {
   selected = id; show("project");
   let p; try { p = await api("/api/project/" + encodeURIComponent(id)); } catch (e) { toast(e.message, "bad"); return; }
+  // before the source exists the stages (in Activity) guide the user; once it does, the Chat is the main panel
+  const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  const want = generated ? "chat" : "activity"; if (activeTab !== want) document.querySelector(`.tab[data-tab="${want}"]`)?.click();
   await renderProject(p);
   Activity.seen(id);
 }
@@ -152,7 +155,7 @@ async function renderProject(p) {
     const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
     qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
     const pending = [];
-    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["chat", renderChat], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
       try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) pending.push(r.catch(e => toast(`${name}: ${e.message}`, "bad"))); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
     }
     await Promise.allSettled(pending);
@@ -456,6 +459,51 @@ async function renderGallery(p) {
   }
 }
 
+// ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
+const chatState = { pid: null, polling: null };
+async function renderChat(p) {
+  const box = qs("chat-messages"), planBox = qs("chat-plan");
+  const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; return; }
+  qs("chat-send").disabled = false;
+  let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.replaceChildren();
+  if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
+  for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text")); box.append(d); }
+  if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
+  if (stick || v.thinking) box.scrollTop = box.scrollHeight;
+  planBox.replaceChildren();
+  const plan = v.plan;
+  if (!plan || !plan.steps?.length) {
+    planBox.append(el("div", "No plan yet. When the coordinator has understood enough, the steps appear here: what will be done, in what order, by whom, and what you will have at the end.", "placeholder-note"));
+  } else {
+    planBox.append(el("div", plan.result || "", "plan-result"));
+    const ol = el("ol", null, "plan-steps");
+    for (const s of plan.steps) { const li = el("li"); li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted")); ol.append(li); }
+    planBox.append(ol);
+    if (plan.problems?.length) planBox.append(el("div", "Cannot run as written: " + plan.problems.join("; ") + " — tell the coordinator.", "plan-problems"));
+    const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length;
+    planBox.append(el("div", `${plan.steps.length} step(s): ${coders} coder, ${designers} designer run(s)` + (est.runs ? ` · your designer runs averaged $${est.avg_usd}` : ""), "muted"));
+    const acts = el("div", null, "actions");
+    if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));
+    else {
+      acts.append(btn("Launch", async () => { const out = await api(`/api/project/${p.id}/chat-launch`, {}); if (out.first) await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast("Launched: the first step is running; follow the rest in Now.", "ok"); await chatRefresh(p.id); }, "primary"));
+      acts.append(btn("Discard plan", async () => { await api(`/api/project/${p.id}/chat-discard`, {}); await chatRefresh(p.id); }, "secondary"));
+    }
+    planBox.append(acts);
+  }
+  if (v.thinking && !chatState.polling) chatState.polling = setTimeout(() => { chatState.polling = null; chatRefresh(p.id); }, 3000);
+}
+// The chat refreshes on its own (the page-wide refresh waits while the cursor is in a field, and here it always is).
+async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
+qs("chat-send").onclick = async () => {
+  const ta = qs("chat-text"); const text = ta.value.trim(); if (!text) { toast("Say something first", "bad"); return; }
+  const p = { id: selected };
+  try { const out = await api(`/api/project/${p.id}/chat`, { text }); ta.value = ""; await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+};
+qs("chat-text").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click(); });
+
 // ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
 function holdPanel(p, f) {
   const box = document.createElement("details"); box.className = "hold-panel"; box.dataset.item = f.identifier;
@@ -736,8 +784,23 @@ async function editArt(pid, kind, identifier, onDone) {
   if (onDone) await onDone();
 }
 
+// Search and pages for the items list (sets stay whole; plain items are paged)
+const featuresView = { q: "", page: 1, size: 12 };
+const featureMatches = (f) => !featuresView.q || `${f.label || ""} ${f.identifier || ""} ${f.kind || ""} ${f.material || ""}`.toLowerCase().includes(featuresView.q);
+const pageSlice = (arr) => { const pages = Math.max(1, Math.ceil(arr.length / featuresView.size)); if (featuresView.page > pages) featuresView.page = pages; const s = (featuresView.page - 1) * featuresView.size; return arr.slice(s, s + featuresView.size); };
+function drawFeaturesPager(p, total) {
+  const pager = qs("features-pager"); if (!pager) return; pager.replaceChildren();
+  const pages = Math.max(1, Math.ceil(total / featuresView.size)); if (total <= featuresView.size && !featuresView.q) return;
+  const from = total ? (featuresView.page - 1) * featuresView.size + 1 : 0, to = Math.min(total, featuresView.page * featuresView.size);
+  pager.append(btn("‹", () => { featuresView.page = Math.max(1, featuresView.page - 1); renderFeatures(featuresView.p); }, "mini secondary"),
+               el("span", `${from}–${to} of ${total}${featuresView.q ? " matching" : ""}`, "muted"),
+               btn("›", () => { featuresView.page = Math.min(pages, featuresView.page + 1); renderFeatures(featuresView.p); }, "mini secondary"));
+  pager.querySelector("button").disabled = featuresView.page <= 1; pager.querySelectorAll("button")[1].disabled = featuresView.page >= pages;
+}
 async function renderFeatures(p) {
   const list = qs("features-list"); list.replaceChildren();
+  featuresView.p = p;   // the search re-renders whichever project is on screen now, not the one that wired it
+  const search = qs("features-search"); if (search && !search.dataset.wired) { search.dataset.wired = "1"; search.oninput = () => { featuresView.q = search.value.trim().toLowerCase(); featuresView.page = 1; return renderFeatures(featuresView.p); }; }
   let feats = []; try { feats = await api(`/api/project/${p.id}/features`); } catch (e) { list.append(el("p", e.message, "muted")); return; }
   featureCache = feats;
   await loadArt(p.id);
@@ -810,11 +873,12 @@ async function renderFeatures(p) {
       else card.append(el("div", "Worn armor: tinted placeholder. Use Design worn armor (designer, renders it worn) or upload your own layers.", "placeholder-note"));
     } else { head.append(acts); card.append(head); }
     for (const f of pieces) card.append(featureRow(f));
-    list.append(card);
+    if (!featuresView.q || pieces.some(featureMatches) || mat.toLowerCase().includes(featuresView.q)) list.append(card);
   }
   const plain = feats.filter(f => !f.material);
   if (!plain.length && !materials.length) list.append(el("p", "No items or blocks yet.", "muted"));
-  for (const f of plain) list.append(featureRow(f));
+  for (const f of pageSlice(plain.filter(featureMatches))) list.append(featureRow(f));
+  drawFeaturesPager(p, plain.filter(featureMatches).length);
   const addForm = qs("addfeature-form");
   addForm.onsubmit = async (e) => {
     e.preventDefault();
