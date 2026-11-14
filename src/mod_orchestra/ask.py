@@ -119,6 +119,13 @@ def apply_plan(store: Store, pid: str, task_id: str, handoff: dict) -> dict:
                 skipped.append({"step": n, "why": f"unknown action {action!r}"}); continue
         except (InputError, StateError) as exc:
             skipped.append({"step": n, "action": action, "why": str(exc)[:300]}); continue
+        if step.get("attachments"):   # the files the plan named for this step: each of its workers is told where they are
+            from .attachments import worker_block
+            block = worker_block(store, pid, step["attachments"])
+            for tid in tids if block else []:
+                with store.tx() as con:
+                    row = con.execute("SELECT text FROM task_instructions WHERE task_id=?", (tid,)).fetchone()
+                    con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (tid, (row["text"] if row else "") + "\n" + block))
         if after and action != "feature":   # the step's first task waits for the steps it depends on (feature took `after` itself)
             store.wait_for(tids[0], after)
         created[n] = tids

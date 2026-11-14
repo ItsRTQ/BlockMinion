@@ -116,6 +116,7 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("project"); a.add_argument("--cards", nargs="+", required=True, help="card ids; the first is the main one"); a.add_argument("--request", required=True)
     a = sub.add_parser("chat", help="USER-ONLY: talk with the project's coordinator (one message; the reply arrives when its turn runs); --launch runs the plan on screen; --show prints the conversation and the plan")
     a.add_argument("project"); a.add_argument("text", nargs="?", default=""); a.add_argument("--launch", action="store_true"); a.add_argument("--show", action="store_true"); a.add_argument("--discard", action="store_true")
+    a.add_argument("--attach", nargs="+", type=Path, default=[], metavar="FILE", help="files to send with the message: pictures (PNG, JPEG, WebP, GIF), PDFs, text files")
     a = sub.add_parser("ask", help="USER-ONLY: say what you want in your own words; a planner turns it into an ordered plan of the existing requests (coder, designer), chained")
     a.add_argument("project"); a.add_argument("text")
     a = sub.add_parser("animate", help="USER-ONLY: ask the designer for animations on an existing model (shape and texture locked); the coder plays each one "
@@ -382,9 +383,14 @@ def dispatch(args: argparse.Namespace) -> object:
             return _chat.launch(store, args.project)
         if args.discard:
             return _chat.discard(store, args.project)
-        if args.show or not args.text:
+        if args.show or not (args.text or args.attach):
             return _chat.view(store, args.project)
-        return _chat.send(store, args.project, args.text)
+        from . import attachments as _att
+        for f in args.attach:   # every file is read before any is kept: a wrong path must not leave the others waiting
+            if not f.is_file():
+                raise InputError(f"No such file: {f}")
+        ids = [_att.add(store, args.project, f.name, f.read_bytes())["id"] for f in args.attach]
+        return _chat.send(store, args.project, args.text, ids)
     if args.command == "ask":
         from .ask import request_ask
         return request_ask(store, args.project, args.text)

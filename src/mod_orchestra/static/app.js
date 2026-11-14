@@ -460,17 +460,50 @@ async function renderGallery(p) {
 }
 
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
-const chatState = { pid: null, polling: null };
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null };
+const fileSize = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
+// One attached file as the chat shows it: a picture is a thumbnail that opens large; anything else is a named chip that downloads it.
+function chatFileChip(pid, f, onRemove) {
+  const chip = el("div", null, "chat-file " + f.kind); chip.dataset.id = f.id;
+  if (f.kind === "image") { const img = el("img"); img.src = fileUrl(pid, f.path); img.alt = f.name; img.onclick = () => openLightbox(img.src, f.name); chip.append(img); }
+  else { const a = el("a", f.kind === "pdf" ? "PDF" : "TXT", "chat-file-kind"); a.href = fileUrl(pid, f.path); a.download = f.name; a.title = "Download " + f.name; chip.append(a); }
+  chip.append(el("span", f.name, "chat-file-name"), el("small", fileSize(f.bytes), "muted"));
+  if (onRemove) { const x = btn("×", onRemove, "tag-x"); x.setAttribute("aria-label", "Remove " + f.name); chip.append(x); }
+  return chip;
+}
+function renderChatFiles() {
+  const box = qs("chat-files"), pid = selected; box.replaceChildren();
+  for (const f of chatState.files) box.append(chatFileChip(pid, f, async () => { const out = await api(`/api/project/${pid}/chat-detach`, { id: f.id }); chatState.files = out.waiting; renderChatFiles(); }));
+  if (chatState.busy) box.append(el("div", `Attaching ${chatState.busy} file${chatState.busy === 1 ? "" : "s"}…`, "muted"));
+}
+// Files are uploaded one by one as soon as they are chosen, dropped or pasted; the server decides what each one is by its bytes.
+async function chatAttach(fileList) {
+  const pid = selected, files = [...(fileList || [])]; if (!pid || !files.length) return;
+  const lim = chatState.limits || { per_message: 6, binary_bytes: 4e6, text_bytes: 1e6 };
+  for (const file of files) {
+    if (chatState.files.length + chatState.busy >= lim.per_message) { toast(`A message carries at most ${lim.per_message} files.`, "bad"); break; }
+    if (file.size > lim.binary_bytes) { toast(`${file.name} is too large (${fileSize(file.size)}): at most ${fileSize(lim.binary_bytes)}.`, "bad"); continue; }
+    chatState.busy++; renderChatFiles();
+    try { const out = await api(`/api/project/${pid}/chat-attach`, { name: file.name, data_base64: await readBase64(file) }); if (selected === pid) chatState.files.push(out); }
+    catch (e) { toast(`${file.name}: ${e.message}`, "bad"); }
+    chatState.busy--; renderChatFiles();
+  }
+}
 async function renderChat(p) {
   const box = qs("chat-messages"), planBox = qs("chat-plan");
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
   if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; return; }
   qs("chat-send").disabled = false;
+  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; renderChatFiles(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
+  chatState.limits = v.file_limits || chatState.limits;
+  if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.replaceChildren();
   if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
-  for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text")); box.append(d); }
+  for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text"));
+    const sent = (m.meta && m.meta.attachments) || []; if (sent.length) { const row = el("div", null, "chat-files sent"); for (const f of sent) row.append(chatFileChip(p.id, f)); d.append(row); }
+    box.append(d); }
   if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
   if (stick || v.thinking) box.scrollTop = box.scrollHeight;
   planBox.replaceChildren();
@@ -480,7 +513,9 @@ async function renderChat(p) {
   } else {
     planBox.append(el("div", plan.result || "", "plan-result"));
     const ol = el("ol", null, "plan-steps");
-    for (const s of plan.steps) { const li = el("li"); li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted")); ol.append(li); }
+    for (const s of plan.steps) { const li = el("li"); li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted"));
+      if (s.attachments?.length) li.append(el("div", `The worker is given your file${s.attachments.length === 1 ? "" : "s"}: ${s.attachments.join(", ")}`, "muted plan-files"));
+      ol.append(li); }
     planBox.append(ol);
     if (plan.problems?.length) planBox.append(el("div", "Cannot run as written: " + plan.problems.join("; ") + " — tell the coordinator.", "plan-problems"));
     const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length;
@@ -498,11 +533,18 @@ async function renderChat(p) {
 // The chat refreshes on its own (the page-wide refresh waits while the cursor is in a field, and here it always is).
 async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
 qs("chat-send").onclick = async () => {
-  const ta = qs("chat-text"); const text = ta.value.trim(); if (!text) { toast("Say something first", "bad"); return; }
+  const ta = qs("chat-text"); const text = ta.value.trim(); if (chatState.busy) { toast("Wait for the files to finish attaching", "bad"); return; }
+  const files = chatState.files.map((f) => f.id); if (!text && !files.length) { toast("Say something first", "bad"); return; }
   const p = { id: selected };
-  try { const out = await api(`/api/project/${p.id}/chat`, { text }); ta.value = ""; await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+  try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
 };
 qs("chat-text").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click(); });
+qs("chat-attach").onclick = () => qs("chat-file-input").click();
+qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
+qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text
+for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes("Files")) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+qs("chat-drop").addEventListener("dragleave", (ev) => { if (!qs("chat-drop").contains(ev.relatedTarget)) qs("chat-drop").classList.remove("over"); });
+qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
 
 // ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
 function holdPanel(p, f) {
