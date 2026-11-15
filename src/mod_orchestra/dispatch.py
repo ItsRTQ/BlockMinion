@@ -95,8 +95,9 @@ def build_envelope(store: Store, pid: str, task: dict) -> TaskEnvelope:
     specific = store.task_instructions(task["id"])
     if specific:
         extra = extra + "\n\n## Task-specific instructions\n" + specific
+    from .skillset import for_task
     return TaskEnvelope(project_id=pid, task_id=task["id"], role=task["role"], title=task["title"],
-                        workspace=Path(proj["root"]), packet=packet, extra_instructions=extra)
+                        workspace=Path(proj["root"]), packet=packet, extra_instructions=extra, skills=for_task(task["role"], specific))
 
 
 def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, result: RunResult) -> dict:

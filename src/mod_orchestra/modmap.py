@@ -235,13 +235,14 @@ def feature_instructions(card: dict, *, kind: str = "mechanic", carriers: list[s
         instructions += ["Acceptance criteria (the user will check each one in-game):"] + [f"- {a}" for a in card["acceptance"]]
     if card["derived_from"]:
         instructions += ["Builds on: " + ", ".join(card["derived_from"]) + " (see the mod map in your packet for what they are and where they live)."]
+    from .skillset import CAPABILITY_RULES_START, FEATURE_RULES_START
     if kind == "capability" and carriers:
-        instructions += ["This is a CAPABILITY carried by: " + ", ".join(carriers) + ". Implement it ONCE as a reusable component (a class or interface plus the effect, projectile or registration it needs) and give it to each carrier by wiring only:",
+        instructions += [CAPABILITY_RULES_START + ", ".join(carriers) + ". Implement it ONCE as a reusable component (a class or interface plus the effect, projectile or registration it needs) and give it to each carrier by wiring only:",
                          "a carrier's entity class gets a few lines that use the component, never a copy of the logic, so that adding or removing a carrier later is a small change. If the carriers apply it differently (a melee hit, a projectile), the description says how.",
                          "Write one @GameTest per carrier proving that carrier has the capability (name it after the carrier), in addition to one per acceptance criterion."]
     from .artreq import CODER_ART_RULE
     from .shape import CODER_SHAPE_RULE
-    instructions += ["Write one @GameTest per acceptance criterion that can be exercised server-side in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
+    instructions += [FEATURE_RULES_START + " in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
                      "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item."]
     instructions += CODER_SHAPE_RULE
     instructions += CODER_ART_RULE
@@ -296,6 +297,7 @@ MAX_CARDS_PER_CHANGE = 24
 def request_change(store: Store, pid: str, cid: str, request: str, more: list[str] | None = None) -> dict:
     """Change one existing card, or several at once (`more`): one coder task that carries every card's own context, so a change
     that cuts across the mod (every weapon's ammo, every mob's drops) is one coherent piece of work, not one task per card."""
+    from .skillset import CHANGE_RULES_START, MULTI_CHANGE_RULES_START
     request = request.strip()
     if not request:
         raise InputError("Describe the change")
@@ -322,7 +324,7 @@ def request_change(store: Store, pid: str, cid: str, request: str, more: list[st
                              "  files: " + (", ".join(cc.get("files", [])) or "see the mod map"),
                              "  relations: " + ("; ".join(f"{e['from']} --{EDGE_LABEL.get(e['kind'], e['kind'])}--> {e['to']}" for e in rel) or "none")]
         instructions += ["", "REQUESTED CHANGE (for every card above):", request[:1500], "",
-                         "This is one change for several pieces: build the behaviour once and let each card contribute only its own values (see Shape below). If a card cannot",
+                         MULTI_CHANGE_RULES_START + " build the behaviour once and let each card contribute only its own values (see Shape below). If a card cannot",
                          "take the change, say which and why in `risks` instead of changing it halfway.",
                          "In your handoff include `cards`: {card id: {files: [...], description: \"one sentence\"}} for every card you changed (or a single `card` object if the same applies to all)."]
         if any(cards_by_id[c]["kind"] in ("item", "block", "mob", "material", "food") for c in cids):
@@ -345,7 +347,7 @@ def request_change(store: Store, pid: str, cid: str, request: str, more: list[st
                     "Files that implement it (start here, do not go through the whole project): " + (", ".join(card.get("files", [])) or "see the mod map"),
                     "Relations: " + ("; ".join(f"{e['from']} --{EDGE_LABEL.get(e['kind'], e['kind'])}--> {e['to']}" for e in related) or "none"),
                     "", "REQUESTED CHANGE:", request[:1500], "",
-                    "Make exactly this change and nothing else. If the card has acceptance criteria or a GameTest covering it, update that test. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
+                    CHANGE_RULES_START + " If the card has acceptance criteria or a GameTest covering it, update that test. Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
                     "In your handoff include a `card` object with `files` (every file you edited) and a one-sentence `description` of the new behaviour."]
     if card["kind"] in ("item", "block", "mob", "material", "food"):
         instructions.append("Note: this content is generated from the spec. Edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")

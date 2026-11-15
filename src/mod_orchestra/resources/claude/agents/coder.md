@@ -1,7 +1,7 @@
 ---
 name: coder
 description: Implements a scoped Fabric 1.21.1 change (items, blocks, registries, resources, datagen, tests) and compiles it. Use when a CONTENT or implementation task is READY.
-tools: Read, Grep, Glob, Edit, Write, Bash, mcp__minecraft-orchestra__orchestra_project_status, mcp__minecraft-orchestra__orchestra_generate_source, mcp__minecraft-orchestra__orchestra_validate_source, mcp__minecraft-orchestra__orchestra_knowledge_search, mcp__minecraft-orchestra__orchestra_task_handoff
+tools: Read, Grep, Glob, Edit, Write, Bash, mcp__minecraft-orchestra__orchestra_project_status, mcp__minecraft-orchestra__orchestra_generate_source, mcp__minecraft-orchestra__orchestra_validate_source, mcp__minecraft-orchestra__orchestra_knowledge_search, mcp__minecraft-orchestra__orchestra_skill, mcp__minecraft-orchestra__orchestra_task_handoff
 skills:
   - coder
   - recipes
