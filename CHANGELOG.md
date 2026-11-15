@@ -19,6 +19,8 @@
   coder reads any of them in full with one tool call (`orchestra_skill`) before writing that part. On 25 written-out requests the coder's
   role text went from about 14.7k to about 4.9k tokens on average (characters ÷ 4, not telemetry) with no needed skill missed. Tasks the tool
   writes itself (wiring a model, registering content) and every other role are unchanged.
+- **A designer that only paints is not given the Blockbench skill**: painted art for a mechanic and item sprites are made with a script, so
+  those runs no longer carry the designer's largest skill (about 4.8k tokens, characters ÷ 4). Every task that works on a model keeps it.
 
 ## v0.15.0-prealpha — 2026-11-15
 

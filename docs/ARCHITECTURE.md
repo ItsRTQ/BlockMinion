@@ -232,6 +232,8 @@ After every run `dispatch` calls `chat.note_progress`: when the task belongs to 
 - **The rest.** The prompt ends with "Skills not loaded for this task": each by name with one line, and the instruction to call the MCP tool `orchestra_skill` (read-only; serves the coder's technical skills, never a role's) before writing that part.
 - **Who is unchanged.** `for_task` returns `None` (the role's own list) for every other role and for coder tasks whose brief has no user's part: the tasks the controller writes itself (wire a model, register content, play animations).
 
+**The designer.** `for_task` gives a designer task `["designer"]` alone when its id is `:ART:` or `:SPRITES` (textures painted with a script: `artreq.ART_INSTRUCTIONS`, `models.SPRITES_INSTRUCTIONS`; a test fails if either brief starts to mention a model) and `None` for everything that opens a model (MODEL, ITEM3D, BLOCK3D, PROJ3D, ANIMATE, ARMOR, ARMOR3D), which keeps `blockbench`. The skill itself was not split into model / animation / texture: its sections (the flow, the scaffolds, the shape and motion rules) each mix the three, so a split is a rewrite that needs real designer runs to check.
+
 The same choice reaches all three runtimes (`--agents` for Claude Code, `_role_prompt` for Gemini CLI and agy). Measured on the 25 requests, characters ÷ 4: 14,714 before; 4,856 mean, 3,219 smallest, 7,371 largest after.
 
 ## Content beyond the spec (what coders made, what is found in the code)
