@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased (on `dev` after merge)
+## v0.15.0-prealpha — 2026-11-15
+
+Everything below landed on `dev` since `v0.14.0-prealpha`.
 
 - **Content beyond the spec is tracked**: what a coder makes while building a feature (a projectile, an effect, a particle…) is a card of the map,
   linked to its feature, and no longer disappears from the tool in a long project. Features → Other content also reads the code and lists what is
