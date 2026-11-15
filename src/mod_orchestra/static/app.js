@@ -460,7 +460,44 @@ async function renderGallery(p) {
 }
 
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
-const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null };
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {} };
+const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };
+// One step of a launched plan: where it stands and the one thing the user can do about it, right here.
+function planStepRun(p, run, busy) {
+  const box = el("div", null, "plan-run " + run.status), start = (task, label, retry) => {
+    const b = btn(label, async () => { if (retry) await api(`/api/task/${encodeURIComponent(task)}/requeue`, { reason: "retried from the plan" }); await api(`/api/project/${p.id}/dispatch`, { task }); toast(`Step ${run.step} is running.`, "ok"); await chatRefresh(p.id); }, retry ? "mini secondary" : "mini primary");
+    if (busy) { b.disabled = true; b.title = "Another task is running: one at a time"; } return b; };
+  box.append(el("span", STEP_WORD[run.status] || run.status, "plan-state " + run.status));
+  if (run.tasks && run.tasks.length > 1) box.append(el("span", `${run.done_tasks} of ${run.tasks.length} parts`, "muted"));
+  if (run.status === "ready") box.append(start(run.start, run.done_tasks ? "Start next part" : "Start"));
+  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry) box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "waiting") {
+    if (run.waiting_for.length) box.append(el("span", "for step " + run.waiting_for.join(", "), "muted"));
+    for (const b of run.blockers) { const row = el("span", null, "plan-blocker"); row.append(el("span", `needs first: ${b.title} (${b.state.toLowerCase().replace(/_/g, " ")})`, "muted")); if (b.start) row.append(start(b.start, "Start it")); if (b.retry) row.append(start(b.retry, "Retry it", true)); box.append(row); }
+  }
+  return box;
+}
+function planFooter(p, prog) {
+  const box = el("div", null, "plan-progress " + prog.state);
+  if (prog.state === "done") {
+    box.append(el("div", `Done: ${prog.done} of ${prog.total} step${prog.total === 1 ? "" : "s"} finished.`, "ok-note"), el("div", "The workers handed in their work. Nothing has been tried in the game yet.", "muted"));
+    const acts = el("div", null, "actions");
+    acts.append(btn("Test in game", async () => { if (!await confirmBox("Opens Minecraft with only this mod (isolated run/ folder). It compiles the current source first. Close the game when done.", { title: "Test in game", ok: "Open the game" })) return; await api(`/api/project/${p.id}/run-client`, {}); toast("Client launching. When you close it, tell the coordinator what you saw.", "ok"); qs("chat-text").placeholder = "What did you see in the game?"; }, "primary"));
+    box.append(acts);
+  } else {
+    const word = { running: "a step is running", ready: "the next step waits for you: press Start", stopped: "a step stopped; the ones after it wait", waiting: "waiting" }[prog.state] || prog.state;
+    box.append(el("div", `${prog.done} of ${prog.total} step${prog.total === 1 ? "" : "s"} finished · ${word}.`, prog.state === "stopped" ? "plan-problems" : "muted"));
+  }
+  return box;
+}
+// What the plan said since the user last looked: a toast and a mark on the Chat tab when they are somewhere else.
+function chatNews(p, messages) {
+  const notes = messages.filter((m) => m.meta && m.meta.plan_note), last = notes.length ? notes[notes.length - 1].id : 0, seen = chatState.seen[p.id];
+  chatState.seen[p.id] = last; if (seen === undefined || last <= seen) return;
+  const tab = document.querySelector('.tab[data-tab="chat"]'), away = !tab.classList.contains("active") || !isProjectView();
+  for (const m of notes.filter((n) => n.id > seen)) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
+  if (away) tab.classList.add("has-news");
+}
 const fileSize = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
 // One attached file as the chat shows it: a picture is a thumbnail that opens large; anything else is a named chip that downloads it.
 function chatFileChip(pid, f, onRemove) {
@@ -496,7 +533,7 @@ async function renderChat(p) {
   qs("chat-send").disabled = false;
   if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; renderChatFiles(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
-  chatState.limits = v.file_limits || chatState.limits;
+  chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages);
   if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.replaceChildren();
@@ -513,22 +550,26 @@ async function renderChat(p) {
   } else {
     planBox.append(el("div", plan.result || "", "plan-result"));
     const ol = el("ol", null, "plan-steps");
-    for (const s of plan.steps) { const li = el("li"); li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted"));
+    const prog = plan.progress, runs = new Map(((prog && prog.steps) || []).map((r) => [r.step, r]));
+    for (const s of plan.steps) { const li = el("li"), run = runs.get(s.step); if (run) li.className = "step-" + run.status; li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted"));
       if (s.attachments?.length) li.append(el("div", `The worker is given your file${s.attachments.length === 1 ? "" : "s"}: ${s.attachments.join(", ")}`, "muted plan-files"));
+      if (run) li.append(planStepRun(p, run, prog.busy));
       ol.append(li); }
     planBox.append(ol);
     if (plan.problems?.length) planBox.append(el("div", "Cannot run as written: " + plan.problems.join("; ") + " — tell the coordinator.", "plan-problems"));
     const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length;
     planBox.append(el("div", `${plan.steps.length} step(s): ${coders} coder, ${designers} designer run(s)` + (est.runs ? ` · your designer runs averaged $${est.avg_usd}` : ""), "muted"));
     const acts = el("div", null, "actions");
-    if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));
+    if (plan.launched && prog) planBox.append(planFooter(p, prog));
+    else if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));
     else {
-      acts.append(btn("Launch", async () => { const out = await api(`/api/project/${p.id}/chat-launch`, {}); if (out.first) await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast("Launched: the first step is running; follow the rest in Now.", "ok"); await chatRefresh(p.id); }, "primary"));
+      acts.append(btn("Launch", async () => { const out = await api(`/api/project/${p.id}/chat-launch`, {}); if (out.first) await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast("Launched: step 1 is running. Each next step waits for you to press Start here.", "ok"); await chatRefresh(p.id); }, "primary"));
       acts.append(btn("Discard plan", async () => { await api(`/api/project/${p.id}/chat-discard`, {}); await chatRefresh(p.id); }, "secondary"));
     }
     planBox.append(acts);
   }
-  if (v.thinking && !chatState.polling) chatState.polling = setTimeout(() => { chatState.polling = null; chatRefresh(p.id); }, 3000);
+  const working = v.thinking || (plan && plan.progress && (plan.progress.state === "running" || plan.progress.busy));   // while something runs, the panel keeps itself current
+  if (working && !chatState.polling) chatState.polling = setTimeout(() => { chatState.polling = null; chatRefresh(p.id); }, 3000);
 }
 // The chat refreshes on its own (the page-wide refresh waits while the cursor is in a field, and here it always is).
 async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
@@ -539,6 +580,7 @@ qs("chat-send").onclick = async () => {
   try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
 };
 qs("chat-text").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click(); });
+document.querySelector('.tab[data-tab="chat"]').addEventListener("click", (ev) => ev.currentTarget.classList.remove("has-news"));
 qs("chat-attach").onclick = () => qs("chat-file-input").click();
 qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
 qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text

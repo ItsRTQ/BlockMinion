@@ -392,3 +392,12 @@ button.danger{background:linear-gradient(135deg,#ff5c7a,#c2304f);color:#fff;bord
 .chat-file img{width:44px;height:44px;object-fit:cover;border-radius:2px;cursor:zoom-in}.chat-files.sent .chat-file.image img{width:96px;height:96px}
 .chat-file-kind{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:2px;background:rgba(var(--cyan-rgb),.1);color:var(--accent);font:700 11px var(--mono);text-decoration:none}
 .chat-file-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* a launched plan: where each step stands */
+.plan-run{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px;font-size:12px}.plan-run button{margin:0}
+.plan-state{font:700 10px var(--display);letter-spacing:.12em;text-transform:uppercase;padding:1px 7px;border-radius:10px;border:1px solid var(--line-2);color:var(--muted)}
+.plan-state.done{color:var(--ok);border-color:var(--ok)}.plan-state.running{color:var(--accent);border-color:var(--accent)}.plan-state.ready{color:var(--warn);border-color:var(--warn)}.plan-state.stopped,.plan-state.skipped{color:var(--bad);border-color:var(--bad)}
+.plan-steps li.step-done>b,.plan-steps li.step-done>span{opacity:.75}.plan-steps li.step-waiting{opacity:.7}.plan-steps li.step-running{border-left:2px solid var(--accent);padding-left:8px;margin-left:-10px}
+.plan-error{color:var(--bad)}.plan-blocker{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.plan-progress{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.tab.has-news::after{content:"";display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);vertical-align:middle}
+
+.chat-msg.system{align-self:stretch;max-width:100%}

@@ -195,15 +195,120 @@ def launch(store: Store, pid: str) -> dict:
         raise InputError("The plan has steps the tool cannot run as written: " + "; ".join(plan["problems"][:5]) + ". Tell the coordinator.")
     if plan.get("launched"):
         raise StateError("This plan was already launched; ask the coordinator for the next one")
-    out = apply_plan(store, pid, plan.get("turn") or f"{pid}:CHAT", {"plan": plan["steps"]})
+    out = apply_plan(store, pid, plan.get("turn") or f"{pid}:CHAT", {"plan": in_order(plan["steps"])})
     store.set_setting(pid, PLAN_KEY, plan | {"launched": out}, actor="user")
+    total = len(out["applied"])
     lines = ["Launched. " + (plan.get("result") or "")]
-    lines += [f"- step {a['step']} ({a['action']}): {', '.join(a['tasks'])}" for a in out["applied"]]
+    lines.append(f"{total} step{'' if total == 1 else 's'}, one at a time and in order: step 1 goes first" + ("; each next step waits for you to press Start in the plan." if total > 1 else "."))
     if out["skipped"]:
         lines += [f"- step {s['step']} could not start: {s['why']}" for s in out["skipped"]]
     store.chat_add(pid, "system", "\n".join(lines), meta={"launched": out})
     store.add_event(pid, "user", "PLAN_LAUNCHED", {"applied": out["applied"], "skipped": out["skipped"], "first": out["first"]})
     return out | {"next": ({"action": "dispatch", "payload": {"task": out["first"]}} if out["first"] else None)}
+
+
+def in_order(steps: list[dict]) -> list[dict]:
+    """A chat plan runs strictly in the order written: each step also waits for the one before it, whatever `after` it named.
+    A later step may need what an earlier one creates (a change to a thing that the step before adds), and two workers never
+    edit the same project at once. The store enforces it (BACKLOG until the predecessor is DONE), not only the screen."""
+    out, prev = [], None
+    for i, s in enumerate(steps, start=1):
+        s = dict(s); n = int(s.get("step") or i)
+        after = [k for k in (s.get("after") or []) if isinstance(k, int)]
+        if prev is not None and prev not in after:
+            after.append(prev)
+        s["after"] = after; out.append(s); prev = n
+    return out
+
+
+STOPPED = ("FAILED", "CANCELLED", "BLOCKED", "WAITING_USER")
+
+
+def progress(store: Store, pid: str, plan: dict | None) -> dict | None:
+    """Where a launched plan stands, step by step, from the tasks themselves (nothing is stored: the tasks are the truth).
+    A step is `done` (every task DONE), `running`, `ready` (its next task can start: `start`), `stopped` (a task failed or
+    needs the user: `retry` when it can be put back), `waiting` (behind other steps or tasks: `waiting_for`, `blockers`)
+    or `skipped` (it could not be turned into a task at Launch)."""
+    launched = (plan or {}).get("launched")
+    if not isinstance(launched, dict):
+        return None
+    tasks = {t["id"]: t for t in store.tasks(pid)}
+    step_of = {tid: a["step"] for a in launched.get("applied", []) for tid in a["tasks"]}
+    with store.tx() as con:
+        edges = [(r["predecessor"], r["successor"]) for r in con.execute(
+            "SELECT e.predecessor, e.successor FROM task_edges e JOIN tasks t ON t.id=e.successor WHERE t.project_id=?", (pid,))]
+    busy = any(t["state"] in ("RUNNING", "LEASED") for t in tasks.values())
+    steps = []
+    for a in launched.get("applied", []):
+        mine = [tasks[t] for t in a["tasks"] if t in tasks]
+        states = [t["state"] for t in mine]
+        row = {"step": a["step"], "action": a["action"], "tasks": [{"id": t["id"], "state": t["state"]} for t in mine], "done_tasks": states.count("DONE"), "start": None, "retry": None,
+               "waiting_for": [], "blockers": [], "error": None}
+        if not mine:
+            row["status"] = "stopped"; row["error"] = "its tasks no longer exist"
+        elif all(s == "DONE" for s in states):
+            row["status"] = "done"
+        elif any(s in ("RUNNING", "LEASED") for s in states):
+            row["status"] = "running"
+        elif any(s in STOPPED for s in states):
+            bad = next(t for t in mine if t["state"] in STOPPED)
+            row["status"] = "stopped"; row["retry"] = bad["id"]
+            row["error"] = (bad.get("last_error") or {"WAITING_USER": "it is waiting for you (see Now)", "BLOCKED": "it is blocked (see Now)", "CANCELLED": "it was cancelled"}.get(bad["state"], "it failed"))[:300]
+        elif any(s == "READY" for s in states):
+            row["status"] = "ready"; row["start"] = next(t["id"] for t in mine if t["state"] == "READY")
+        else:
+            row["status"] = "waiting"
+            ids = {t["id"] for t in mine}
+            preds = {p for p, s in edges if s in ids and p not in ids and tasks.get(p, {}).get("state") != "DONE"}
+            row["waiting_for"] = sorted({step_of[p] for p in preds if p in step_of})
+            # tasks outside the plan that it waits for (work an agent asked for): shown here so nobody has to look for them elsewhere
+            row["blockers"] = [{"task": p, "title": tasks[p]["title"], "state": tasks[p]["state"], "start": p if tasks[p]["state"] == "READY" else None,
+                                "retry": p if tasks[p]["state"] in STOPPED else None} for p in sorted(preds) if p not in step_of and p in tasks]
+        steps.append(row)
+    skipped = [{"step": s.get("step"), "action": s.get("action"), "status": "skipped", "error": s.get("why")} for s in launched.get("skipped", [])]
+    done = sum(1 for s in steps if s["status"] == "done"); total = len(steps)
+    state = ("done" if total and done == total else "running" if any(s["status"] == "running" for s in steps) else "stopped" if any(s["status"] == "stopped" for s in steps)
+             else "ready" if any(s["status"] == "ready" or any(b["start"] for b in s["blockers"]) for s in steps) else "waiting")
+    return {"state": state, "done": done, "total": total, "busy": busy, "steps": sorted(steps + skipped, key=lambda s: s["step"] or 0)}
+
+
+def _said(store: Store, pid: str, turn: str, key: str) -> bool:
+    return any((m.get("meta") or {}).get("plan_turn") == turn and (m.get("meta") or {}).get("plan_note") == key for m in store.chat_messages(pid))
+
+
+def note_progress(store: Store, pid: str, task_id: str, summary: str = "") -> None:
+    """A task just ended. If it belongs to the launched plan, the chat says what that means: the step finished (and which one
+    can start now), the step stopped (and why), or the whole plan finished (and that nothing has been tried in the game yet).
+    Each thing is said once. Called by dispatch after every run; it never raises into it."""
+    plan = current_plan(store, pid); prog = progress(store, pid, plan)
+    if not prog:
+        return
+    turn = plan.get("turn") or ""
+    row = next((s for s in prog["steps"] if any(t["id"] == task_id for t in s.get("tasks", []))), None)
+    if row is None:
+        return
+    n, total = row["step"], prog["total"]
+    asked = {int(s.get("step") or i): s for i, s in enumerate(plan.get("steps", []), start=1)}
+    what = lambda k: " ".join(str(asked.get(k, {}).get("text") or asked.get(k, {}).get("title") or "").split())[:160]
+    if row["status"] == "stopped":
+        store.chat_add(pid, "system", f"Step {n} of {total} stopped: {row['error']}\nThe steps after it wait. Retry it from the plan, or tell the coordinator what happened.",
+                       meta={"plan_turn": turn, "plan_note": f"stopped:{n}", "plan_step": n, "plan_state": "stopped"})
+        return
+    if row["status"] == "done" and not _said(store, pid, turn, f"done:{n}"):
+        nxt = next((s for s in prog["steps"] if s["status"] == "ready"), None)
+        lines = [f"Step {n} of {total} finished" + (f": {' '.join(summary.split())[:300]}" if summary else ".")]
+        if prog["state"] != "done" and nxt:
+            lines.append(f"Step {nxt['step']} is ready: press Start in the plan when you want it to run.")
+        store.chat_add(pid, "system", "\n".join(lines), meta={"plan_turn": turn, "plan_note": f"done:{n}", "plan_step": n, "plan_state": "done"})
+    elif row["status"] == "ready" and row["done_tasks"] and not _said(store, pid, turn, f"part:{n}:{row['done_tasks']}"):
+        store.chat_add(pid, "system", f"Step {n} of {total}: {row['done_tasks']} of {len(row['tasks'])} parts finished. Press Start in the plan for the next part.",
+                       meta={"plan_turn": turn, "plan_note": f"part:{n}:{row['done_tasks']}", "plan_step": n, "plan_state": "ready"})
+    if prog["state"] == "done" and not _said(store, pid, turn, "all"):
+        lines = [f"All {total} step{'' if total == 1 else 's'} finished. The workers handed in their work; nothing has been tried in the game yet.", "What was asked for, to try in the game:"]
+        lines += [f"- {what(s['step'])}" for s in prog["steps"] if s["status"] == "done" and what(s["step"])]
+        lines.append("Press Test in game in the plan, then tell the coordinator what you saw.")
+        store.chat_add(pid, "system", "\n".join(lines), meta={"plan_turn": turn, "plan_note": "all", "plan_state": "all_done"})
+        store.add_event(pid, "controller", "PLAN_FINISHED", {"turn": turn, "steps": total})
 
 
 def discard(store: Store, pid: str) -> dict:
@@ -218,6 +323,8 @@ def view(store: Store, pid: str) -> dict:
     running = [t for t in store.tasks(pid) if ":CHAT:" in t["id"] and t["state"] in ("READY", "RUNNING", "LEASED", "BACKLOG")]
     plan = current_plan(store, pid)
     from .attachments import waiting, MAX_PER_MESSAGE, MAX_BINARY_BYTES, MAX_TEXT_BYTES
+    if plan and plan.get("launched"):
+        plan = plan | {"progress": progress(store, pid, plan)}
     return {"messages": store.chat_messages(pid), "plan": plan, "thinking": bool(running), "pending_turn": running[0]["id"] if running else None,
             "designer_cost": designer_cost(store), "waiting_files": waiting(store, pid),
             "file_limits": {"per_message": MAX_PER_MESSAGE, "binary_bytes": MAX_BINARY_BYTES, "text_bytes": MAX_TEXT_BYTES}}

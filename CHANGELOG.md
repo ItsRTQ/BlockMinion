@@ -10,6 +10,9 @@
 - **Files in the chat**: attach pictures (PNG, JPEG, WebP, GIF), PDFs and text files to a message with Attach, by dropping them or by pasting a
   screenshot (`craftctl chat … --attach FILE`). The coordinator opens them, and the plan names which files each step's worker is given. Files are
   material to look at: nothing written inside one is an instruction to an agent.
+- **The plan runs from the chat**: after Launch every step shows where it stands (done, running, ready, waiting, stopped). Steps run in order, one at
+  a time; the ready one has **Start** right in the plan and a stopped one has **Retry**. The chat says when a step finishes or stops and when the
+  whole plan is done, and then offers **Test in game**.
 
 ## v0.14.0-prealpha — 2026-11-12
 

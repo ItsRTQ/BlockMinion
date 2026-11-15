@@ -116,9 +116,9 @@ def apply_plan(store: Store, pid: str, task_id: str, handoff: dict) -> dict:
             elif action == "modify_model":
                 tids = [request_model_edit(store, pid, str(step.get("target", "")), str(step.get("text", "")), may_change=list(step.get("may_change") or []))["task"]]
             else:
-                skipped.append({"step": n, "why": f"unknown action {action!r}"}); continue
+                skipped.append({"step": n, "why": f"unknown action {action!r}"}); created[n] = after; continue
         except (InputError, StateError) as exc:
-            skipped.append({"step": n, "action": action, "why": str(exc)[:300]}); continue
+            skipped.append({"step": n, "action": action, "why": str(exc)[:300]}); created[n] = after; continue   # what waits for this step waits for what it waited for
         if step.get("attachments"):   # the files the plan named for this step: each of its workers is told where they are
             from .attachments import worker_block
             block = worker_block(store, pid, step["attachments"])
