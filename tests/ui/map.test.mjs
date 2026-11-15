@@ -32,9 +32,9 @@ test.before(async () => {
 test.after(async () => { if (page) await page.close(); if (server) server.stop(); });
 
 test('it opens on the universe: folders as dots with a name and a count, no wall of cards', () => {
-  assert.deepEqual(page.$$('#map-svg .folder').map((n) => `${n.querySelector('.fname').textContent} ${n.querySelector('.fcount').textContent}`).sort(), ['Features 5', 'Mobs 3', 'Vanilla resources 3']);
+  assert.deepEqual(page.$$('#map-svg .folder').map((n) => `${n.querySelector('.fname').textContent} ${n.querySelector('.fcount').textContent}`).sort(), ['Features 5', 'Mobs 3', 'Projectiles 1', 'Vanilla resources 3']);
   assert.equal(page.$$('#map-svg .node').length, 0, 'no cards yet'); assert.equal(open(), '[""]');
-  assert.equal(page.$('#map-crumbs').textContent, 'Infectious Zombies'); assert.match(page.$('#map-count').textContent, /^11 \/ 11 features visible/); assert.match(page.$('#map-count').textContent, /11 inside folders/);
+  assert.equal(page.$('#map-crumbs').textContent, 'Infectious Zombies'); assert.match(page.$('#map-count').textContent, /^12 \/ 12 features visible/); assert.match(page.$('#map-count').textContent, /12 inside folders/);
   assert.ok(page.hidden('#map-inspector') && page.hidden('#map-side') && page.hidden('#map-focusbar'), 'the canvas has the whole space');
   assert.match(folderEl('auto:mob').getAttribute('aria-label'), /Mobs, folder, 3 features/); assert.equal(folderEl('auto:mob').getAttribute('tabindex'), '0');
 });
@@ -58,13 +58,13 @@ test('cards morph with distance: full card, compact card, dot; the feature is th
   ev('mapState.cam.k = 1; mapState.cam.cx = mapState.lay.nodes.get("runner").x; mapState.cam.cy = mapState.lay.nodes.get("runner").y'); frame();
   assert.ok(node('runner') && !node('runner').classList.contains('compact')); assert.equal(node('runner').querySelector('.title').textContent, 'Runner');
   ev('mapState.cam.k = 0.7'); frame(); assert.ok(node('runner').classList.contains('compact'), 'farther: a compact card');
-  ev('mapState.cam.k = 0.4'); frame(); assert.equal(node('runner'), null, 'farther still: a dot on the canvas'); assert.equal(ev('mapState.index.cards.size'), 11, 'and still eleven features');
+  ev('mapState.cam.k = 0.4'); frame(); assert.equal(node('runner'), null, 'farther still: a dot on the canvas'); assert.equal(ev('mapState.index.cards.size'), 12, 'and still twelve features');
   ev('mapState.cam.k = 1'); frame(); assert.ok(node('runner'));
 });
 
 test('zooming out is the inverse: cards fold back into their folder and the universe returns', () => {
   wheel(500, 300, 100, 40); assert.equal(open(), '[""]'); assert.equal(page.$$('#map-svg .node').length, 0);
-  assert.equal(page.$$('#map-svg .folder').length, 3); assert.equal(page.$('#map-crumbs').textContent, 'Infectious Zombies'); assert.ok(!folderEl('auto:mob').classList.contains('entered'));
+  assert.equal(page.$$('#map-svg .folder').length, 4); assert.equal(page.$('#map-crumbs').textContent, 'Infectious Zombies'); assert.ok(!folderEl('auto:mob').classList.contains('entered'));
 });
 
 test('keyboard: Enter on a folder goes in, Backspace goes out; the navigation buttons do the same', async () => {
@@ -118,7 +118,7 @@ test('Focus = investigate: the feature and what it connects to, over the dimmed 
   page.click(btnOf(insp(), 'Focus')); await landed();
   assert.ok(!page.hidden('#map-focusbar')); assert.match(page.$('#map-focusbar').textContent, /^FOCUSInfection/);
   const shown = () => page.$$('#map-svg .layer-focus .node').map((n) => n.dataset.id).sort();
-  assert.deepEqual(shown(), ['brute', 'infection', 'runner', 'spitter'], 'Direct: its immediate neighbours'); assert.ok(page.$('.layer-focus .node.center[data-id="infection"]'));
+  assert.deepEqual(shown(), ['bile_glob', 'brute', 'infection', 'runner', 'spitter'], 'Direct: its immediate neighbours (the glob a coder made for it is one)'); assert.ok(page.$('.layer-focus .node.center[data-id="infection"]'));
   assert.ok(page.$('.layer-cards').classList.contains('dimmed') && page.$('.layer-folders').classList.contains('dimmed'), 'the rest of the map is still there, subdued');
   assert.equal(btnOf(page.$('#map-focusbar'), 'Direct').getAttribute('aria-pressed'), 'true');
   page.click(btnOf(page.$('#map-focusbar'), 'Extended')); await landed(); assert.ok(shown().length > 4, 'Extended: one level more'); assert.ok(page.$('.layer-focus .node.far'));
@@ -137,17 +137,17 @@ test('Focus = investigate: the feature and what it connects to, over the dimmed 
 test('filters change what is seen and nothing else; the counter says how many', async () => {
   await universe(); page.click(page.$('#map-filter-btn')); const box = page.$('#map-filters'); assert.ok(!page.hidden('#map-filters'));
   const toggle = (label) => { const i = [...box.querySelectorAll('.chk')].find((l) => l.textContent.trim().startsWith(label)).querySelector('input'); i.checked = !i.checked; i.dispatchEvent(new page.w.Event('change')); frame(); };
-  toggle('Vanilla resources'); assert.match(page.$('#map-count').textContent, /^8 \/ 11 features visible/); assert.match(page.$('#map-count').textContent, /3 hidden by filters/);
-  assert.equal(folderEl('auto:vanilla') && folderEl('auto:vanilla').querySelector('.fcount').textContent, '3', 'the folder still holds its three features'); assert.equal(ev('mapState.index.cards.size'), 11);
+  toggle('Vanilla resources'); assert.match(page.$('#map-count').textContent, /^9 \/ 12 features visible/); assert.match(page.$('#map-count').textContent, /3 hidden by filters/);
+  assert.equal(folderEl('auto:vanilla') && folderEl('auto:vanilla').querySelector('.fcount').textContent, '3', 'the folder still holds its three features'); assert.equal(ev('mapState.index.cards.size'), 12);
   assert.equal(page.$('#map-filter-btn').textContent, 'Filters · 1');
-  page.click(btnOf(box, 'Dim it')); frame(); assert.match(page.$('#map-count').textContent, /^8 \/ 11 features match/);
-  page.click(btnOf(page.$('#map-count'), 'Reset filters')); frame(); assert.match(page.$('#map-count').textContent, /^11 \/ 11 features/); assert.equal(page.$('#map-filter-btn').textContent, 'Filters');
+  page.click(btnOf(box, 'Dim it')); frame(); assert.match(page.$('#map-count').textContent, /^9 \/ 12 features match/);
+  page.click(btnOf(page.$('#map-count'), 'Reset filters')); frame(); assert.match(page.$('#map-count').textContent, /^12 \/ 12 features/); assert.equal(page.$('#map-filter-btn').textContent, 'Filters');
   page.click(page.$('#map-filter-btn')); assert.ok(page.hidden('#map-filters')); await page.idle();
 });
 
 test('search takes the camera to the result and highlights it; it never modifies or focuses', async () => {
   const input = page.$('#map-search'), n0 = coderCalls(); input.value = 'spit'; input.dispatchEvent(new page.w.Event('input'));
-  const rows = page.$$('#map-results button.result'); assert.deepEqual(rows.map((r) => r.querySelector('.r-title').textContent), ['Spitter', 'Spitter acid spit']);
+  const rows = page.$$('#map-results button.result'); assert.deepEqual(rows.map((r) => r.querySelector('.r-title').textContent), ['Spitter', 'Spitter acid spit', 'Bile glob']);   // the glob is found through its description
   assert.match(rows[0].querySelector('.r-where').textContent, /mob · Mobs/, 'each result says where it is');
   page.click(rows[0]); await landed();
   assert.equal(ev('mapState.sel'), 'spitter'); assert.ok(node('spitter')); assert.equal(open(), '["","auto:mob"]'); assert.ok(page.hidden('#map-results'));
@@ -165,7 +165,7 @@ test('folders: create one, file a feature in it, see it counted; only the map\'s
   ev('openCard(lastProject, "brute")'); frame(); const pick = insp().querySelector('select[aria-label="Folder"]'); pick.value = 'f-powerful-weapons'; page.click(btnOf(insp(), 'Move here')); frame();
   assert.equal(ev('mapState.tree.primaryOf.get("brute")'), 'f-powerful-weapons'); assert.match(insp().textContent, /Powerful Weapons · lives here/);
   await universe(); assert.equal(folderEl('f-powerful-weapons').querySelector('.fcount').textContent, '1'); assert.equal(folderEl('auto:mob').querySelector('.fcount').textContent, '2');
-  assert.equal(ev('mapState.index.cards.size'), 11, 'still eleven features: nothing was duplicated'); assert.equal(coderCalls(), n0, 'organising asked no coder for anything');
+  assert.equal(ev('mapState.index.cards.size'), 12, 'still twelve features: nothing was duplicated'); assert.equal(coderCalls(), n0, 'organising asked no coder for anything');
   await page.waitFor(() => (posts('/map-meta').at(-1).body.meta.members.brute || [])[0] === 'f-powerful-weapons', 'the membership saved');
 });
 
@@ -191,7 +191,7 @@ test('dragging: inside its folder a card only changes place; dropped on another 
   const [dx, dy] = JSON.parse(ev(`(() => { const n = mapState.lay.nodes.get("runner"), c = mapState.lay.folders.get("f-powerful-weapons"); return JSON.stringify([(c.x - n.x) * mapState.cam.k, (c.y - n.y) * mapState.cam.k]); })()`));
   dragCard('runner', dx, dy);
   assert.equal(ev('mapState.tree.primaryOf.get("runner")'), 'f-powerful-weapons'); assert.match(page.toasts(), /"Runner" filed in Powerful Weapons\. Only the map changed/);
-  assert.equal(ev('mapState.index.cards.size'), 11); assert.equal(coderCalls(), n0, 'moving cards around asks no coder for anything');
+  assert.equal(ev('mapState.index.cards.size'), 12); assert.equal(coderCalls(), n0, 'moving cards around asks no coder for anything');
   ev('MapView.setMeta(MapCore.unassign(mapState.meta, "runner", "f-powerful-weapons"))'); frame(); assert.equal(ev('mapState.tree.primaryOf.get("runner")'), 'auto:mob');
   await universe(); await page.idle();
 });
@@ -201,7 +201,7 @@ test('deleting a folder deletes the folder: its features stay', async () => {
   page.click(btnOf(insp(), 'Expand')); page.click(btnOf(insp(), 'Delete')); await page.waitFor(dlgOpen); assert.match(dlg().textContent, /Its 1 feature stay in the mod/);
   page.click(btnOf(dlg(), 'Delete folder')); await page.waitFor(() => (frame(), !folderEl('f-powerful-weapons')), 'the folder to go');
   assert.equal(folderEl('f-powerful-weapons'), null); assert.equal(ev('mapState.tree.primaryOf.get("brute")'), 'auto:mob', 'the Brute is back with the other mobs');
-  assert.equal(ev('mapState.index.cards.size'), 11); assert.equal(folderEl('auto:mob').querySelector('.fcount').textContent, '3'); await page.idle();
+  assert.equal(ev('mapState.index.cards.size'), 12); assert.equal(folderEl('auto:mob').querySelector('.fcount').textContent, '3'); await page.idle();
 });
 
 test('no native popup was used, and nothing here ever started an agent by itself', () => { assert.deepEqual(page.popups, []); assert.equal(posts('/dispatch').length, 0); });

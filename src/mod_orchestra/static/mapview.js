@@ -12,8 +12,9 @@ const mapState = { pid: null, project: null, data: null, sel: null, selFolder: n
 
 const MapView = (() => {
   const C = MapCore, S = mapState, SVGNS = "http://www.w3.org/2000/svg", ROOT = C.ROOT;
-  const KIND_COLOR = { item: "#19e6ff", block: "#7cd8ff", mob: "#ffb547", material: "#a391ff", food: "#2ef2a6", custom: "#c4b5ff", vanilla: "#5c7390" };
-  const EDGE_COLOR = { crafts: "#19e6ff", smelts_into: "#19e6ff", drops: "#ffb547", drops_on_death: "#ffb547", made_of: "#a391ff", repairs: "#a391ff", uses: "#7cd8ff", related: "#7cd8ff" };
+  const KIND_COLOR = { item: "#19e6ff", block: "#7cd8ff", mob: "#ffb547", material: "#a391ff", food: "#2ef2a6", custom: "#c4b5ff", vanilla: "#5c7390",
+    projectile: "#ff8fb1", effect: "#ff8fb1", particle: "#ff8fb1", entity: "#ffb547", gui: "#ff8fb1", sound: "#ff8fb1", made_item: "#19e6ff", made_block: "#7cd8ff", content: "#ff8fb1" };
+  const EDGE_COLOR = { makes: "#ff8fb1", crafts: "#19e6ff", smelts_into: "#19e6ff", drops: "#ffb547", drops_on_death: "#ffb547", made_of: "#a391ff", repairs: "#a391ff", uses: "#7cd8ff", related: "#7cd8ff" };
   const MAX_CARDS = 220, MAX_EDGES = 1800, MAX_FOLDER_ELS = 500;
   let wrap = null, svg = null, canvas = null, ctx = null, gFolders = null, gCards = null, gFocus = null, gOver = null, link = null, raf = 0, saveTimer = 0, unsaved = 0, bundleCache = null, regionCache = null;
   const els = { cards: new Map(), folders: new Map(), focus: new Map() };
@@ -23,7 +24,7 @@ const MapView = (() => {
   const reduced = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const vp = () => ({ w: (wrap && wrap.clientWidth) || 1000, h: (wrap && wrap.clientHeight) || 600 });
   const invalidate = () => { if (!raf) raf = requestAnimationFrame(frame); };
-  const kindName = (c) => (c.kind === "material" ? "tool & armor set" : c.kind);
+  const kindName = (c) => C.KIND_LABEL[c.kind] || c.kind;
   const title = (id) => { const c = S.index.cards.get(id); return c ? c.title || c.id : id; };
   const relName = (kind) => S.index.labels[kind] || kind.replace(/_/g, " ");
   const local = (ev) => { const r = wrap.getBoundingClientRect(); return { x: (ev.clientX || 0) - r.left, y: (ev.clientY || 0) - r.top }; };
@@ -214,7 +215,7 @@ const MapView = (() => {
   function fillCard(g, c, o) {
     const sig = (c.title || c.id) + "|" + (c.status || "") + "|" + ((c.open_tasks || []).length) + "|" + (c.pieces ? c.pieces.length : "") + "|" + !!o.ref + "|" + !!o.compact; if (g.__sig === sig) return; g.__sig = sig;
     const [, kind, ttl, sub, dot] = g.children;
-    kind.textContent = (c.kind === "material" ? "TOOL & ARMOR SET" : c.kind.toUpperCase()) + (c.open_tasks && c.open_tasks.length ? " · " + c.open_tasks.length + " task" : "") + (o.ref ? " · REFERENCE" : "");
+    kind.textContent = kindName(c).toUpperCase() + (c.open_tasks && c.open_tasks.length ? " · " + c.open_tasks.length + " task" : "") + (o.ref ? " · REFERENCE" : "");
     const name = c.title || c.id, max = o.compact ? 17 : 24; ttl.textContent = name.length > max ? name.slice(0, max - 1) + "…" : name; sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? c.status || "" : c.id;
     dot.setAttribute("class", "dot " + (c.status || "vanilla"));
   }
@@ -651,7 +652,8 @@ const MapView = (() => {
     if (!full) return;
     box.append(el("div", c.id, "fid"));
     if (c.description) section(box, "Description", true).append(el("p", c.description));
-    const props = [["Type", kindName(c)], ["Id", c.id], ["Status", c.status], ["Owner", c.owner], ["Pieces", c.pieces && c.pieces.length], ["Produces", (c.produces || []).join(", ")], ["Builds on", (c.derived_from || []).join(", ")]].filter(([, v]) => v);
+    const props = [["Type", kindName(c)], ["Id", c.id], ["Status", c.status], ["Owner", c.owner], ["Made by", c.made && c.made.feature ? title(c.made.feature) : null],
+      ["How it is known", c.made ? (c.made.source === "found" ? "found in the code and adopted" + (c.made.registry ? ` (${c.made.registry.toLowerCase().replace(/_/g, " ")} registry)` : "") : "declared by the coder that made it") : null], ["Pieces", c.pieces && c.pieces.length], ["Produces", (c.produces || []).join(", ")], ["Builds on", (c.derived_from || []).join(", ")]].filter(([, v]) => v);
     const ps = section(box, "Properties", false), dl = el("dl", null, "props"); for (const [k, v] of props) dl.append(el("dt", k), el("dd", String(v))); ps.append(dl);
     if (c.pieces) { const ul = el("ul"); for (const pc of c.pieces) ul.append(el("li", `${pc.id} (${pc.kind})`)); ps.append(el("div", "Pieces", "eyebrow"), ul); }
     // tags: what the graph says it is (dashed) and what the user says (solid). Neither is an instruction to a coder.

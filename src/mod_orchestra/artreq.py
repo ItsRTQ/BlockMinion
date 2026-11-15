@@ -200,6 +200,8 @@ def request_art(store: Store, pid: str, source_task: str, card: str, assets: lis
         con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (art_task, "\n".join(lines)))
         con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (wire_task, "\n".join(wire)))
     store.add_event(pid, "controller", "ART_REQUESTED", {"task": art_task, "wire_task": wire_task, "source": source_task, "card": card, "assets": assets})
+    from .made import record_art
+    record_art(store, pid, card, assets)   # what the coder made is content of the mod from now on, however long ago this was
     return {"art_task": art_task, "wire_task": wire_task, "assets": [a["id"] for a in assets]}
 
 
@@ -220,7 +222,7 @@ def install_art(store: Store, pid: str, task_id: str, *, run_id: str, actor: str
     """Check models/art/<id>.png for every texture of the ART task and copy the ones that pass over the coder's placeholders."""
     from .fabric import accept_changes
     from .models import _png_info
-    ev = next((e for e in store.events(pid, 500) if e["kind"] == "ART_REQUESTED" and e["payload"].get("task") == task_id), None)
+    ev = next((e for e in reversed(store.events_of(pid, "ART_REQUESTED")) if e["payload"].get("task") == task_id), None)   # not the newest-500 window: the request may be old
     if ev is None:
         raise StateError(f"No art request recorded for {task_id}")
     ws = Path(store.project(pid)["root"])

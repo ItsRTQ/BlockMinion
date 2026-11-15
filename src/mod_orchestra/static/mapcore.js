@@ -15,8 +15,11 @@ const MapCore = (() => {
   const K_MAX = 3;
   const LOD = { LABEL: 0.3, COMPACT: 0.55, FULL: 0.85 };   // zoom at which a feature dot gains a name, becomes a compact card, a full card
   const ENTER = 0.24, EXIT = 0.15;       // a folder is entered when its radius covers this share of the viewport's short side; left below EXIT
-  const KIND_PLURAL = { item: "Items", block: "Blocks", mob: "Mobs", material: "Tool & armor sets", food: "Foods", custom: "Features", vanilla: "Vanilla resources" };
-  const KIND_TAG = { item: "Item", block: "Block", mob: "Entity", material: "Gear", food: "Food", custom: "Feature", vanilla: "Vanilla" };
+  const KIND_PLURAL = { item: "Items", block: "Blocks", mob: "Mobs", material: "Tool & armor sets", food: "Foods", custom: "Features", vanilla: "Vanilla resources",
+    projectile: "Projectiles", effect: "Effects", particle: "Particles", entity: "Other entities", gui: "Screens", sound: "Sounds", made_item: "Items made by coders", made_block: "Blocks made by coders", content: "Other content" };
+  const KIND_TAG = { item: "Item", block: "Block", mob: "Entity", material: "Gear", food: "Food", custom: "Feature", vanilla: "Vanilla",
+    projectile: "Projectile", effect: "Effect", particle: "Particle", entity: "Entity", gui: "Screen", sound: "Sound", made_item: "Item", made_block: "Block", content: "Content" };
+  const KIND_LABEL = { material: "tool & armor set", custom: "feature", made_item: "item (coder-made)", made_block: "block (coder-made)", content: "content", gui: "screen" };   // how a card's kind reads in a sentence
   const RECIPE_KINDS = ["crafts", "smelts_into"];
 
   const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1).replace(/_/g, " ") : s);
@@ -439,7 +442,7 @@ const MapCore = (() => {
   // A folder's dot grows with what it holds, slowly: a thousand features must not drown twenty.
   const dotRadius = (total) => Math.min(26, 8 + 5 * Math.log10(1 + total));
 
-  return { VIRTUAL, ROOT, NODE_W, NODE_H, K_MAX, LOD, ENTER, EXIT, KIND_PLURAL, RECIPE_KINDS, cap, cleanTag, tagKey, hash, emptyMeta, normMeta, buildIndex, inferTags, tagsFor, allTags, hasRules, matchRules,
+  return { VIRTUAL, ROOT, NODE_W, NODE_H, K_MAX, LOD, ENTER, EXIT, KIND_PLURAL, KIND_LABEL, RECIPE_KINDS, cap, cleanTag, tagKey, hash, emptyMeta, normMeta, buildIndex, inferTags, tagsFor, allTags, hasRules, matchRules,
     buildTree, pathOf, pathLabel, descendants, isVirtual, createFolder, renameFolder, deleteFolder, moveFolder, setFolder, assign, unassign, dismissSuggestion, addTag, removeTag, setPos, setFolderPos,
     layout, toScreen, toWorld, zoomAt, fitCircle, fitBox, minZoom, wheelFactor, lodOf, updateOpen, openPath, activeFolder, repOf, bundles, noFilters, filtersActive, applyFilters, search, ego, focusLayout, cullLabels, dotRadius };
 })();

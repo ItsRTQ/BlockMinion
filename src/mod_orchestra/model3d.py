@@ -835,18 +835,14 @@ Deliverables in `models/projectiles3d/`: `<id>.bbmodel`, `<id>.geo.json`, `<id>.
 
 
 def projectile_assets(store: Store, pid: str) -> dict[str, dict]:
-    """The projectiles the coder gave their own art (ART_REQUESTED, kind projectile): {id: {card, path, what, for, model3d}}."""
+    """The projectiles the coder gave their own art: {id: {card, path, what, for, model3d}}. Read from the registry of made content
+    (`made.py`), not from recent events: a projectile declared in the project's first run is still one a thousand events later."""
+    from .made import entries
     ws = Path(store.project(pid)["root"])
     _, index = _index(ws, pid)
     done = set(index.get("projectiles", []))
-    out = {}
-    for e in reversed(store.events(pid, 500)):
-        if e["kind"] != "ART_REQUESTED":
-            continue
-        for a in e["payload"].get("assets", []):
-            if a.get("kind") == "projectile":
-                out[a["id"]] = {"card": e["payload"].get("card"), "path": a["path"], "what": a["what"], "for": a.get("for", []), "model3d": a["id"] in done}
-    return out
+    return {cid: {"card": e.get("card"), "path": e["path"], "what": e.get("what") or "", "for": e.get("for") or [], "model3d": cid in done}
+            for cid, e in entries(store, pid).items() if e["kind"] == "projectile" and e.get("path")}
 
 
 def request_proj3d(store: Store, pid: str, ident: str, notes: str = "") -> dict:

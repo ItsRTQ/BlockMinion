@@ -440,3 +440,8 @@ button.bubble-text{background:none;border:0;box-shadow:none;clip-path:none;paddi
 body.fab-on .toast{bottom:76px}
 @media (prefers-reduced-motion:reduce){.chat-fab,.chat-fab img,.chat-fab.hop{animation:none!important}}
 body.bubble-on .toast{bottom:136px}
+/* other content */
+.made-row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.made-row small{display:block;color:var(--muted)}
+.made-row .actions{margin:0;flex-wrap:wrap;justify-content:flex-end}.made-row .actions select{width:auto;margin:0}.made-row.found{border-left:2px solid var(--warn);padding-left:10px}
+
+.made-row .fname{font-weight:600;text-transform:capitalize}.made-row.found .fname{text-transform:none;font-family:var(--mono)}.made-row .fk{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;margin-left:8px;border-radius:2px;background:var(--bg);border:1px solid var(--line-2);color:var(--muted)}
