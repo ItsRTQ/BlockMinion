@@ -107,6 +107,21 @@ class UiApi(unittest.TestCase):
         code, out = self.call("/api/settings", {"provider": None})
         self.assertEqual((code, out["saved"]), (200, None))
 
+    def test_2c_a_model_per_role_belongs_to_the_runtime_in_force(self):
+        self.call("/api/settings", {"provider": None})
+        out = self.call("/api/settings")[1]
+        self.assertEqual(out["provider"], "claude-code"); self.assertEqual(out["role_models"], {}); self.assertIn("coordinator", out["roles"]); self.assertIn("coder", out["roles"])
+        code, out = self.call("/api/settings", {"role_models": {"coordinator": " light-one ", "coder": "strong[1m]", "designer": ""}})
+        self.assertEqual((code, out["role_models"]), (200, {"coordinator": "light-one", "coder": "strong[1m]"}))
+        self.assertEqual(self.call("/api/settings", {"role_models": {"coder": ""}})[1]["role_models"], {"coordinator": "light-one"}, "an empty model puts the role back; the others stay")
+        for bad in ({"wizard": "x"}, {"coder": "bad; rm -rf /"}, {"coder": 3}, ["coder"], {"coder": "x" * 81}):
+            self.assertEqual(self.call("/api/settings", {"role_models": bad})[0], 400, bad)
+        self.assertEqual(self.call("/api/settings")[1]["role_models"], {"coordinator": "light-one"}, "a refused save changes nothing")
+        self.call("/api/settings", {"provider": "gemini-cli"})
+        self.assertEqual(self.call("/api/settings")[1]["role_models"], {}, "another runtime has its own names")
+        self.call("/api/settings", {"provider": None})
+        self.assertEqual(self.call("/api/settings", {"role_models": {"coordinator": None}})[1]["role_models"], {})
+
     def test_the_ui_kit_is_served_and_loads_before_the_app(self):
         """kit.js (dialogs, refresh guard, activity banner) must be reachable, never cached, and run before app.js, which uses it."""
         import urllib.request

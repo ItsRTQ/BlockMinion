@@ -114,14 +114,26 @@ async function renderRuntime() {
   describe();
   const modelRow = qs("env-model-row"), modelInput = qs("env-model"), modelSave = qs("env-model-save");
   const syncModel = () => {
-    modelRow.classList.toggle("hidden", s.provider === "claude-code");   // Claude Code uses your account's own default
+    modelRow.classList.remove("hidden");
     modelInput.value = s.model || "";
-    modelInput.placeholder = s.model_env ? `Model (optional) — ${s.model_env} is set in this terminal; save one here to override it` : "Model (optional) — leave empty to let the CLI choose; list yours with: agy models";
+    const own = s.provider === "claude-code" ? "leave empty to use your account's own default" : "leave empty to let the CLI choose; list yours with: agy models";
+    modelInput.placeholder = s.model_env ? `Model (optional) — ${s.model_env} is set in this terminal; save one here to override it` : `Model for every role (optional) — ${own}`;
+    const rows = qs("env-role-rows"); rows.replaceChildren();
+    for (const role of s.roles || []) {
+      const input = el("input"); input.type = "text"; input.maxLength = 80; input.spellcheck = false; input.dataset.role = role; input.value = (s.role_models || {})[role] || ""; input.placeholder = "same as above";
+      const row = el("label", null, "role-model"); row.append(el("span", role), input); rows.append(row);
+    }
+    const set = Object.keys(s.role_models || {}).length; qs("env-roles-note").textContent = set ? `${set} role${set === 1 ? "" : "s"} on a model of ${set === 1 ? "its" : "their"} own` : "every role uses the model above";
   };
   syncModel();
   sel.onchange = async () => {
     try { s = { ...s, ...(await api("/api/settings", { provider: sel.value })) }; runtimeId = s.provider || runtimeId; toast("Agent runtime: " + (labels[s.provider] || s.provider), "ok"); describe(); s = { ...s, ...(await api("/api/settings")) }; syncModel(); }
     catch (e) { toast(e.message, "bad"); sel.value = s.provider; }
+  };
+  qs("env-roles-save").onclick = async () => {
+    const role_models = {}; for (const input of qs("env-role-rows").querySelectorAll("input")) role_models[input.dataset.role] = input.value.trim();
+    try { s = { ...s, ...(await api("/api/settings", { role_models })) }; toast("Role models saved", "ok"); syncModel(); }
+    catch (e) { toast(e.message, "bad"); }
   };
   modelSave.onclick = async () => {
     try { s = { ...s, ...(await api("/api/settings", { model: modelInput.value })) }; toast(s.model ? "Model saved: " + s.model : "Model cleared (the CLI picks its own)", "ok"); syncModel(); }

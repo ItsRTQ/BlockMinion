@@ -76,4 +76,20 @@ test('the Environment view still draws, with the runtime selector', async () => 
   assert.ok([...page.$('#env-provider').options].some((o) => /Antigravity/.test(o.textContent)));
 });
 
+test('Environment: a model for every role and one per role, saved for the runtime in force', async () => {
+  page.click(page.$('#nav-env')); await page.waitFor(() => page.$('#env-role-rows') && page.$('#env-role-rows').querySelectorAll('input').length >= 6, 'a box per role');
+  assert.ok(!page.hidden('#env-model-row'), 'the model for every role is offered for Claude Code too');
+  const boxes = [...page.$('#env-role-rows').querySelectorAll('input')], of = (role) => boxes.find((b) => b.dataset.role === role);
+  assert.ok(of('coordinator') && of('coder') && of('designer') && of('researcher')); assert.match(page.$('#env-roles-note').textContent, /every role uses the model above/);
+  of('coordinator').value = ' light-one ';
+  const before = page.calls.length; page.click(page.$('#env-roles-save'));
+  await page.waitFor(() => page.calls.slice(before).some((c) => c.method === 'POST' && c.path === '/api/settings'), 'the save');
+  const sent = page.calls.slice(before).find((c) => c.method === 'POST' && c.path === '/api/settings').body.role_models;
+  assert.equal(sent.coordinator, 'light-one'); assert.equal(sent.coder, '');
+  await page.waitFor(() => /1 role on a model of its own/.test(page.$('#env-roles-note').textContent), 'the note');
+  assert.equal([...page.$('#env-role-rows').querySelectorAll('input')].find((b) => b.dataset.role === 'coordinator').value, 'light-one');
+  for (const b of page.$('#env-role-rows').querySelectorAll('input')) b.value = '';
+  page.click(page.$('#env-roles-save')); await page.waitFor(() => /every role uses the model above/.test(page.$('#env-roles-note').textContent), 'cleared');
+});
+
 test('across the whole tour the page used no native popup and raised no render error', () => { assert.deepEqual(page.popups, []); assert.ok(!/failed to render/.test(page.toasts()), page.toasts()); });

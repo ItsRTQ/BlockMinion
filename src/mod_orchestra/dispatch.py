@@ -398,8 +398,11 @@ def provider_for(store: Store | None) -> AgentProvider:
     saved = store.get_global("provider") if store is not None else None
     provider = provider_by_name(saved) if saved else provider_from_env()
     model = store.get_global("model:" + provider.name) if store is not None else None   # chosen in the UI, per runtime
-    if model and isinstance(provider, GeminiCliProvider):   # also covers AntigravityCliProvider
+    if model and not isinstance(provider, FakeProvider):
         provider.model = str(model)
+    roles = store.get_global("role_models:" + provider.name) if store is not None else None   # {role: model}, per runtime
+    if isinstance(roles, dict) and not isinstance(provider, FakeProvider):
+        provider.role_models = {str(r): str(m) for r, m in roles.items() if m}
     return provider
 
 
