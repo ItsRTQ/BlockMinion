@@ -419,6 +419,12 @@ def dispatch(store: Store, pid: str, *, task_id: str | None = None, provider: Ag
         raise
     outcome = apply_outcome(store, pid, task, lease, run, result)
     store.refresh_ready(pid)
+    try:   # a step of the chat's plan ended: the chat says so (never at the cost of the run's own result)
+        from .chat import note_progress
+        files = (outcome.get("handoff") or {}).get("changed_files") or []
+        note_progress(store, pid, task["id"], f"{len(files)} file{'' if len(files) == 1 else 's'} changed" if files else "")
+    except Exception as exc:
+        store.add_event(pid, "controller", "PLAN_NOTE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
     return {"run": run["id"], "task": task["id"], "role": task["role"], "provider": provider.name,
             "exit_code": result.exit_code, "duration_s": result.duration_s, "cost_usd": result.cost_usd, "turns": result.turns,
             "log": str(log_path), **outcome}

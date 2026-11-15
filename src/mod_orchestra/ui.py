@@ -310,7 +310,13 @@ def serve(store: Store, port: int = 8765) -> None:
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
                     if op == "chat":
                         from .chat import send
-                        return send(store, pid, str(payload.get("text", "")))
+                        return send(store, pid, str(payload.get("text", "")), [str(a) for a in (payload.get("attachments") or [])][:50])
+                    if op == "chat-attach":   # one file per request (base64): what it is is decided by its bytes
+                        from .attachments import add_base64
+                        return add_base64(store, pid, str(payload.get("name", "")), str(payload.get("data_base64", "")))
+                    if op == "chat-detach":
+                        from .attachments import remove
+                        return remove(store, pid, str(payload.get("id", "")))
                     if op == "chat-launch":
                         from .chat import launch
                         return launch(store, pid)
@@ -486,12 +492,19 @@ def serve(store: Store, port: int = 8765) -> None:
                 if self.headers.get("Host") != f"127.0.0.1:{port}" or qs.get("token", [""])[0] != token:
                     return self.response({"error": "Unauthorized"}, 403)
                 pid = path.strip("/").split("/")[2]
+                rel, inline = qs.get("path", [""])[0].replace("\\", "/"), True
                 try:
-                    file_path, ctype = file_for_ui(store, pid, qs.get("path", [""])[0])
+                    if rel.startswith("attachments/"):   # a file the user attached in the chat: pictures are shown, the rest is a download
+                        from .attachments import file_for_ui as attached_file
+                        file_path, ctype, inline = attached_file(store, pid, rel)
+                    else:
+                        file_path, ctype = file_for_ui(store, pid, rel)
                 except (InputError, StateError) as exc:
                     return self.response({"error": str(exc)}, 404)
                 raw = file_path.read_bytes()
                 self.send_response(200)
+                if not inline:
+                    self.send_header("Content-Disposition", f'attachment; filename="{file_path.name}"')
                 self.send_header("Content-Type", ctype); self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Content-Length", str(len(raw)))
                 self.end_headers(); self.wfile.write(raw)

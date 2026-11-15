@@ -460,17 +460,153 @@ async function renderGallery(p) {
 }
 
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
-const chatState = { pid: null, polling: null };
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false };
+const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };
+// One step of a launched plan: where it stands and the one thing the user can do about it, right here.
+function planStepRun(p, run, busy) {
+  const box = el("div", null, "plan-run " + run.status), start = (task, label, retry) => {
+    const b = btn(label, async () => { if (retry) await api(`/api/task/${encodeURIComponent(task)}/requeue`, { reason: "retried from the plan" }); await api(`/api/project/${p.id}/dispatch`, { task }); toast(`Step ${run.step} is running.`, "ok"); await chatRefresh(p.id); }, retry ? "mini secondary" : "mini primary");
+    if (busy) { b.disabled = true; b.title = "Another task is running: one at a time"; } return b; };
+  box.append(el("span", STEP_WORD[run.status] || run.status, "plan-state " + run.status));
+  if (run.tasks && run.tasks.length > 1) box.append(el("span", `${run.done_tasks} of ${run.tasks.length} parts`, "muted"));
+  if (run.status === "ready") box.append(start(run.start, run.done_tasks ? "Start next part" : "Start"));
+  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry) box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "waiting") {
+    if (run.waiting_for.length) box.append(el("span", "for step " + run.waiting_for.join(", "), "muted"));
+    for (const b of run.blockers) { const row = el("span", null, "plan-blocker"); row.append(el("span", `needs first: ${b.title} (${b.state.toLowerCase().replace(/_/g, " ")})`, "muted")); if (b.start) row.append(start(b.start, "Start it")); if (b.retry) row.append(start(b.retry, "Retry it", true)); box.append(row); }
+  }
+  return box;
+}
+function planFooter(p, prog) {
+  const box = el("div", null, "plan-progress " + prog.state);
+  if (prog.state === "done") {
+    box.append(el("div", `Done: ${prog.done} of ${prog.total} step${prog.total === 1 ? "" : "s"} finished.`, "ok-note"), el("div", "The workers handed in their work. Nothing has been tried in the game yet.", "muted"));
+    const acts = el("div", null, "actions");
+    acts.append(btn("Test in game", async () => { if (!await confirmBox("Opens Minecraft with only this mod (isolated run/ folder). It compiles the current source first. Close the game when done.", { title: "Test in game", ok: "Open the game" })) return; await api(`/api/project/${p.id}/run-client`, {}); toast("Client launching. When you close it, tell the coordinator what you saw.", "ok"); qs("chat-text").placeholder = "What did you see in the game?"; }, "primary"));
+    box.append(acts);
+  } else {
+    const word = { running: "a step is running", ready: "the next step waits for you: press Start", stopped: "a step stopped; the ones after it wait", waiting: "waiting" }[prog.state] || prog.state;
+    box.append(el("div", `${prog.done} of ${prog.total} step${prog.total === 1 ? "" : "s"} finished · ${word}.`, prog.state === "stopped" ? "plan-problems" : "muted"));
+  }
+  return box;
+}
+// What the plan said since the user last looked: a toast and a mark on the Chat tab when they are somewhere else.
+function chatNews(p, messages) {
+  const notes = messages.filter((m) => m.meta && m.meta.plan_note), last = notes.length ? notes[notes.length - 1].id : 0, seen = chatState.seen[p.id];
+  chatState.seen[p.id] = last; if (seen === undefined || last <= seen) return;
+  const tab = document.querySelector('.tab[data-tab="chat"]'), away = (!tab.classList.contains("active") && qs("chat-dock").classList.contains("hidden")) || !isProjectView();
+  for (const m of notes.filter((n) => n.id > seen)) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
+  if (away) { tab.classList.add("has-news"); qs("chat-fab").classList.add("has-news"); }
+}
+// ---- the chat at hand from every tab: one conversation and one message box, shown in the Chat tab or in the small panel ----
+// The same elements move between the two places (nothing is duplicated), so files, mentions and the refresh work the same in both.
+function syncDock() {
+  const tab = document.querySelector(".tab.active"), onChat = !tab || tab.dataset.tab === "chat", want = !onChat && chatState.dock && !qs("chat-send").disabled;
+  const target = want ? qs("chat-dock-slot") : document.querySelector(".chat-left"), box = qs("chat-messages");
+  if (box.parentNode !== target) { target.append(box, qs("chat-drop")); box.scrollTop = box.scrollHeight; }
+  qs("chat-dock").classList.toggle("hidden", !want); qs("chat-fab").classList.toggle("hidden", onChat || want || qs("chat-send").disabled);
+  if (want || onChat) for (const n of [qs("chat-fab"), document.querySelector('.tab[data-tab="chat"]')]) n.classList.remove("has-news");
+}
+function openDock(focus) { chatState.dock = true; syncDock(); if (focus) qs("chat-text").focus(); }
+function dockStatus(p, v) {
+  const box = qs("chat-dock-status"), plan = v.plan, prog = plan && plan.progress; box.replaceChildren();
+  if (v.thinking) return box.append("thinking…");
+  if (prog) {
+    box.append(prog.state === "done" ? `plan done: ${prog.done} of ${prog.total}` : `plan: ${prog.done} of ${prog.total} steps` + (prog.state === "stopped" ? " · a step stopped" : prog.state === "running" ? " · running" : ""));
+    const ready = prog.steps.find((s) => s.status === "ready");
+    if (ready && !prog.busy) box.append(btn(`Start step ${ready.step}`, async () => { await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
+  } else if (plan && plan.steps && plan.steps.length) box.append("a plan is ready: open the chat to launch it");
+}
+// ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
+const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
+const mentionCards = { pid: null, at: 0, list: [] };
+async function chatCards(pid) {
+  if (mentionCards.pid === pid && Date.now() - mentionCards.at < 20000) return mentionCards.list;
+  let cards = []; try { cards = (await api(`/api/project/${pid}/map`)).cards || []; } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
+  Object.assign(mentionCards, { pid, at: Date.now(), list: cards.filter((c) => c.kind !== "tab") }); return mentionCards.list;
+}
+const titleSlug = (c) => String(c.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+function resolveMention(cards, word) { word = word.replace(/[:\-]+$/, ""); const w = word.toLowerCase(); return cards.find((c) => c.id === word) || cards.find((c) => c.id.toLowerCase() === w) || cards.find((c) => titleSlug(c) === w) || null; }
+function mentionsIn(cards, text) { const out = [], seen = new Set(); for (const m of String(text || "").matchAll(MENTION)) { const c = resolveMention(cards, m[2]); if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); } } return out; }
+// Under the box, while typing: what the message points at, so the user sees it was understood before sending.
+async function renderChatPoints() {
+  const box = qs("chat-points"), pid = selected, text = qs("chat-text").value; if (!text.includes("@")) { box.replaceChildren(); return; }
+  const cards = await chatCards(pid); if (selected !== pid || qs("chat-text").value !== text) return;
+  const found = mentionsIn(cards, text); box.replaceChildren(); if (!found.length) return;
+  box.append(el("span", "Pointing at:", "muted")); for (const c of found) box.append(cardChip(pid, c));
+}
+function cardChip(pid, c) { const b = btn("", () => { document.querySelector('[data-tab="map"]').click(); if (lastProject && lastProject.id === pid) setTimeout(() => openCard(lastProject, c.id), 0); }, "card-chip " + c.kind); b.append(el("span", c.title || c.id), el("small", c.kind === "custom" ? "feature" : c.kind)); b.title = `@${c.id} · show it on the map`; return b; }
+// The list that opens while an @word is being typed. Arrow keys move, Enter or Tab picks, Escape closes.
+const mentionPop = { open: false, items: [], at: 0, start: 0 };
+function closeMention() { mentionPop.open = false; qs("chat-mention").classList.add("hidden"); }
+async function updateMention() {
+  const ta = qs("chat-text"), pid = selected, upto = ta.value.slice(0, ta.selectionStart), m = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_:\-]*)$/.exec(upto);
+  if (!m) return closeMention();
+  const q = m[2].toLowerCase(), cards = await chatCards(pid); if (selected !== pid || ta.value.slice(0, ta.selectionStart) !== upto) return;
+  const rank = (c) => { const id = c.id.toLowerCase(), t = String(c.title || "").toLowerCase(); return (id.startsWith(q) || t.startsWith(q) ? 0 : t.split(/[\s_]+/).some((w) => w.startsWith(q)) ? 1 : id.includes(q) || t.includes(q) ? 2 : 9) + (c.kind === "vanilla" ? 3 : 0); };
+  const items = cards.map((c) => [rank(c), c]).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
+  if (!items.length) return closeMention();
+  Object.assign(mentionPop, { open: true, items, at: 0, start: upto.length - m[2].length - 1 }); drawMention();
+}
+function drawMention() {
+  const box = qs("chat-mention"); box.replaceChildren(); box.classList.remove("hidden");
+  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
+}
+function pickMention(i) {
+  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end), word = `@${c.id} `;
+  ta.value = before + word + after.replace(/^ /, ""); ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + word.length; closeMention(); renderChatPoints();
+}
+// From anywhere in the page (the map's Send to chat): put the cards in the message being written and bring the chat forward.
+function chatPoint(ids) {
+  const ta = qs("chat-text"), have = new Set([...ta.value.matchAll(MENTION)].map((m) => m[2])), add = ids.filter((id) => !have.has(id)).map((id) => "@" + id);
+  if (add.length) ta.value = (ta.value && !/\s$/.test(ta.value) ? ta.value + " " : ta.value) + add.join(" ") + " ";
+  openDock(true); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints();   // the chat comes to the user: they stay where the card is
+  toast(ids.length === 1 ? "Added to your message. Say what you want from it." : `${ids.length} cards added to your message. Say what you want from them.`, "ok");
+}
+const fileSize = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
+// One attached file as the chat shows it: a picture is a thumbnail that opens large; anything else is a named chip that downloads it.
+function chatFileChip(pid, f, onRemove) {
+  const chip = el("div", null, "chat-file " + f.kind); chip.dataset.id = f.id;
+  if (f.kind === "image") { const img = el("img"); img.src = fileUrl(pid, f.path); img.alt = f.name; img.onclick = () => openLightbox(img.src, f.name); chip.append(img); }
+  else { const a = el("a", f.kind === "pdf" ? "PDF" : "TXT", "chat-file-kind"); a.href = fileUrl(pid, f.path); a.download = f.name; a.title = "Download " + f.name; chip.append(a); }
+  chip.append(el("span", f.name, "chat-file-name"), el("small", fileSize(f.bytes), "muted"));
+  if (onRemove) { const x = btn("×", onRemove, "tag-x"); x.setAttribute("aria-label", "Remove " + f.name); chip.append(x); }
+  return chip;
+}
+function renderChatFiles() {
+  const box = qs("chat-files"), pid = selected; box.replaceChildren();
+  for (const f of chatState.files) box.append(chatFileChip(pid, f, async () => { const out = await api(`/api/project/${pid}/chat-detach`, { id: f.id }); chatState.files = out.waiting; renderChatFiles(); }));
+  if (chatState.busy) box.append(el("div", `Attaching ${chatState.busy} file${chatState.busy === 1 ? "" : "s"}…`, "muted"));
+}
+// Files are uploaded one by one as soon as they are chosen, dropped or pasted; the server decides what each one is by its bytes.
+async function chatAttach(fileList) {
+  const pid = selected, files = [...(fileList || [])]; if (!pid || !files.length) return;
+  const lim = chatState.limits || { per_message: 6, binary_bytes: 4e6, text_bytes: 1e6 };
+  for (const file of files) {
+    if (chatState.files.length + chatState.busy >= lim.per_message) { toast(`A message carries at most ${lim.per_message} files.`, "bad"); break; }
+    if (file.size > lim.binary_bytes) { toast(`${file.name} is too large (${fileSize(file.size)}): at most ${fileSize(lim.binary_bytes)}.`, "bad"); continue; }
+    chatState.busy++; renderChatFiles();
+    try { const out = await api(`/api/project/${pid}/chat-attach`, { name: file.name, data_base64: await readBase64(file) }); if (selected === pid) chatState.files.push(out); }
+    catch (e) { toast(`${file.name}: ${e.message}`, "bad"); }
+    chatState.busy--; renderChatFiles();
+  }
+}
 async function renderChat(p) {
   const box = qs("chat-messages"), planBox = qs("chat-plan");
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
-  if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; return; }
-  qs("chat-send").disabled = false;
+  if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; syncDock(); return; }
+  qs("chat-send").disabled = false; syncDock();
+  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; renderChatFiles(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
+  chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages); dockStatus(p, v);
+  if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.replaceChildren();
   if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
-  for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text")); box.append(d); }
+  for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text"));
+    const pointed = (m.meta && m.meta.cards) || []; if (pointed.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed) row.append(cardChip(p.id, c)); d.append(row); }
+    const sent = (m.meta && m.meta.attachments) || []; if (sent.length) { const row = el("div", null, "chat-files sent"); for (const f of sent) row.append(chatFileChip(p.id, f)); d.append(row); }
+    box.append(d); }
   if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
   if (stick || v.thinking) box.scrollTop = box.scrollHeight;
   planBox.replaceChildren();
@@ -480,29 +616,56 @@ async function renderChat(p) {
   } else {
     planBox.append(el("div", plan.result || "", "plan-result"));
     const ol = el("ol", null, "plan-steps");
-    for (const s of plan.steps) { const li = el("li"); li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted")); ol.append(li); }
+    const prog = plan.progress, runs = new Map(((prog && prog.steps) || []).map((r) => [r.step, r]));
+    for (const s of plan.steps) { const li = el("li"), run = runs.get(s.step); if (run) li.className = "step-" + run.status; li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted"));
+      if (s.attachments?.length) li.append(el("div", `The worker is given your file${s.attachments.length === 1 ? "" : "s"}: ${s.attachments.join(", ")}`, "muted plan-files"));
+      if (run) li.append(planStepRun(p, run, prog.busy));
+      ol.append(li); }
     planBox.append(ol);
     if (plan.problems?.length) planBox.append(el("div", "Cannot run as written: " + plan.problems.join("; ") + " — tell the coordinator.", "plan-problems"));
     const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length;
     planBox.append(el("div", `${plan.steps.length} step(s): ${coders} coder, ${designers} designer run(s)` + (est.runs ? ` · your designer runs averaged $${est.avg_usd}` : ""), "muted"));
     const acts = el("div", null, "actions");
-    if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));
+    if (plan.launched && prog) planBox.append(planFooter(p, prog));
+    else if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));
     else {
-      acts.append(btn("Launch", async () => { const out = await api(`/api/project/${p.id}/chat-launch`, {}); if (out.first) await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast("Launched: the first step is running; follow the rest in Now.", "ok"); await chatRefresh(p.id); }, "primary"));
+      acts.append(btn("Launch", async () => { const out = await api(`/api/project/${p.id}/chat-launch`, {}); if (out.first) await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast("Launched: step 1 is running. Each next step waits for you to press Start here.", "ok"); await chatRefresh(p.id); }, "primary"));
       acts.append(btn("Discard plan", async () => { await api(`/api/project/${p.id}/chat-discard`, {}); await chatRefresh(p.id); }, "secondary"));
     }
     planBox.append(acts);
   }
-  if (v.thinking && !chatState.polling) chatState.polling = setTimeout(() => { chatState.polling = null; chatRefresh(p.id); }, 3000);
+  const working = v.thinking || (plan && plan.progress && (plan.progress.state === "running" || plan.progress.busy));   // while something runs, the panel keeps itself current
+  if (working && !chatState.polling) chatState.polling = setTimeout(() => { chatState.polling = null; chatRefresh(p.id); }, 3000);
 }
 // The chat refreshes on its own (the page-wide refresh waits while the cursor is in a field, and here it always is).
 async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
 qs("chat-send").onclick = async () => {
-  const ta = qs("chat-text"); const text = ta.value.trim(); if (!text) { toast("Say something first", "bad"); return; }
+  const ta = qs("chat-text"); const text = ta.value.trim(); if (chatState.busy) { toast("Wait for the files to finish attaching", "bad"); return; }
+  const files = chatState.files.map((f) => f.id); if (!text && !files.length) { toast("Say something first", "bad"); return; }
   const p = { id: selected };
-  try { const out = await api(`/api/project/${p.id}/chat`, { text }); ta.value = ""; await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+  try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
 };
-qs("chat-text").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click(); });
+qs("chat-text").addEventListener("keydown", (ev) => {
+  if (mentionPop.open) {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const n = mentionPop.items.length; mentionPop.at = (mentionPop.at + (ev.key === "ArrowDown" ? 1 : n - 1)) % n; drawMention(); return; }
+    if ((ev.key === "Enter" && !ev.ctrlKey && !ev.metaKey) || ev.key === "Tab") { ev.preventDefault(); pickMention(mentionPop.at); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); closeMention(); return; }
+  }
+  if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click();
+});
+qs("chat-text").addEventListener("input", () => { updateMention(); renderChatPoints(); });
+qs("chat-text").addEventListener("click", () => updateMention());
+qs("chat-text").addEventListener("blur", () => setTimeout(() => { if (!qs("chat-mention").contains(document.activeElement)) closeMention(); }, 150));
+for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => syncDock());
+qs("chat-fab").onclick = () => openDock(true);
+qs("chat-dock-close").onclick = () => { chatState.dock = false; syncDock(); };
+qs("chat-dock-open").onclick = () => document.querySelector('.tab[data-tab="chat"]').click();
+qs("chat-attach").onclick = () => qs("chat-file-input").click();
+qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
+qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text
+for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes("Files")) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+qs("chat-drop").addEventListener("dragleave", (ev) => { if (!qs("chat-drop").contains(ev.relatedTarget)) qs("chat-drop").classList.remove("over"); });
+qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
 
 // ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
 function holdPanel(p, f) {

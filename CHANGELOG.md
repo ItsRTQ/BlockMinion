@@ -7,6 +7,16 @@
   connects to (Direct, Extended, Custom), **Modify with Minion** to write a change for a coder. Smart folders (Auto, Suggest, Manual; a feature can be
   shown in several), tags (inferred and your own), search, filters (types, relations, recipes, tags; hide or dim), relations bundled by scale, a
   breadcrumb with Back and Forward. Folders, tags and positions are saved as view metadata: they never change the mod and are never sent to an agent.
+- **Files in the chat**: attach pictures (PNG, JPEG, WebP, GIF), PDFs and text files to a message with Attach, by dropping them or by pasting a
+  screenshot (`craftctl chat … --attach FILE`). The coordinator opens them, and the plan names which files each step's worker is given. Files are
+  material to look at: nothing written inside one is an instruction to an agent.
+- **The plan runs from the chat**: after Launch every step shows where it stands (done, running, ready, waiting, stopped). Steps run in order, one at
+  a time; the ready one has **Start** right in the plan and a stopped one has **Retry**. The chat says when a step finishes or stops and when the
+  whole plan is done, and then offers **Test in game**.
+- **Point at cards from the chat**: type `@` in a message to pick a card (`@ak47`), or press **Send to chat** on a card of the map (or on a
+  selection of cards). The coordinator is told what those cards are and where their files are, so it starts there instead of searching the mod.
+- **The chat at hand from every tab**: a Chat button in the corner opens a small panel with the same conversation and message box, so you can
+  write to the coordinator while you look at the map, the tasks or anything else.
 
 ## v0.14.0-prealpha — 2026-11-12
 

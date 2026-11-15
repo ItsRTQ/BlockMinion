@@ -72,9 +72,16 @@
         <div class="chat-layout">
           <section class="chat-left">
             <div class="eyebrow">Talk to the coordinator</div>
-            <p class="muted">Say what you want in your own words. The coordinator asks what it needs, explains how things usually work in the game, and writes the plan on the right. Nothing runs until you press Launch.</p>
+            <p class="muted">Say what you want in your own words, and attach what helps: a picture of how something should look, a log, a list of values. The coordinator asks what it needs, explains how things usually work in the game, and writes the plan on the right. Nothing runs until you press Launch.</p>
             <div id="chat-messages" class="chat-messages"></div>
-            <div class="chat-compose"><textarea id="chat-text" rows="3" placeholder="What do you want next?"></textarea><button type="button" class="primary" id="chat-send">Send</button></div>
+            <div id="chat-drop" class="chat-drop">
+              <div id="chat-mention" class="chat-mention hidden" role="listbox" aria-label="Cards to point at"></div>
+              <div id="chat-points" class="chat-points" aria-live="polite"></div>
+              <div id="chat-files" class="chat-files" aria-live="polite"></div>
+              <div class="chat-compose"><textarea id="chat-text" rows="3" placeholder="What do you want next? Type @ to point at a card; drop or paste files here." aria-label="Message"></textarea>
+                <div class="chat-buttons"><button type="button" class="primary" id="chat-send">Send</button><button type="button" class="secondary" id="chat-attach" title="Pictures (PNG, JPEG, WebP, GIF), PDFs and text files. You can also drop or paste them.">Attach</button></div>
+                <input type="file" id="chat-file-input" class="hidden" multiple aria-label="Files to attach"></div>
+            </div>
           </section>
           <aside class="chat-right">
             <div class="eyebrow">The plan</div>
@@ -226,6 +233,12 @@
         <div class="card"><div class="card-head"><h3>Task board</h3><p class="muted">Dependencies decide what is READY. Repairs run first. FAILED/WAITING tasks can be requeued.</p></div><div id="task-list"></div></div>
         <div class="card"><div class="card-head"><h3>Approvals</h3></div><div id="approvals-list"></div></div>
       </div>
+      <!-- The chat, at hand from every tab: the button opens a small panel that holds the same conversation and message box as the Chat tab. -->
+      <button type="button" id="chat-fab" class="chat-fab hidden" title="Talk to the coordinator without leaving this tab" aria-label="Open the chat"><img src="/blockminion.png" alt="" width="26" height="26"><span>Chat</span></button>
+      <aside id="chat-dock" class="chat-dock hidden" aria-label="Chat">
+        <div class="chat-dock-head"><b>Coordinator</b><span id="chat-dock-status" class="muted"></span><span class="chat-dock-btns"><button type="button" class="mini secondary" id="chat-dock-open" title="Go to the Chat tab (the plan is there)">Open chat</button><button type="button" class="mini secondary" id="chat-dock-close" aria-label="Close the chat panel" title="Close">✕</button></span></div>
+        <div id="chat-dock-slot" class="chat-dock-slot"></div>
+      </aside>
     </section>
   </main>
 </div>
