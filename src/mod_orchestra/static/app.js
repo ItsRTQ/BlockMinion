@@ -460,7 +460,7 @@ async function renderGallery(p) {
 }
 
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
-const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {} };
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false };
 const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };
 // One step of a launched plan: where it stands and the one thing the user can do about it, right here.
 function planStepRun(p, run, busy) {
@@ -494,9 +494,28 @@ function planFooter(p, prog) {
 function chatNews(p, messages) {
   const notes = messages.filter((m) => m.meta && m.meta.plan_note), last = notes.length ? notes[notes.length - 1].id : 0, seen = chatState.seen[p.id];
   chatState.seen[p.id] = last; if (seen === undefined || last <= seen) return;
-  const tab = document.querySelector('.tab[data-tab="chat"]'), away = !tab.classList.contains("active") || !isProjectView();
+  const tab = document.querySelector('.tab[data-tab="chat"]'), away = (!tab.classList.contains("active") && qs("chat-dock").classList.contains("hidden")) || !isProjectView();
   for (const m of notes.filter((n) => n.id > seen)) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
-  if (away) tab.classList.add("has-news");
+  if (away) { tab.classList.add("has-news"); qs("chat-fab").classList.add("has-news"); }
+}
+// ---- the chat at hand from every tab: one conversation and one message box, shown in the Chat tab or in the small panel ----
+// The same elements move between the two places (nothing is duplicated), so files, mentions and the refresh work the same in both.
+function syncDock() {
+  const tab = document.querySelector(".tab.active"), onChat = !tab || tab.dataset.tab === "chat", want = !onChat && chatState.dock && !qs("chat-send").disabled;
+  const target = want ? qs("chat-dock-slot") : document.querySelector(".chat-left"), box = qs("chat-messages");
+  if (box.parentNode !== target) { target.append(box, qs("chat-drop")); box.scrollTop = box.scrollHeight; }
+  qs("chat-dock").classList.toggle("hidden", !want); qs("chat-fab").classList.toggle("hidden", onChat || want || qs("chat-send").disabled);
+  if (want || onChat) for (const n of [qs("chat-fab"), document.querySelector('.tab[data-tab="chat"]')]) n.classList.remove("has-news");
+}
+function openDock(focus) { chatState.dock = true; syncDock(); if (focus) qs("chat-text").focus(); }
+function dockStatus(p, v) {
+  const box = qs("chat-dock-status"), plan = v.plan, prog = plan && plan.progress; box.replaceChildren();
+  if (v.thinking) return box.append("thinking…");
+  if (prog) {
+    box.append(prog.state === "done" ? `plan done: ${prog.done} of ${prog.total}` : `plan: ${prog.done} of ${prog.total} steps` + (prog.state === "stopped" ? " · a step stopped" : prog.state === "running" ? " · running" : ""));
+    const ready = prog.steps.find((s) => s.status === "ready");
+    if (ready && !prog.busy) box.append(btn(`Start step ${ready.step}`, async () => { await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
+  } else if (plan && plan.steps && plan.steps.length) box.append("a plan is ready: open the chat to launch it");
 }
 // ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
 const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
@@ -541,7 +560,7 @@ function pickMention(i) {
 function chatPoint(ids) {
   const ta = qs("chat-text"), have = new Set([...ta.value.matchAll(MENTION)].map((m) => m[2])), add = ids.filter((id) => !have.has(id)).map((id) => "@" + id);
   if (add.length) ta.value = (ta.value && !/\s$/.test(ta.value) ? ta.value + " " : ta.value) + add.join(" ") + " ";
-  document.querySelector('.tab[data-tab="chat"]').click(); ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints();
+  openDock(true); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints();   // the chat comes to the user: they stay where the card is
   toast(ids.length === 1 ? "Added to your message. Say what you want from it." : `${ids.length} cards added to your message. Say what you want from them.`, "ok");
 }
 const fileSize = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
@@ -575,11 +594,11 @@ async function chatAttach(fileList) {
 async function renderChat(p) {
   const box = qs("chat-messages"), planBox = qs("chat-plan");
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
-  if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; return; }
-  qs("chat-send").disabled = false;
+  if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; syncDock(); return; }
+  qs("chat-send").disabled = false; syncDock();
   if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; renderChatFiles(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
-  chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages);
+  chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages); dockStatus(p, v);
   if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.replaceChildren();
@@ -637,7 +656,10 @@ qs("chat-text").addEventListener("keydown", (ev) => {
 qs("chat-text").addEventListener("input", () => { updateMention(); renderChatPoints(); });
 qs("chat-text").addEventListener("click", () => updateMention());
 qs("chat-text").addEventListener("blur", () => setTimeout(() => { if (!qs("chat-mention").contains(document.activeElement)) closeMention(); }, 150));
-document.querySelector('.tab[data-tab="chat"]').addEventListener("click", (ev) => ev.currentTarget.classList.remove("has-news"));
+for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => syncDock());
+qs("chat-fab").onclick = () => openDock(true);
+qs("chat-dock-close").onclick = () => { chatState.dock = false; syncDock(); };
+qs("chat-dock-open").onclick = () => document.querySelector('.tab[data-tab="chat"]').click();
 qs("chat-attach").onclick = () => qs("chat-file-input").click();
 qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
 qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text

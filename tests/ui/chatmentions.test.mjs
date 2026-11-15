@@ -51,9 +51,10 @@ test('Send carries the text; the server reads the mentions and the message shows
   assert.equal(page.$('#map-inspector h3').textContent, 'Spitter');
 });
 
-test('Send to chat on a map card puts it in the message being written and brings the chat forward; nothing is sent', async () => {
+test('Send to chat on a map card puts it in the message being written and brings the chat to the map; nothing is sent', async () => {
   const n = posts('/chat').length; page.click(btnOf(page.$('#map-inspector'), 'Send to chat')); await page.idle();
-  assert.equal(page.$('.tab.active').dataset.tab, 'chat'); assert.equal(ta().value, '@spitter '); assert.deepEqual(points(), ['Spitter']);
+  assert.equal(page.$('.tab.active').dataset.tab, 'map', 'the user stays where the card is'); assert.ok(!page.hidden('#chat-dock')); assert.ok(page.$('#chat-dock').contains(ta()));
+  assert.equal(ta().value, '@spitter '); assert.deepEqual(points(), ['Spitter']);
   assert.match(page.toasts(), /Added to your message\. Say what you want from it\./); assert.equal(posts('/chat').length, n, 'pointing is not asking');
   ta().value = 'about @spitter'; page.eval('chatPoint(["spitter", "runner"])'); await page.idle();
   assert.equal(ta().value, 'about @spitter @runner ', 'a card already in the message is not added twice');
@@ -64,7 +65,7 @@ test('Select cards on the map can send the whole selection to the chat', async (
   page.eval('MapView.reveal("brute", {instant: true}); MapView.frame()'); const tap = (id) => { const g = page.$(`#map-svg .layer-cards .node[data-id="${id}"]`); g.dispatchEvent(new page.w.Event('pointerdown', {bubbles: true})); g.dispatchEvent(new page.w.Event('pointerup', {bubbles: true})); };
   tap('brute'); page.eval('MapView.reveal("runner", {instant: true}); MapView.frame()'); tap('runner'); await page.idle();
   page.click(btnOf(page.$('#map-side'), 'Send to chat (2)')); await page.idle();
-  assert.equal(page.$('.tab.active').dataset.tab, 'chat'); assert.equal(ta().value, '@brute @runner '); assert.match(page.toasts(), /2 cards added to your message/);
+  assert.equal(page.$('.tab.active').dataset.tab, 'map'); assert.ok(page.$('#chat-dock').contains(ta())); assert.equal(ta().value, '@brute @runner '); assert.match(page.toasts(), /2 cards added to your message/);
 });
 
 test('no native popup was used', () => assert.deepEqual(page.popups, []));

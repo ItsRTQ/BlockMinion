@@ -15,6 +15,8 @@
   whole plan is done, and then offers **Test in game**.
 - **Point at cards from the chat**: type `@` in a message to pick a card (`@ak47`), or press **Send to chat** on a card of the map (or on a
   selection of cards). The coordinator is told what those cards are and where their files are, so it starts there instead of searching the mod.
+- **The chat at hand from every tab**: a Chat button in the corner opens a small panel with the same conversation and message box, so you can
+  write to the coordinator while you look at the map, the tasks or anything else.
 
 ## v0.14.0-prealpha — 2026-11-12
 
