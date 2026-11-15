@@ -234,8 +234,10 @@ def feature_instructions(card: dict, *, kind: str = "mechanic", carriers: list[s
                          "a carrier's entity class gets a few lines that use the component, never a copy of the logic, so that adding or removing a carrier later is a small change. If the carriers apply it differently (a melee hit, a projectile), the description says how.",
                          "Write one @GameTest per carrier proving that carrier has the capability (name it after the carrier), in addition to one per acceptance criterion."]
     from .artreq import CODER_ART_RULE
+    from .shape import CODER_SHAPE_RULE
     instructions += ["Write one @GameTest per acceptance criterion that can be exercised server-side in gametest/ModGameTests.java (see the gametest skill); name each test after its criterion.",
                      "Keep the change minimal and self-contained; register new content in ModMain like the existing content; add lang entries and models for any new item."]
+    instructions += CODER_SHAPE_RULE
     instructions += CODER_ART_RULE
     instructions += [
                      "Run ./gradlew build (or gradlew.bat build) and report BUILD_PASS only if it exits 0.",
@@ -314,12 +316,14 @@ def request_change(store: Store, pid: str, cid: str, request: str, more: list[st
                              "  files: " + (", ".join(cc.get("files", [])) or "see the mod map"),
                              "  relations: " + ("; ".join(f"{e['from']} --{EDGE_LABEL.get(e['kind'], e['kind'])}--> {e['to']}" for e in rel) or "none")]
         instructions += ["", "REQUESTED CHANGE (for every card above):", request[:1500], "",
-                         "Where the cards share code (a base class, a helper, a registry), change it once there rather than per card. If a card cannot take the change,",
-                         "say which and why in `risks` instead of changing it halfway.",
+                         "This is one change for several pieces: build the behaviour once and let each card contribute only its own values (see Shape below). If a card cannot",
+                         "take the change, say which and why in `risks` instead of changing it halfway.",
                          "In your handoff include `cards`: {card id: {files: [...], description: \"one sentence\"}} for every card you changed (or a single `card` object if the same applies to all)."]
         if any(cards_by_id[c]["kind"] in ("item", "block", "mob", "material", "food") for c in cids):
             instructions.append("Note: spec-generated content: edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")
         from .artreq import CODER_ART_RULE
+        from .shape import CODER_SHAPE_RULE
+        instructions += CODER_SHAPE_RULE
         instructions += CODER_ART_RULE
         store.add_task(pid, task_id, "coder", f"Change {len(cids)} cards: {request[:60]}")
         with store.tx() as con:
@@ -340,6 +344,8 @@ def request_change(store: Store, pid: str, cid: str, request: str, more: list[st
     if card["kind"] in ("item", "block", "mob", "material", "food"):
         instructions.append("Note: this content is generated from the spec. Edit the generated files directly (the controller accepts your edits as a revision); do not try to regenerate.")
     from .artreq import CODER_ART_RULE
+    from .shape import CODER_SHAPE_RULE
+    instructions += CODER_SHAPE_RULE
     instructions += CODER_ART_RULE
     store.add_task(pid, task_id, "coder", f"Change {card['title']}: {request[:60]}")
     with store.tx() as con:
