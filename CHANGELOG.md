@@ -18,7 +18,7 @@
   Now it carries the core (how the coder works, GameTests, events) plus the ones the request talks about, and lists the others by name: the
   coder reads any of them in full with one tool call (`orchestra_skill`) before writing that part. On 25 written-out requests the coder's
   role text went from about 14.7k to about 4.9k tokens on average (characters ÷ 4, not telemetry) with no needed skill missed. Tasks the tool
-  writes itself (wiring a model, registering content) and every other role are unchanged.
+  writes itself (wiring a model, registering content) and every other role are unchanged. Requests in Spanish find the same skills.
 
 ## v0.15.0-prealpha — 2026-11-15
 

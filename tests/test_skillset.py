@@ -49,7 +49,40 @@ CORPUS = [
 ]
 
 
+CORPUS_ES = [
+    ("el spitter escupe ácido que quema al jugador por 5 segundos", {"effects", "items"}),
+    ("agrega una mochila con 27 ranuras que se abre con clic derecho", {"gui", "items"}),
+    ("al presionar R se recarga el rifle; la munición se ve arriba de la hotbar", {"client-ui", "items", "data"}),
+    ("una barra de maná en pantalla que se rellena con el tiempo y se guarda por jugador", {"client-ui", "data"}),
+    ("la mena de rubí debe generarse más abajo, bajo y 16", {"worldgen"}),
+    ("la varita se craftea con dos palos y una gema", {"recipes", "items"}),
+    ("los zombies a veces sueltan la gema; los cofres de mazmorras también la traen", {"loot-and-trades"}),
+    ("un comando /curar que cura al jugador que lo usa", {"commands", "effects"}),
+    ("cuando muere el jefe salen partículas y se da un logro", {"polish"}),
+    ("que el jugador caiga más lento: cambia la gravedad mientras lleva la capa", {"mixins"}),
+    ("un minimapa en la esquina con los mobs cercanos", {"minimap"}),
+    ("que haga 2 más de daño", set()),
+    ("el brute ataca el doble de rápido con menos de media vida", set()),
+    ("los aldeanos venden el amuleto por 5 esmeraldas", {"loot-and-trades"}),
+    ("una poción de visión nocturna que dura 3 minutos", {"effects"}),
+    ("la granada se lanza y explota a los 3 segundos con humo", {"items", "polish"}),
+    ("niveles: matar mobs da experiencia y cada nivel desbloquea más daño", {"data"}),
+    ("una dimensión nueva a la que se entra por un portal", {"worldgen"}),
+]
+
+
 class Vocabulary(unittest.TestCase):
+    def test_a_request_in_spanish_finds_the_same_skills(self):
+        extra = 0
+        for text, want in CORPUS_ES:
+            got = set(skillset.choose(text))
+            self.assertFalse(want - got, f"{text!r} needs {sorted(want - got)}")
+            extra += len(got - want)
+        self.assertLessEqual(extra, 8)
+        self.assertEqual(set(skillset.TOPICS_ES), set(skillset.TOPICS))
+        self.assertEqual(skillset.choose("el año pasado comió poco"), [], "accented letters are letters: `com` inside a word is not `come`")
+        self.assertEqual(skillset.choose("Hostile GeckoLib mob (10.0 HP, velocidad 0.25)"), [])
+
     def test_no_request_misses_a_skill_it_needs_and_few_load_one_they_do_not(self):
         extra = 0
         for text, want in CORPUS:
