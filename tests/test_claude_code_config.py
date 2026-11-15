@@ -15,6 +15,19 @@ GUARD = ROOT / ".claude/hooks/guard.py"
 USER_ONLY = ("approve-spec", "request-build", "decide", "build", "evidence", "delete", "release", "new", "requeue", "add-task", "dispatch", "orchestrate", "autopilot", "accept-changes", "break", "server-smoke", "request-smoke", "add-recipe", "remove-recipe", "add-drop", "add-feature", "add-sound", "add-ore", "remove-ore", "set-variants", "add-enchantment", "add-structure", "add-biome", "add-dimension", "add-mob", "remove-mob", "add-material", "remove-material", "add-food", "remove-food", "set-tab", "run-client", "answer", "interpret-suite")
 
 
+
+def cli_user_only() -> list[str]:
+    """Every CLI command whose help says USER-ONLY. The guard and the deny list must cover all of them: a command added to the
+    CLI as the user's own action is closed to agents by this test, not by someone remembering to edit three lists."""
+    import argparse
+    from mod_orchestra.cli import parser
+    sub = next(a for a in parser()._actions if isinstance(a, argparse._SubParsersAction))
+    return [c.dest for c in sub._choices_actions if (c.help or "").startswith("USER-ONLY")]
+
+
+USER_ONLY = tuple(dict.fromkeys(USER_ONLY + tuple(cli_user_only())))
+
+
 def frontmatter(path: Path) -> dict:
     text = path.read_text(encoding="utf8")
     assert text.startswith("---\n"), path
@@ -104,6 +117,22 @@ class Guard(unittest.TestCase):
             for prefix in ("craftctl", "python -m mod_orchestra.cli"):
                 code, err = self.run_guard({"tool_name": "Bash", "tool_input": {"command": f"{prefix} {cmd} x"}})
                 self.assertEqual(code, 2, f"{prefix} {cmd}"); self.assertIn("USER-ONLY", err)
+
+    def test_the_requests_that_start_work_are_the_users_too(self):
+        marked = cli_user_only()
+        for cmd in ("chat", "ask", "change", "animate", "make-3d", "modify-model", "gametest", "hold"):
+            self.assertIn(cmd, marked, f"{cmd} is no longer marked USER-ONLY in the CLI help")
+        for line in ("craftctl chat weponry --launch", "craftctl chat weponry 'do it' --attach x.png", "python -m mod_orchestra.cli chat weponry --skip 2", "craftctl ask weponry 'more guns'",
+                     "craftctl change weponry --cards ak47 --request 'more damage'", "cd .. && craftctl   chat  weponry --launch", "craftctl hold-tweak weponry aim"):
+            code, err = self.run_guard({"tool_name": "Bash", "tool_input": {"command": line}}); self.assertEqual(code, 2, line); self.assertIn("USER-ONLY", err)
+            self.assertEqual(self.run_guard({"tool_name": "PowerShell", "tool_input": {"command": line}})[0], 2, line)
+        for fine in ("craftctl status weponry", "grep -rn chat src/", "echo 'ask the user to change it'", "craftctl handoff weponry t1", "craftctl changelog"):
+            self.assertEqual(self.run_guard({"tool_name": "Bash", "tool_input": {"command": fine}})[0], 0, fine)
+
+    def test_both_copies_of_the_guard_and_of_the_settings_are_the_same(self):
+        shipped = ROOT / "src/mod_orchestra/resources/claude"
+        self.assertEqual(GUARD.read_text(), (shipped / "hooks/guard.py").read_text())
+        self.assertEqual(json.loads((ROOT / ".claude/settings.json").read_text()), json.loads((shipped / "settings.json").read_text()))
 
     def test_allows_read_and_gradle(self):
         for cmd in ("craftctl status x", "craftctl doctor", "./gradlew build", "git status", "python -m unittest"):

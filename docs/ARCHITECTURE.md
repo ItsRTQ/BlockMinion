@@ -105,6 +105,7 @@ Missing infrastructure is deliberately staged in `docs/ROADMAP.md`; do not confu
 - `dispatch.orchestrate` is the coordinator loop: dispatch READY tasks one after another until a WAITING_USER/BLOCKED/FAILED outcome (the user is needed) or a budget is hit (`--max-runs`, `--max-cost-usd`, `--max-seconds`). It first reconciles runs left RUNNING by a controller that died (restart safety); task leases expire on their own.
 - Project deletion: CLI (`craftctl delete`) and the UI (type-to-confirm, refused while a job runs); never MCP.
 - USER-ONLY around dispatch: `craftctl dispatch`, `orchestrate`, `requeue`, `add-task`, `accept-changes` (denied to agents by settings and guard). The UI can call them: it is the authenticated local user.
+- The list of what agents may not run is the CLI's own: every command whose help starts with USER-ONLY (the approvals, and also the requests that start work in the user's name: `chat`, `ask`, `change`, `animate`, `make-3d`, `modify-model`, `gametest`, `hold`…) is in the guard's pattern and in the settings deny list, in both copies (`.claude/` and the shipped `resources/claude/`). `tests/test_claude_code_config.py` derives the list from the parser, so a new USER-ONLY command fails the suite until it is closed to agents. This is a backstop for honest agents, not a sandbox: runtimes without the hook only get the instruction.
 
 ## Repair loop and server smoke (R5)
 
