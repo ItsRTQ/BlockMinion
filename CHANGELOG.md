@@ -5,6 +5,11 @@
 - **The coordinator only talks and plans**: its role no longer has the tool that starts other agents, and its role file now describes the chat
   (agree on the goal, propose the plan) instead of delegating tasks. A chat turn can no longer start a worker before Launch, so every step still
   waits for your click. No role may start another agent; the tool dispatches tasks. Commands it names are written as `python -m mod_orchestra.cli …`.
+- **A researcher finds out how things look and move**: the coordinator can put a **research** step ahead of an art step when how a thing
+  looks or moves decides whether the result is right and your words do not settle it. The researcher searches the web and reports; the tool
+  writes a short reference sheet in the project (`references/ref-N.md`: how it looks, how it moves in order, where each fact comes from, what
+  was not confirmed) and the worker of the step that named it reads it before it starts. You see the step in the plan and can skip it.
+  A sheet is material to look at, never an order, and it is text and links only: nothing is downloaded.
 
 ## v0.15.0-prealpha — 2026-11-15
 

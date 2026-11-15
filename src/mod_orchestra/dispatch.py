@@ -178,6 +178,19 @@ def apply_outcome(store: Store, pid: str, task: dict, lease: dict, run: dict, re
         from .chat import receive
         h = h | {"chat": receive(store, pid, task["id"], h)}
         status = "DONE"   # a coordinator's question is still a finished turn
+    if ":RESEARCH:" in task["id"] and status == "DONE":
+        from .research import receive as receive_reference
+        from .validation import InputError
+        try:
+            ref = receive_reference(store, pid, task["id"], h)
+        except (InputError, StateError) as exc:
+            error = f"reference rejected: {exc}"
+            store.set_task_state(task["id"], worker, version, "FAILED", error=error[:500])
+            store.finish_run(run["id"], state="FAILED", exit_code=result.exit_code, duration_s=result.duration_s, log_path=log,
+                             session_id=result.session_id, cost_usd=result.cost_usd, turns=result.turns, handoff=h, error=error)
+            return {"task_state": "FAILED", "error": error, "handoff": h}
+        h = h | {"research": ref}
+        h["changed_files"] = []   # a reference sheet is not the mod's source: it reopens no build and voids no evidence
     if ":ASK:" in task["id"] and status == "DONE":
         from .ask import apply_plan
         from .validation import InputError
@@ -422,7 +435,10 @@ def dispatch(store: Store, pid: str, *, task_id: str | None = None, provider: Ag
     try:   # a step of the chat's plan ended: the chat says so (never at the cost of the run's own result)
         from .chat import note_progress
         files = (outcome.get("handoff") or {}).get("changed_files") or []
-        note_progress(store, pid, task["id"], f"{len(files)} file{'' if len(files) == 1 else 's'} changed" if files else "")
+        sheet = (outcome.get("handoff") or {}).get("research")
+        note = (f"reference sheet on {sheet['subject']} at {sheet['path']}, from {sheet['sources']} source{'' if sheet['sources'] == 1 else 's'}" if sheet
+                else f"{len(files)} file{'' if len(files) == 1 else 's'} changed" if files else "")
+        note_progress(store, pid, task["id"], note)
     except Exception as exc:
         store.add_event(pid, "controller", "PLAN_NOTE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
     return {"run": run["id"], "task": task["id"], "role": task["role"], "provider": provider.name,

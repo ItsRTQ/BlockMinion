@@ -30,6 +30,15 @@ test('the plan shows on the right; Launch runs it and dispatches the first task'
   await page.waitFor(() => posts('/dispatch').some((r) => r.body.task === 'infect:CHANGE:runner:1'), 'first task dispatched');
 });
 
+test('a research step shows as a researcher run, and the step that uses it says which sheet its worker is given', async () => {
+  page.overrides['/api/project/infect/chat'] = {messages: [{id: 1, role: 'user', text: 'make it 3D'}, {id: 2, role: 'coordinator', text: 'I added a research step first.'}],
+    plan: {result: 'A 3D runner claw.', steps: [{step: 1, action: 'research', text: 'the shape of the claw and how it opens'}, {step: 2, action: 'make_3d', kind: 'item', target: 'claw', text: 'like the sheet', references: [1]}], problems: [], launched: null}, thinking: false, designer_cost: {runs: 0}};
+  await page.eval('chatRefresh("infect")'); await page.waitFor(() => /A 3D runner claw/.test(page.$('#chat-plan').textContent), 'the plan');
+  const text = page.$('#chat-plan').textContent;
+  assert.match(text, /2 step\(s\): 0 coder, 1 designer, 1 researcher run\(s\)/); assert.match(text, /research · the shape of the claw and how it opens|research ·/);
+  assert.match(text, /The worker is given the reference sheet of step 1/);
+});
+
 test('the navbar sits under the header; the stages and Now live in Activity; a project without source opens on Activity', async () => {
   const head = page.$('#view-project .project-head'); assert.equal(head.nextElementSibling.id, 'tabs', 'tabs right after the header');
   assert.ok(page.$('#tab-activity #stepper') && page.$('#tab-activity #now'), 'stages and Now inside Activity');

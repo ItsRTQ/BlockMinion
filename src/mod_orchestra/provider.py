@@ -334,7 +334,8 @@ def _settings_for_run(guard: Path) -> dict:
                  "Bash(python *)", "Bash(python3 *)", "Bash(git status*)", "Bash(git diff*)", "Bash(mkdir *)",
                  "PowerShell(./gradlew *)", "PowerShell(.\\\\gradlew.bat *)", "PowerShell(gradlew.bat *)", "PowerShell(Get-FileHash *)",
                  "PowerShell(python *)", "PowerShell(python3 *)", "PowerShell(git status*)", "PowerShell(git diff*)",
-                 "Read", "Edit", "Write", "Grep", "Glob", "mcp__minecraft-orchestra__*", "mcp__blockbench__*"):
+                 "Read", "Edit", "Write", "Grep", "Glob", "mcp__minecraft-orchestra__*", "mcp__blockbench__*",
+                 "WebSearch", "WebFetch"):   # only the researcher's role lists the web tools; a headless run cannot be asked to allow them
         if rule not in base["permissions"]["allow"]:
             base["permissions"]["allow"].append(rule)
     base["hooks"] = {"PreToolUse": [{"matcher": "Bash|PowerShell|Write|Edit|MultiEdit",
