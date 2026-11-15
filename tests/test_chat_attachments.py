@@ -79,7 +79,7 @@ class Files(Base):
             chat.send(self.store, "s_mod", "look", [a["id"], a["id"]])
         self.assertEqual(chat.view(self.store, "s_mod")["messages"], [], "nothing was recorded")
         out = chat.send(self.store, "s_mod", "", [a["id"]])
-        self.assertIn("USER: (no text, only files)", self.store.task_instructions(out["task"]))
+        self.assertIn("USER: (no text: see what the message carries, below)", self.store.task_instructions(out["task"]))
         with self.assertRaisesRegex(InputError, "not available"):
             chat.send(self.store, "s_mod", "again", [a["id"]])   # a file belongs to one message
         with self.assertRaisesRegex(StateError, "already sent"):

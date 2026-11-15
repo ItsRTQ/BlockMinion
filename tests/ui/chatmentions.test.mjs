@@ -68,4 +68,13 @@ test('Select cards on the map can send the whole selection to the chat', async (
   assert.equal(page.$('.tab.active').dataset.tab, 'map'); assert.ok(page.$('#chat-dock').contains(ta())); assert.equal(ta().value, '@brute @runner '); assert.match(page.toasts(), /2 cards added to your message/);
 });
 
+test('a folder of the map is a shortcut for its cards: picking it writes them, and its name goes nowhere', async () => {
+  page.eval('chatState.dock = false; syncDock()'); page.click(page.$('.tab[data-tab="chat"]')); await type('all the @mob');
+  const folder = page.$$('#chat-mention .mention-row').find((r) => /^folder/.test(r.querySelector('.r-where').textContent)); assert.ok(folder, 'the Mobs group is offered');
+  assert.equal(folder.querySelector('.r-title').textContent, 'Mobs'); assert.match(folder.querySelector('.r-where').textContent, /folder · its 3 cards/);
+  page.click(folder); await page.idle(); assert.equal(ta().value, 'all the @brute @runner @spitter '); assert.deepEqual(points(), ['Brute', 'Runner', 'Spitter']);
+  await type('@'); assert.ok(!page.$$('#chat-mention .mention-row').some((r) => /^folder/.test(r.querySelector('.r-where').textContent)), 'a bare @ lists cards; folders come with what is typed');
+  await type('');
+});
+
 test('no native popup was used', () => assert.deepEqual(page.popups, []));

@@ -460,7 +460,7 @@ async function renderGallery(p) {
 }
 
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
-const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false };
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false, tasks: [] };
 const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };
 // One step of a launched plan: where it stands and the one thing the user can do about it, right here.
 function planStepRun(p, run, busy) {
@@ -471,6 +471,7 @@ function planStepRun(p, run, busy) {
   if (run.tasks && run.tasks.length > 1) box.append(el("span", `${run.done_tasks} of ${run.tasks.length} parts`, "muted"));
   if (run.status === "ready") box.append(start(run.start, run.done_tasks ? "Start next part" : "Start"));
   if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry && run.status === "stopped") box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "stopped" && run.retry) box.append(btn("Ask the coordinator", () => chatPointTask({ id: run.retry, title: `Step ${run.step}`, state: "stopped" }, `Step ${run.step} stopped. What went wrong, and what do we do?`), "mini secondary"));
   if (run.can_skip) box.append(btn("Skip", async () => {
     if (!await confirmBox(`Go on without step ${run.step}? Its work is not done, and a later step may need what it was going to make. The steps after it stop waiting for it.`, { title: `Skip step ${run.step}`, ok: "Skip it", danger: true })) return;
     await api(`/api/project/${p.id}/chat-skip`, { step: run.step }); await chatRefresh(p.id); }, "mini secondary"));
@@ -522,21 +523,52 @@ function dockStatus(p, v) {
 }
 // ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
 const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
-const mentionCards = { pid: null, at: 0, list: [] };
+const mentionCards = { pid: null, at: 0, list: [], folders: [] };
+const MAX_POINTED = 40;
 async function chatCards(pid) {
   if (mentionCards.pid === pid && Date.now() - mentionCards.at < 20000) return mentionCards.list;
-  let cards = []; try { cards = (await api(`/api/project/${pid}/map`)).cards || []; } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
-  Object.assign(mentionCards, { pid, at: Date.now(), list: cards.filter((c) => c.kind !== "tab") }); return mentionCards.list;
+  let data; try { data = await api(`/api/project/${pid}/map`); } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
+  Object.assign(mentionCards, { pid, at: Date.now(), list: (data.cards || []).filter((c) => c.kind !== "tab"), folders: mapFolders(data) }); return mentionCards.list;
+}
+// The map's folders as the user organised them (and the automatic groups), each with the cards inside it and its subfolders.
+// A folder is a shortcut for its cards: picking one writes those cards into the message. Its name is not sent anywhere.
+function mapFolders(data) {
+  try {
+    const index = MapCore.buildIndex(data), tree = MapCore.buildTree(index, MapCore.normMeta(data.meta), MapCore.inferTags(index)), out = [];
+    for (const f of tree.folders.values()) {
+      if (f.id === MapCore.ROOT || !f.total) continue; const ids = [];
+      for (const fid of MapCore.descendants(tree, f.id)) { const d = tree.folders.get(fid); for (const id of d.features.concat(d.refs)) if (!ids.includes(id)) ids.push(id); }
+      out.push({ folder: true, id: f.id, title: f.name, where: MapCore.pathLabel(tree, f.parent), ids });
+    }
+    return out;
+  } catch (e) { return []; }
 }
 const titleSlug = (c) => String(c.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 function resolveMention(cards, word) { word = word.replace(/[:\-]+$/, ""); const w = word.toLowerCase(); return cards.find((c) => c.id === word) || cards.find((c) => c.id.toLowerCase() === w) || cards.find((c) => titleSlug(c) === w) || null; }
 function mentionsIn(cards, text) { const out = [], seen = new Set(); for (const m of String(text || "").matchAll(MENTION)) { const c = resolveMention(cards, m[2]); if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); } } return out; }
 // Under the box, while typing: what the message points at, so the user sees it was understood before sending.
 async function renderChatPoints() {
-  const box = qs("chat-points"), pid = selected, text = qs("chat-text").value; if (!text.includes("@")) { box.replaceChildren(); return; }
+  const pid = selected, text = qs("chat-text").value; if (!text.includes("@")) return drawPoints(pid, []);
   const cards = await chatCards(pid); if (selected !== pid || qs("chat-text").value !== text) return;
-  const found = mentionsIn(cards, text); box.replaceChildren(); if (!found.length) return;
-  box.append(el("span", "Pointing at:", "muted")); for (const c of found) box.append(cardChip(pid, c));
+  drawPoints(pid, mentionsIn(cards, text));
+}
+function drawPoints(pid, found) {
+  const box = qs("chat-points"); box.replaceChildren(); if (!found.length && !chatState.tasks.length) return;
+  box.append(el("span", "Pointing at:", "muted")); for (const c of found.slice(0, 14)) box.append(cardChip(pid, c));
+  if (found.length > 14) box.append(el("span", `+${found.length - 14} more`, "muted"));
+  for (const t of chatState.tasks) box.append(taskChip(t, () => { chatState.tasks = chatState.tasks.filter((x) => x.id !== t.id); renderChatPoints(); }));
+}
+function taskChip(t, onRemove) {
+  const chip = el("span", null, "task-chip " + String(t.state || "").toLowerCase()); chip.dataset.task = t.id; chip.title = t.id;
+  chip.append(el("small", "task"), el("span", t.title || t.id), el("small", String(t.state || "").toLowerCase().replace(/_/g, " ")));
+  if (onRemove) { const x = btn("×", onRemove, "tag-x"); x.setAttribute("aria-label", "Stop pointing at this task"); chip.append(x); }
+  return chip;
+}
+// Point at a task (a step that stopped, a failed task): the coordinator is told how it ended and where its log is.
+function chatPointTask(task, suggestion) {
+  if (!chatState.tasks.some((t) => t.id === task.id)) chatState.tasks.push({ id: task.id, title: task.title, state: task.state });
+  const ta = qs("chat-text"); if (!ta.value.trim() && suggestion) ta.value = suggestion;
+  openDock(true); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints(); toast("The coordinator will be told how that task ended. Send when ready.", "ok");
 }
 function cardChip(pid, c) { const b = btn("", () => { document.querySelector('[data-tab="map"]').click(); if (lastProject && lastProject.id === pid) setTimeout(() => openCard(lastProject, c.id), 0); }, "card-chip " + c.kind); b.append(el("span", c.title || c.id), el("small", c.kind === "custom" ? "feature" : c.kind)); b.title = `@${c.id} · show it on the map`; return b; }
 // The list that opens while an @word is being typed. Arrow keys move, Enter or Tab picks, Escape closes.
@@ -547,16 +579,19 @@ async function updateMention() {
   if (!m) return closeMention();
   const q = m[2].toLowerCase(), cards = await chatCards(pid); if (selected !== pid || ta.value.slice(0, ta.selectionStart) !== upto) return;
   const rank = (c) => { const id = c.id.toLowerCase(), t = String(c.title || "").toLowerCase(); return (id.startsWith(q) || t.startsWith(q) ? 0 : t.split(/[\s_]+/).some((w) => w.startsWith(q)) ? 1 : id.includes(q) || t.includes(q) ? 2 : 9) + (c.kind === "vanilla" ? 3 : 0); };
-  const items = cards.map((c) => [rank(c), c]).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
+  const folderRank = (f) => { const t = f.title.toLowerCase(); return q && t.startsWith(q) ? 0.5 : q && t.includes(q) ? 2.5 : 9; };   // folders show once something is typed
+  const items = cards.map((c) => [rank(c), c]).concat(mentionCards.folders.map((f) => [folderRank(f), f])).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
   if (!items.length) return closeMention();
   Object.assign(mentionPop, { open: true, items, at: 0, start: upto.length - m[2].length - 1 }); drawMention();
 }
 function drawMention() {
   const box = qs("chat-mention"); box.replaceChildren(); box.classList.remove("hidden");
-  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
+  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", c.folder ? `folder${c.where ? " in " + c.where : ""} · its ${c.ids.length} card${c.ids.length === 1 ? "" : "s"}` : `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
 }
 function pickMention(i) {
-  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end), word = `@${c.id} `;
+  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end);
+  if (c.folder && c.ids.length > MAX_POINTED) toast(`${c.title} has ${c.ids.length} cards: the first ${MAX_POINTED} were added.`, "");
+  const word = (c.folder ? c.ids.slice(0, MAX_POINTED).map((id) => "@" + id).join(" ") : "@" + c.id) + " ";
   ta.value = before + word + after.replace(/^ /, ""); ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + word.length; closeMention(); renderChatPoints();
 }
 // From anywhere in the page (the map's Send to chat): put the cards in the message being written and bring the chat forward.
@@ -599,7 +634,7 @@ async function renderChat(p) {
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
   if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; syncDock(); return; }
   qs("chat-send").disabled = false; syncDock();
-  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; renderChatFiles(); }
+  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; chatState.tasks = []; renderChatFiles(); renderChatPoints(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
   chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages); dockStatus(p, v);
   if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
@@ -607,7 +642,8 @@ async function renderChat(p) {
   box.replaceChildren();
   if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
   for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text"));
-    const pointed = (m.meta && m.meta.cards) || []; if (pointed.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed) row.append(cardChip(p.id, c)); d.append(row); }
+    const pointed = (m.meta && m.meta.cards) || [], about = (m.meta && m.meta.tasks) || [];
+    if (pointed.length || about.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed.slice(0, 14)) row.append(cardChip(p.id, c)); if (pointed.length > 14) row.append(el("span", `+${pointed.length - 14} more`, "muted")); for (const t of about) row.append(taskChip(t)); d.append(row); }
     const sent = (m.meta && m.meta.attachments) || []; if (sent.length) { const row = el("div", null, "chat-files sent"); for (const f of sent) row.append(chatFileChip(p.id, f)); d.append(row); }
     box.append(d); }
   if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
@@ -644,9 +680,9 @@ async function renderChat(p) {
 async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
 qs("chat-send").onclick = async () => {
   const ta = qs("chat-text"); const text = ta.value.trim(); if (chatState.busy) { toast("Wait for the files to finish attaching", "bad"); return; }
-  const files = chatState.files.map((f) => f.id); if (!text && !files.length) { toast("Say something first", "bad"); return; }
+  const files = chatState.files.map((f) => f.id), tasks = chatState.tasks.map((t) => t.id); if (!text && !files.length && !tasks.length) { toast("Say something first", "bad"); return; }
   const p = { id: selected };
-  try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+  try { const out = await api(`/api/project/${p.id}/chat`, Object.assign({ text }, files.length ? { attachments: files } : {}, tasks.length ? { tasks } : {})); ta.value = ""; chatState.tasks = []; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
 };
 qs("chat-text").addEventListener("keydown", (ev) => {
   if (mentionPop.open) {
@@ -1239,6 +1275,7 @@ function renderTasks(p) {
     const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state));
     const mid = el("div"); mid.append(el("div", task.title, "ttl"), el("small", task.id + " · " + task.role + (task.last_error ? " · " + task.last_error : ""))); row.append(mid);
     const right = el("div");
+    if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Send to chat", () => chatPointTask(task, "This task stopped. What went wrong, and what do we do?"), "mini secondary"));
     if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Requeue", async () => { await api(`/api/task/${encodeURIComponent(task.id)}/requeue`, {}); await openProject(p.id); }, "mini"));
     if (task.state === "READY" && !p.dispatching) right.append(btn("Run agent", async () => { if (!await confirmBox("Start ONE worker on " + task.id + "?")) return; await api(`/api/project/${p.id}/dispatch`, { task: task.id }); await openProject(p.id); }, "mini primary"));
     row.append(right); t.append(row);

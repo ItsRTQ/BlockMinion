@@ -43,17 +43,29 @@ test('a finished step is marked, the next one gets Start here, and the ones behi
 test('the news marks the Chat tab when the user is elsewhere, and looking clears it', async () => {
   const tab = page.$('.tab[data-tab="chat"]'); assert.ok(!tab.classList.contains('has-news'), 'not while the chat is in front');
   page.click(page.$('.tab[data-tab="tasks"]'));
-  await show(view([step(1, 'done'), step(2, 'stopped', {retry: T(2), error: 'gradle build failed'}), step(3, 'waiting', {waiting_for: [2]})], 'stopped',
+  await show(view([step(1, 'done'), step(2, 'stopped', {retry: T(2), error: 'gradle build failed', can_skip: true}), step(3, 'waiting', {waiting_for: [2]})], 'stopped',
     [note(5, 'Step 1 of 3 finished', 'done', 1), note(6, 'Step 2 of 3 stopped: gradle build failed\nThe steps after it wait.', 'stopped', 2)]));
   assert.ok(tab.classList.contains('has-news')); assert.match(page.toasts(), /Step 2 of 3 stopped: gradle build failed/);
   page.click(tab); assert.ok(!tab.classList.contains('has-news'));
 });
 
 test('a stopped step says why and offers Retry; what waits behind it stays without a button', async () => {
-  assert.deepEqual(rows(), [['step-done', 'done', []], ['step-stopped', 'stopped', ['Retry']], ['step-waiting', 'waiting', []]]);
+  assert.deepEqual(rows(), [['step-done', 'done', []], ['step-stopped', 'stopped', ['Retry', 'Ask the coordinator', 'Skip']], ['step-waiting', 'waiting', []]]);
   assert.match(page.$('#chat-plan .plan-error').textContent, /gradle build failed/); assert.match(plan().textContent, /a step stopped; the ones after it wait/);
   const n = posts('/dispatch').length; page.click(btnOf(plan(), 'Retry'));
   await page.waitFor(() => posts('/dispatch').length === n + 1, 'retried'); assert.equal(posts('/requeue').length, 1, 'put back first, then started');
+});
+
+test('Skip asks first and says what it risks; Ask the coordinator points the chat at the task that stopped', async () => {
+  page.overrides['/api/project/infect/chat-skip'] = {skipped: 2};
+  page.click(btnOf(plan(), 'Skip')); await page.waitFor(() => !page.hidden('#dlg'), 'it asks'); assert.match(page.$('#dlg').textContent, /a later step may need what it was going to make/);
+  assert.equal(posts('/chat-skip').length, 0); page.click(btnOf(page.$('#dlg'), 'Skip it')); await page.waitFor(() => posts('/chat-skip').length === 1, 'skipped'); assert.deepEqual({...posts('/chat-skip')[0].body}, {step: 2});
+  await page.idle(); page.click(btnOf(plan(), 'Ask the coordinator')); await page.idle();
+  assert.equal(page.$('#chat-text').value, 'Step 2 stopped. What went wrong, and what do we do?'); assert.equal(page.$('#chat-points .task-chip').dataset.task, T(2));
+  page.overrides['/api/project/infect/chat'] = (init) => (init && init.method === 'POST') ? {task: 'infect:CHAT:2', message: 9} : view([step(1, 'done'), step(2, 'stopped', {retry: T(2), error: 'x'}), step(3, 'waiting')], 'stopped');
+  const n = posts('/chat').length; page.click(page.$('#chat-send')); await page.waitFor(() => posts('/chat').length === n + 1, 'sent');
+  assert.deepEqual({...posts('/chat').at(-1).body}, {text: 'Step 2 stopped. What went wrong, and what do we do?', tasks: [T(2)]}); await page.idle();
+  assert.equal(page.$$('#chat-points .task-chip').length, 0, 'the box is clean again');
 });
 
 test('work an agent asked for is shown under the step that waits for it, with its own Start; one task at a time', async () => {

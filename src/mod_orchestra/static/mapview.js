@@ -558,6 +558,8 @@ const MapView = (() => {
     const path = C.pathLabel(S.tree, f.parent); box.append(el("div", `${f.total} feature${f.total === 1 ? "" : "s"}` + (f.children.length ? ` · ${f.children.length} subfolder${f.children.length === 1 ? "" : "s"}` : "") + (f.refs.length ? ` · ${f.refs.length} reference${f.refs.length === 1 ? "" : "s"}` : "") + (path ? ` · in ${path}` : ""), "muted"));
     const acts = el("div", null, "actions insp-actions"); box.append(acts);
     acts.append(btn("Enter", () => enterFolder(fid), "primary"));
+    if (f.total) { const ids = []; for (const id of C.descendants(S.tree, fid)) { const d = S.tree.folders.get(id); for (const c of d.features.concat(d.refs)) if (!ids.includes(c)) ids.push(c); }
+      const b = btn(`Send to chat (${ids.length})`, () => chatPoint(ids.slice(0, 40)), "secondary"); b.title = "Point at this folder's cards in the chat (the folder's name is not sent)"; acts.append(b); }
     if (sug.length && !full) acts.append(btn(`${sug.length} suggestion${sug.length === 1 ? "" : "s"}`, () => { S.insp.full = true; buildInspector(); }, "secondary"));
     acts.append(btn(full ? "Collapse" : "Expand", () => { S.insp.full = !full; buildInspector(); }, "secondary"));
     if (!full) return;
