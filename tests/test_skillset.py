@@ -156,6 +156,22 @@ class Briefs(Base):
         prompt = captured["agents"]["coder"]["prompt"]
         self.assertEqual(prompt.count("# Preloaded skill: "), 3); self.assertLess(len(prompt), 0.3 * len(full))
 
+    def test_a_designer_that_only_paints_is_not_given_the_blockbench_skill(self):
+        from mod_orchestra import artreq, models
+        for text in (artreq.ART_INSTRUCTIONS, models.SPRITES_INSTRUCTIONS):
+            self.assertNotRegex(text, r"(?i)blockbench|bbmodel|geo\.json", "a painted-art brief started to rely on a model: give it the skill back")
+        full = _load_agent_definitions("designer")["designer"]["prompt"]; self.assertIn("# Preloaded skill: blockbench", full)
+        for tid, want in (("s_mod:ART:acid_spit", ["designer"]), ("s_mod:ART:acid_spit:2", ["designer"]), ("s_mod:SPRITES", ["designer"]), ("s_mod:SPRITES:2", ["designer"]),
+                          ("s_mod:MODEL:spitter", None), ("s_mod:ITEM3D:gem", None), ("s_mod:ANIMATE:gem:1", None), ("s_mod:ARMOR:ruby", None), ("s_mod:ARMOR3D:ruby", None),
+                          ("s_mod:ARTPASS:x", None), ("s_mod:BLOCK3D:ore", None), ("s_mod:PROJ3D:glob", None)):
+            self.assertEqual(skillset.for_task("designer", "", tid), want, tid)
+        self.assertIsNone(skillset.for_task("coder", "", "s_mod:ART:x"), "the id alone never changes what a coder loads")
+        painted = _load_agent_definitions("designer", ["designer"])["designer"]["prompt"]
+        self.assertNotIn("# Preloaded skill: blockbench", painted); self.assertIn("# Preloaded skill: designer", painted); self.assertNotIn("Skills not loaded", painted)
+        self.assertLess(len(painted), 0.3 * len(full))
+        self.store.add_task("s_mod", "s_mod:ART:acid_spit", "designer", "Paint")
+        self.assertEqual(build_envelope(self.store, "s_mod", self.task("s_mod:ART:acid_spit")).skills, ["designer"])
+
     def test_a_skill_is_one_tool_call_away_and_roles_are_not_served(self):
         call = lambda name: handle(self.store, {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "orchestra_skill", "arguments": {"name": name}}})["result"]
         got = call("GUI "); self.assertFalse(got.get("isError"), got)

@@ -90,9 +90,16 @@ def choose(text: str) -> list[str]:
     return [name for name, pattern in _COMPILED.items() if pattern.search(text or "")]
 
 
-def for_task(role: str, brief: str) -> list[str] | None:
-    """The skills to load for this run, or None for "the role's own list" (every role but the coder, and every coder task
-    that is not a feature or a change in the user's words)."""
+# Designer tasks that paint flat textures with a script (`artreq.ART_INSTRUCTIONS`, `models.SPRITES_INSTRUCTIONS`): no model
+# is opened, so the Blockbench skill (the designer's largest) is text they never use.
+PAINTED = re.compile(r":(?:ART|SPRITES)(?::|$)")
+
+
+def for_task(role: str, brief: str, task_id: str = "") -> list[str] | None:
+    """The skills to load for this run, or None for "the role's own list" (every other role, every coder task that is not
+    a feature or a change in the user's words, and every designer task that works on a model)."""
+    if role == "designer":
+        return ["designer"] if PAINTED.search(task_id or "") else None
     if role != "coder":
         return None
     part = request_part(brief or "")
