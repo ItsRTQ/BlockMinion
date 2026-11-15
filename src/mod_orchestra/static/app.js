@@ -510,6 +510,8 @@ function syncDock() {
   if (box.parentNode !== target) { target.append(box, qs("chat-drop")); box.scrollTop = box.scrollHeight; }
   qs("chat-dock").classList.toggle("hidden", !want); qs("chat-fab").classList.toggle("hidden", onChat || want || qs("chat-send").disabled);
   if (want || onChat) for (const n of [qs("chat-fab"), document.querySelector('.tab[data-tab="chat"]')]) n.classList.remove("has-news");
+  document.body.classList.toggle("dock-open", want); document.body.classList.toggle("fab-on", !qs("chat-fab").classList.contains("hidden"));   // toasts keep clear of both
+  if (typeof MapView !== "undefined") MapView.invalidate();   // the map's note steps out from under the panel
 }
 function openDock(focus) { chatState.dock = true; syncDock(); if (focus) qs("chat-text").focus(); }
 function dockStatus(p, v) {

@@ -422,4 +422,5 @@ button.mention-row.on,button.mention-row:hover{background:rgba(var(--cyan-rgb),.
 .chat-dock-slot .chat-compose textarea{min-height:56px}.chat-dock-slot .chat-files.sent .chat-file.image img{width:64px;height:64px}
 .task-chip{display:inline-flex;align-items:baseline;gap:6px;padding:2px 9px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg);font-size:12px;max-width:100%}
 .task-chip small{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.task-chip.failed,.task-chip.stopped,.task-chip.blocked{border-color:var(--bad)}
+body.fab-on .toast{bottom:76px}body.dock-open .toast{bottom:auto;top:20px}
 

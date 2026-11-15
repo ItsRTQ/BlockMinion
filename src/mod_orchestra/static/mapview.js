@@ -714,11 +714,17 @@ const MapView = (() => {
       if (rep.node != null) { const n = S.lay.nodes.get(i.id), s = C.toScreen(S.cam, v, n.x, n.y), isCard = els.cards.has(n.key); ax = s.x; ay = s.y; half = isCard ? (C.NODE_W / 2) * S.cam.k : 9; halfH = isCard ? (C.NODE_H / 2) * S.cam.k : 9; }
       else { const c = S.lay.folders.get(rep.folder), s = C.toScreen(S.cam, v, c.x, c.y); ax = s.x; ay = s.y; half = halfH = C.dotRadius(S.tree.folders.get(rep.folder).total) + 6; }
     }
-    const w = box.offsetWidth || (i.full ? 360 : 270), h = box.offsetHeight || (i.full ? 420 : 130), gap = 18, fits = (x, y) => x >= 8 && y >= 8 && x + w <= v.w - 8 && y + h <= v.h - 8;
+    const w = box.offsetWidth || (i.full ? 360 : 270), h = box.offsetHeight || (i.full ? 420 : 130), gap = 18;
+    // The chat panel floats over the corner of the page: the note keeps out of the part of the map it covers.
+    const dock = qs("chat-dock"), wr = wrap.getBoundingClientRect(), dr = dock && !dock.classList.contains("hidden") ? dock.getBoundingClientRect() : null;
+    const taken = dr && dr.width && dr.left < wr.right && dr.top < wr.bottom ? { x: dr.left - wr.left - 8, y: dr.top - wr.top - 8 } : null;   // it reaches the right and bottom edges
+    const clear = (x, y) => !taken || x + w <= taken.x || y + h <= taken.y;
+    const fits = (x, y) => x >= 8 && y >= 8 && x + w <= v.w - 8 && y + h <= v.h - 8 && clear(x, y);
     const cy = Math.max(8, Math.min(v.h - h - 8, ay - Math.min(h / 2, 60))), cx = Math.max(8, Math.min(v.w - w - 8, ax - w / 2));
     const spots = [[ax + half + gap, cy], [ax - half - gap - w, cy], [cx, ay + halfH + gap], [cx, ay - halfH - gap - h]];
     let [x, y] = spots.find(([px, py]) => fits(px, py)) || [Math.max(8, Math.min(v.w - w - 8, ax + half + gap)), cy];
     x = Math.max(8, Math.min(Math.max(8, v.w - w - 8), x)); y = Math.max(8, Math.min(Math.max(8, v.h - h - 8), y));
+    if (!clear(x, y)) { if (taken.x - w >= 8) x = taken.x - w; else if (taken.y - h >= 8) y = taken.y - h; }   // beside the panel if there is room, else above it
     box.style.left = Math.round(x) + "px"; box.style.top = Math.round(y) + "px";
     const offscreen = ax < -40 || ax > v.w + 40 || ay < -40 || ay > v.h + 40, tx = Math.max(x, Math.min(x + w, ax)), ty = Math.max(y, Math.min(y + h, ay));
     link.setAttribute("x1", ax); link.setAttribute("y1", ay); link.setAttribute("x2", tx); link.setAttribute("y2", ty); link.setAttribute("opacity", offscreen || (tx === ax && ty === ay) ? "0" : "1");
