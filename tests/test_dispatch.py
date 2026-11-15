@@ -162,6 +162,11 @@ class ClaudeCodeCommand(unittest.TestCase):
         for flag in ("--agents", "--settings", "--mcp-config", "--strict-mcp-config", "--max-turns", "--output-format", "--permission-mode"):
             self.assertIn(flag, cmd)
         self.assertEqual(captured["cwd"], ws)
+        self.assertEqual(list(captured["agents"]), ["coder"], "a run is given its own role alone, not the twelve")
+        self.assertEqual(captured["agents"]["coder"], pmod._load_agent_definitions()["coder"], "and that definition is the whole one, skills inlined")
+        self.assertEqual(len(pmod._load_agent_definitions()), 12)
+        with patch.object(pmod, "run_logged", fake_run), self.assertRaisesRegex(pmod.StateError, "unknown role 'wizard'"):
+            ClaudeCodeProvider(binary="claude-fake").run(TaskEnvelope("d_mod", "d_mod:X", "wizard", "t", ws, "# packet"), ws / "r2.log")
         self.assertNotIn("Output contract", " ".join(cmd), "prompt must travel via stdin, not the command line")
         self.assertIn("Output contract (mandatory)", captured["stdin"])
         deny = " ".join(captured["settings"]["permissions"]["deny"])
