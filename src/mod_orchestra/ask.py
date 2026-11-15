@@ -15,7 +15,7 @@ from pathlib import Path
 from .state import Store, StateError
 from .validation import InputError
 
-ACTIONS = ("change", "feature", "make_3d", "animate", "art_pass", "modify_model")
+ACTIONS = ("change", "feature", "make_3d", "animate", "art_pass", "modify_model", "research")
 MAX_STEPS = 8
 MAX_ASK = 2000
 
@@ -92,6 +92,7 @@ def apply_plan(store: Store, pid: str, task_id: str, handoff: dict) -> dict:
     if not isinstance(raw, list) or not raw:
         raise InputError("the planner returned no plan")
     created: dict[int, list[str]] = {}
+    sheets: dict[int, str] = {}   # research step -> where its reference sheet will be
     applied, skipped = [], []
     for i, step in enumerate(raw[:MAX_STEPS], start=1):
         if not isinstance(step, dict):
@@ -113,6 +114,10 @@ def apply_plan(store: Store, pid: str, task_id: str, handoff: dict) -> dict:
                 tids = [s["task"] for s in out["plan"]]
             elif action == "art_pass":
                 tids = [request_art_pass(store, pid, str(step.get("card", "")))["task"]]
+            elif action == "research":
+                from .research import request_research
+                out = request_research(store, pid, str(step.get("text", "")))
+                tids = [out["task"]]; sheets[n] = out["path"]
             elif action == "modify_model":
                 tids = [request_model_edit(store, pid, str(step.get("target", "")), str(step.get("text", "")), may_change=list(step.get("may_change") or []))["task"]]
             else:
@@ -126,6 +131,13 @@ def apply_plan(store: Store, pid: str, task_id: str, handoff: dict) -> dict:
                 with store.tx() as con:
                     row = con.execute("SELECT text FROM task_instructions WHERE task_id=?", (tid,)).fetchone()
                     con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (tid, (row["text"] if row else "") + "\n" + block))
+        used = [sheets[k] for k in (step.get("references") or []) if isinstance(k, int) and k in sheets]
+        if used:   # the reference sheets the plan named for this step: each of its workers is told where they are
+            from .research import worker_block as reference_block
+            for tid in tids:
+                with store.tx() as con:
+                    row = con.execute("SELECT text FROM task_instructions WHERE task_id=?", (tid,)).fetchone()
+                    con.execute("INSERT OR REPLACE INTO task_instructions(task_id, text) VALUES(?,?)", (tid, (row["text"] if row else "") + "\n" + reference_block(used)))
         if after and action != "feature":   # the step's first task waits for the steps it depends on (feature took `after` itself)
             store.wait_for(tids[0], after)
         created[n] = tids

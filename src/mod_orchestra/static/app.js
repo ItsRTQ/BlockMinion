@@ -727,12 +727,13 @@ async function renderChat(p) {
     const prog = plan.progress, runs = new Map(((prog && prog.steps) || []).map((r) => [r.step, r]));
     for (const s of plan.steps) { const li = el("li"), run = runs.get(s.step); if (run) li.className = "step-" + run.status; li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted"));
       if (s.attachments?.length) li.append(el("div", `The worker is given your file${s.attachments.length === 1 ? "" : "s"}: ${s.attachments.join(", ")}`, "muted plan-files"));
+      if (s.references?.length) li.append(el("div", `The worker is given the reference sheet${s.references.length === 1 ? "" : "s"} of step ${s.references.join(", ")}`, "muted plan-files"));
       if (run) li.append(planStepRun(p, run, prog.busy));
       ol.append(li); }
     planBox.append(ol);
     if (plan.problems?.length) planBox.append(el("div", "Cannot run as written: " + plan.problems.join("; ") + " — tell the coordinator.", "plan-problems"));
-    const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length;
-    planBox.append(el("div", `${plan.steps.length} step(s): ${coders} coder, ${designers} designer run(s)` + (est.runs ? ` · your designer runs averaged $${est.avg_usd}` : ""), "muted"));
+    const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length, researchers = plan.steps.filter((s) => s.action === "research").length;
+    planBox.append(el("div", `${plan.steps.length} step(s): ${coders} coder, ${designers} designer` + (researchers ? `, ${researchers} researcher` : "") + ` run(s)` + (est.runs ? ` · your designer runs averaged $${est.avg_usd}` : ""), "muted"));
     const acts = el("div", null, "actions");
     if (plan.launched && prog) planBox.append(planFooter(p, prog));
     else if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));

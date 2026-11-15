@@ -48,6 +48,14 @@ Actions you may plan (each step: {"step": n, "action": ..., "after": [step numbe
 - animate: {"kind": "item|mob|block|projectile", "target": id, "anims": [{"name": snake, "what": ..., "when": ..., "loop": bool}]}
 - art_pass: {"card": card id}
 - modify_model: {"target": mob id, "text": what to change on the model, "may_change": [bones]}
+- research: {"text": what to find out}   (a researcher looks up how a thing really looks and moves and leaves a reference sheet)
+- Use a research step when how something looks or moves decides whether the result is right, and neither the user's words, a
+  file they attached nor the project already settle it: a real thing with a known shape or a known way of working, or an
+  invented one the user describes only by its kind or mood. Put it before the art step it serves and add
+  `"references": [its step number]` to that step, so its worker is given the sheet. Word `text` from the user's request: the
+  thing, and what about it the worker needs (its shape, its parts, a motion and its order). No research for what the user
+  already described in full, for what is plainly the game's own style, or for a change that is only numbers or rules. It is
+  one more run, so say in your reply that you added it and why; the user can skip it.
 - The user may point at things of the mod by writing `@card_id` in a message. The cards a message points at are listed
   under it, and the ones of the newest message come with what the tool knows about them (what each is today, its files,
   its relations). Start there: read those files first instead of searching the whole mod. Pointing shows where to look,
@@ -229,7 +237,8 @@ def coerce_plan(store: Store, pid: str, raw) -> dict | None:
     from .blocks3d import blocks3d
     spec = store.project(pid)["spec"]
     mobs = {m["identifier"] for m in spec.get("mobs", [])}
-    steps, problems = [], []
+    from .research import MAX_REFS_PER_STEP
+    steps, problems, researched = [], [], set()
     for i, s in enumerate(raw["steps"][:MAX_STEPS], start=1):
         if not isinstance(s, dict):
             problems.append(f"step {i}: not an object"); continue
@@ -254,7 +263,15 @@ def coerce_plan(store: Store, pid: str, raw) -> dict | None:
                 problems.append(f"step {i}: {target!r} is not a 3D {kind or '?'} (Make it 3D first)" if kind != "mob" else f"step {i}: no mob {target!r}")
         elif action == "modify_model" and target not in mobs:
             problems.append(f"step {i}: no mob {target!r}")
+        elif action == "research" and not str(s.get("text", "")).strip():
+            problems.append(f"step {i}: research needs `text` (what to find out)")
         s = dict(s); s["step"] = int(s.get("step") or i)
+        if action == "research":
+            researched.add(s["step"])
+        if "references" in s:   # only research steps that come before this one in the plan
+            named = [k for k in s["references"] if isinstance(k, int)] if isinstance(s["references"], list) else []
+            problems += [f"step {i}: step {k} is not a research step before it" for k in named if k not in researched or k == s["step"]]
+            s["references"] = named[:MAX_REFS_PER_STEP]
         if "attachments" in s:   # only files the user really sent in this chat
             named = [str(a) for a in s["attachments"]] if isinstance(s["attachments"], list) else []
             problems += [f"step {i}: no attached file {a!r}" for a in named if a not in sent_files]
