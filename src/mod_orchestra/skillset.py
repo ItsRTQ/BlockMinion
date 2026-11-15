@@ -53,7 +53,27 @@ TOPICS: dict[str, str] = {
                r"player (?:model|render\w*|movement|physics)|gravity"),
     "minimap": r"mini-?maps?|map hud|top[- ]down map|radar",
 }
-_COMPILED = {name: re.compile(r"(?<![A-Za-z0-9])(?:" + pattern + r")(?![A-Za-z0-9])", re.I) for name, pattern in TOPICS.items()}
+# The same subjects in Spanish: a request is worded in the user's language (the coordinator answers in it and words the plan's
+# steps from the user's own message), and a request that matches nothing would load the core alone.
+TOPICS_ES: dict[str, str] = {
+    "recipes": r"recetas?|craftea\w*|fabric\w*|hornos?|fund(?:e|en|ir|ido)|ingredientes?|suelt\w*|dropea\w*",
+    "gui": r"pantallas?|men[uú]s?|inventarios?|ranuras?|ventanas?|contenedor\w*|mochilas?|cofres?|bot[oó]n|botones|almacen\w*|interfaz",
+    "client-ui": r"teclas?|atajos?|barras?|presion\w*|puls(?:a|ar|an|ando)|en pantalla|mirilla|punto de mira|clics?|rat[oó]n|indicador\w*",
+    "commands": r"comandos?|permisos?",
+    "loot-and-trades": r"bot[ií]n|aldeanos?|comerci\w*|intercambi\w*|mazmorras?|cofres?|pesca",
+    "polish": r"part[ií]culas?|logros?|configura\w*|ajustes?|opci[oó]n|opciones|brill\w*|humo|estelas?",
+    "data": (r"man[aá]|nivel|niveles|enfriamiento|guard\w*|persist\w*|recuerd\w*|por jugador|contador\w*|estad[ií]sticas?|experiencia|energ[ií]a|carg\w*|"
+             r"munici[oó]n|durabilidad|progreso|desbloque\w*|puntos?|puntuaci[oó]n"),
+    "effects": (r"efectos?|poci[oó]n|pociones|encant\w*|venen\w*|quem\w*|ralentiz\w*|lent[oa]s?|regenera\w*|cur(?:a|ar|an|ación|acion)|velocidad(?! \d)|fuerza|"
+                r"debilidad|ceg\w*|aturd\w*|congel\w*|sangr\w*|invisib\w*|visi[oó]n nocturna|resistencia"),
+    "items": (r"objetos?|[ií]tems?|clic derecho|lanz\w*|arroj\w*|proyectil\w*|varitas?|granadas?|combustible|durabilidad|dispar\w*|armas?|herramientas?|arcos?|"
+              r"espadas?|munici[oó]n|recarg\w*|balas?|flechas?|escup\w*|hechizos?|comida|com(?:e|er|en)|consum\w*"),
+    "worldgen": r"menas?|minerales?|biomas?|estructuras?|dimensi[oó]n|dimensiones|cuevas?|vetas?|terreno|subterr[aá]ne\w*|aldeas?|ruinas?|templos?|torres?|portales",
+    "mixins": r"inyect\w*|comportamiento vanilla|gravedad",
+    "minimap": r"minimapas?",
+}
+_LETTER = "A-Za-z0-9áéíóúñüÁÉÍÓÚÑÜ"
+_COMPILED = {name: re.compile(rf"(?<![{_LETTER}])(?:" + pattern + "|" + TOPICS_ES[name] + rf")(?![{_LETTER}])", re.I) for name, pattern in TOPICS.items()}
 
 
 def request_part(brief: str) -> str | None:
