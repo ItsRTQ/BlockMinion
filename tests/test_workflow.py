@@ -64,6 +64,15 @@ class TestWorkspace(unittest.TestCase):
         self.assertTrue(out["static_validation"]["ok"] if isinstance(out.get("static_validation"), dict) and "ok" in out["static_validation"] else True)
         self.assertIn("MODEL", " ".join(t["id"] for t in plan["tasks"]))
 
+    def test_a_new_project_gives_the_coordinator_nothing_to_do(self):
+        # The first run is the controller's: the spec is read in code, the board is planned in code, and only the interpreter
+        # and the designer are agents on it. The coordinator works in the chat alone, so what its role may do changes no first run.
+        for pid, idea in (("first", "items: moon gem; blocks: marble; mobs: critter"), ("free", "a spooky forest with sad ghosts")):
+            workflow.new_project(self.store, name=pid, mod_id=pid, package="com.example." + pid, idea=idea)
+            plan = workflow.plan_project(self.store, pid)
+            roles = {t["role"] for t in plan["tasks"]} | {t["role"] for t in self.store.tasks(pid)}
+            self.assertNotIn("coordinator", roles); self.assertIn("interpreter", roles); self.assertTrue(roles <= {"interpreter", "controller", "designer", "user"}, roles)
+
     def test_pure_free_text_idea_still_asks_the_interpreter(self):
         project = workflow.new_project(self.store, name="Story", mod_id="story", package="com.example.story", idea="a spooky forest with sad ghosts")
         self.assertTrue(any("free text" in q for q in project["questions"]))
