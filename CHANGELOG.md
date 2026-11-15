@@ -2,6 +2,8 @@
 
 ## Unreleased (on `dev` after merge)
 
+- **Coders build one mechanic for many pieces**: every coder brief now says to build shared behaviour once and let each piece contribute only its
+  values, to notice repetition, and never to change a sibling that was not asked about.
 - **Mod Map 2.0**: the map is a space you travel through. Folders are dots; zooming into one enters it (no double click), zooming out leaves it; a feature
   is a dot, then a compact card, then a full card. Click a card for a small note beside it, **Expand** for its details, **Focus** for only what it
   connects to (Direct, Extended, Custom), **Modify with Minion** to write a change for a coder. Smart folders (Auto, Suggest, Manual; a feature can be

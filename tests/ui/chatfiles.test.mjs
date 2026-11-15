@@ -68,6 +68,7 @@ test('files alone are a message; nothing at all is not', async () => {
   page.click(page.$('#chat-send')); await page.waitFor(() => /Say something first/.test(page.toasts()), 'refused'); assert.equal(posts('/chat').length, 1);
   await page.eval(`chatAttach([${file('values.csv', 'damage,rate\n4,2\n')}])`); page.click(page.$('#chat-send'));
   await page.waitFor(() => posts('/chat').length === 2, 'sent'); assert.deepEqual({...posts('/chat')[1].body}, {text: '', attachments: ['att-5']});
+  await page.waitFor(() => chips().length === 0, 'the box emptied once the server answered');   // the next test counts files from an empty box
 });
 
 test('at most six files per message, said before anything is uploaded', async () => {
