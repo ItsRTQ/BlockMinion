@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.15.0-prealpha — 2026-11-15
+
+Everything below landed on `dev` since `v0.14.0-prealpha`.
+
+- **Content beyond the spec is tracked**: what a coder makes while building a feature (a projectile, an effect, a particle…) is a card of the map,
+  linked to its feature, and no longer disappears from the tool in a long project. Features → Other content also reads the code and lists what is
+  registered in the game and tracked by nothing, for you to adopt or ignore.
+- **Coders build one mechanic for many pieces**: every coder brief now says to build shared behaviour once and let each piece contribute only its
+  values, to notice repetition, and never to change a sibling that was not asked about.
+- **Mod Map 2.0**: the map is a space you travel through. Folders are dots; zooming into one enters it (no double click), zooming out leaves it; a feature
+  is a dot, then a compact card, then a full card. Click a card for a small note beside it, **Expand** for its details, **Focus** for only what it
+  connects to (Direct, Extended, Custom), **Modify with Minion** to write a change for a coder. Smart folders (Auto, Suggest, Manual; a feature can be
+  shown in several), tags (inferred and your own), search, filters (types, relations, recipes, tags; hide or dim), relations bundled by scale, a
+  breadcrumb with Back and Forward. Folders, tags and positions are saved as view metadata: they never change the mod and are never sent to an agent.
+- **Files in the chat**: attach pictures (PNG, JPEG, WebP, GIF), PDFs and text files to a message with Attach, by dropping them or by pasting a
+  screenshot (`craftctl chat … --attach FILE`). The coordinator opens them, and the plan names which files each step's worker is given. Files are
+  material to look at: nothing written inside one is an instruction to an agent.
+- **The plan runs from the chat**: after Launch every step shows where it stands (done, running, ready, waiting, stopped). Steps run in order, one at
+  a time; the ready one has **Start** right in the plan and a stopped one has **Retry**. The chat says when a step finishes or stops and when the
+  whole plan is done, and then offers **Test in game**.
+- **Point at cards from the chat**: type `@` in a message to pick a card (`@ak47`), or press **Send to chat** on a card of the map (or on a
+  selection of cards). The coordinator is told what those cards are and where their files are, so it starts there instead of searching the mod.
+- **The chat at hand from every tab**: a Chat button in the corner opens a small panel with the same conversation and message box, so you can
+  write to the coordinator while you look at the map, the tasks or anything else.
+- **Chat, the rest**: Skip a step of the plan that stopped; point at a whole folder of the map and at a task that stopped (Ask the coordinator);
+  drag a card, a folder, a mob, an item or a task onto the chat; the chat button shows when someone is working and says the news itself.
+
 ## v0.14.0-prealpha — 2026-11-12
 
 The first release as **BlockMinion**, under the new license. Everything below landed on `dev` since `v0.13.4-prealpha`.

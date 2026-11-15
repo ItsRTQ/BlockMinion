@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BlockMinion</title>
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
+<link rel="icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -11,8 +14,8 @@
 <div class="shell">
   <aside class="sidebar">
     <div class="brand">
-      <div class="logo">MO</div>
-      <div><div class="brand-name">Mod Orchestra</div><div class="brand-sub">local controller · evidence over claims</div></div>
+      <img class="logo logo-img" src="/blockminion.png" alt="BlockMinion" width="40" height="40">
+      <div><div class="brand-name">BlockMinion</div><div class="brand-sub">local controller · evidence over claims</div></div>
     </div>
     <button id="nav-new" class="nav-btn primary">＋ New mod</button>
     <div class="nav-section">Projects</div>
@@ -55,6 +58,129 @@
         <div class="head-meta"><span class="pill" id="p-status"></span><span class="muted" id="p-cost"></span><button id="p-delete" class="secondary mini danger" type="button">Delete project</button></div>
       </header>
 
+      <div class="tabs" id="tabs">
+        <button data-tab="chat" class="tab active">Chat</button>
+        <button data-tab="map" class="tab">Map</button>
+        <button data-tab="features" class="tab">Features</button>
+        <button data-tab="spec" class="tab">Spec</button>
+        <button data-tab="activity" class="tab">Activity</button>
+        <button data-tab="verify" class="tab">Verification</button>
+        <button data-tab="tasks" class="tab">Tasks</button>
+      </div>
+
+      <div id="tab-chat" class="tabpane">
+        <div class="chat-layout">
+          <section class="chat-left">
+            <div class="eyebrow">Talk to the coordinator</div>
+            <p class="muted">Say what you want in your own words, and attach what helps: a picture of how something should look, a log, a list of values. The coordinator asks what it needs, explains how things usually work in the game, and writes the plan on the right. Nothing runs until you press Launch.</p>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div id="chat-drop" class="chat-drop">
+              <div id="chat-mention" class="chat-mention hidden" role="listbox" aria-label="Cards to point at"></div>
+              <div id="chat-points" class="chat-points" aria-live="polite"></div>
+              <div id="chat-files" class="chat-files" aria-live="polite"></div>
+              <div class="chat-compose"><textarea id="chat-text" rows="3" placeholder="What do you want next? Type @ to point at a card; drop or paste files here." aria-label="Message"></textarea>
+                <div class="chat-buttons"><button type="button" class="primary" id="chat-send">Send</button><button type="button" class="secondary" id="chat-attach" title="Pictures (PNG, JPEG, WebP, GIF), PDFs and text files. You can also drop or paste them.">Attach</button></div>
+                <input type="file" id="chat-file-input" class="hidden" multiple aria-label="Files to attach"></div>
+            </div>
+          </section>
+          <aside class="chat-right">
+            <div class="eyebrow">The plan</div>
+            <div id="chat-plan"></div>
+          </aside>
+        </div>
+      </div>
+      <div id="tab-map" class="tabpane hidden">
+        <div class="card map-card">
+          <div class="card-head map-head">
+            <div><h3>Mod map</h3><p class="muted"><b>Zoom</b> to travel · <b>click</b> to inspect · <b>Expand</b> to understand · <b>Focus</b> to investigate · <b>Modify with Minion</b> to ask a coder. Folders and tags only organise this map.</p></div>
+            <div class="actions map-tools">
+              <span class="map-searchbox"><input id="map-search" type="search" placeholder="Search features, folders, #tags…" aria-label="Search the map" autocomplete="off"><select id="map-scope" aria-label="Where to search"><option value="all">Entire mod</option><option value="here">Current folder</option></select></span>
+              <button type="button" class="secondary" id="map-filter-btn" title="Choose what the map shows">Filters</button>
+              <button type="button" class="secondary" id="map-new-folder" title="A folder organises the map; it never moves the mod's files">＋ Folder</button>
+              <button type="button" class="primary" id="map-new-feature">＋ New feature</button>
+              <button type="button" class="secondary" id="map-multi" title="Click several cards, then send one change to all of them">Select cards</button>
+              <button type="button" class="secondary" id="map-fit" title="See the entire mod (0)">Fit all</button>
+            </div>
+          </div>
+          <div class="map-wrap" id="map-wrap" tabindex="0" aria-label="Mod map. Scroll to zoom, drag to move, arrow keys to pan, plus and minus to zoom, Enter on a folder to go in, Backspace to go out.">
+            <canvas id="map-canvas" class="map-canvas" aria-hidden="true"></canvas>
+            <svg id="map-svg" class="map-svg"></svg>
+            <div class="map-topbar">
+              <div class="map-navbtns" role="toolbar" aria-label="Map navigation">
+                <button type="button" class="mini secondary" id="map-back" title="Back" aria-label="Back">←</button>
+                <button type="button" class="mini secondary" id="map-fwd" title="Forward" aria-label="Forward">→</button>
+                <button type="button" class="mini secondary" id="map-up" title="Out to the parent folder (Backspace)" aria-label="Parent folder">↑</button>
+                <button type="button" class="mini secondary" id="map-home" title="Out to the whole mod" aria-label="Whole mod">⌂</button>
+                <button type="button" class="mini secondary" id="map-fit-region" title="Fit the folder you are in">Fit folder</button>
+              </div>
+              <nav id="map-crumbs" class="map-crumbs" aria-label="Where you are"></nav>
+            </div>
+            <div id="map-focusbar" class="map-focusbar hidden" role="toolbar" aria-label="Focus"></div>
+            <div id="map-results" class="map-pop map-results hidden" role="listbox" aria-label="Search results"></div>
+            <div id="map-filters" class="map-pop map-filters hidden" role="dialog" aria-label="Filters"></div>
+            <div id="map-count" class="map-count" aria-live="polite"></div>
+            <div id="map-empty" class="map-empty hidden">Nothing on the map yet. Add a feature, or create a folder to start organising.</div>
+            <div id="map-inspector" class="map-inspector hidden"></div>
+            <aside id="map-side" class="map-side hidden"></aside>
+          </div>
+        </div>
+      </div>
+      <div id="tab-features" class="tabpane hidden">
+        <div class="subtabs" id="subtabs">
+          <button data-sub="mobs" class="subtab active">Mobs</button>
+          <button data-sub="items" class="subtab">Items</button>
+          <button data-sub="worldgen" class="subtab">World-Gen</button>
+          <button data-sub="made" class="subtab">Other content</button>
+        </div>
+        <div id="sub-mobs" class="subpane">
+          <div class="card"><div class="card-head"><h3>Mobs</h3><p class="muted">Each mob starts as a placeholder. A designer agent authors the real model with the Blockbench MCP and renders previews here. Tell it what to change; your note goes into its next run.</p></div>
+            <div id="gallery"></div>
+            <div class="add-bar"><button type="button" class="primary" data-modal="modal-mob">＋ Add a mob</button></div>
+          </div>
+        </div>
+        <div id="sub-items" class="subpane hidden">
+          <div class="card"><div class="card-head"><h3>Items &amp; blocks</h3><p class="muted">Simple items and cube blocks with placeholder textures. Recipes and block drops live in the spec (<code>craftctl add-recipe / add-drop</code> before generation).</p></div>
+            <div class="add-bar">
+              <button type="button" class="primary" data-modal="modal-mat">＋ Tool &amp; armor set</button>
+              <button type="button" class="primary" data-modal="modal-food">＋ Food</button>
+              <button type="button" class="primary" data-modal="modal-feat">＋ Item or block</button>
+              <button type="button" class="primary" data-modal="modal-ench">＋ Enchantment</button>
+              <button type="button" class="secondary" id="sprites-btn">🎨 Paint icons with the designer</button>
+            </div>
+            <div class="features-toolbar"><input id="features-search" type="search" placeholder="Search items, blocks, sets… (name, id, kind)" autocomplete="off"><div id="features-pager" class="pager"></div></div>
+            <div id="features-list"></div>
+            <div id="sheet-box" class="hidden"><div class="muted" style="margin-top:12px">Latest contact sheet from the designer (click to enlarge):</div><div class="previews"><div class="preview" id="sheet-preview"><img id="sheet-img" alt="contact sheet"><small>sprites_contact_sheet.png</small></div></div></div>
+          </div>
+        </div>
+        <div id="sub-made" class="subpane hidden">
+          <div class="card"><div class="card-head"><h3>Other content</h3><p class="muted">What the mod has beyond the spec: things a coder made while building a feature (a projectile, an effect, a particle, a screen) and things found in the code. Each one is a card of the map: you can point at it from the chat and ask for changes like anything else.</p></div>
+            <div id="made-list"></div>
+            <div class="add-bar"><button type="button" class="secondary" id="made-scan" title="Reads the mod's source and lists what is registered in the game and tracked by nothing">Look in the code for untracked content</button></div>
+            <div id="made-found"></div>
+          </div>
+        </div>
+        <div id="sub-worldgen" class="subpane hidden">
+          <div class="card">
+            <div class="card-head"><h3>World generation</h3><p class="muted">Ores are set on each block (Items tab). Structures, biomes and dimensions are added here <b>before generation</b>; afterwards ask for them as a change on the Map.</p></div>
+            <div id="wg-list"></div>
+            <div class="add-bar">
+              <button type="button" class="primary" data-modal="modal-struct">＋ Structure</button>
+              <button type="button" class="primary" data-modal="modal-biome">＋ Biome</button>
+              <button type="button" class="primary" data-modal="modal-dim">＋ Dimension</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-spec" class="tabpane hidden">
+        <div class="card"><div class="card-head"><h3>Visual theme</h3><p class="muted">The brief every designer run receives: era, palette, materials, motifs, mood. The interpreter proposes one from your idea; edit it any time (it changes future art only).</p></div>
+          <textarea id="theme-text" rows="3" placeholder="e.g. Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial"></textarea>
+          <div class="actions"><button class="secondary" id="theme-save" type="button">Save theme</button></div>
+        </div>
+        <div class="card"><div class="card-head"><h3>Spec</h3><p class="muted" id="spec-state"></p></div><div id="spec-body"></div><div id="spec-questions"></div></div>
+      </div>
+
+      <div id="tab-activity" class="tabpane hidden">
       <div class="stepper" id="stepper"></div>
 
       <div class="card now" id="now">
@@ -89,74 +215,6 @@
         </div>
       </details>
 
-      <div class="tabs" id="tabs">
-        <button data-tab="map" class="tab">Map</button>
-        <button data-tab="features" class="tab">Features</button>
-        <button data-tab="spec" class="tab">Spec</button>
-        <button data-tab="activity" class="tab active">Activity</button>
-        <button data-tab="verify" class="tab">Verification</button>
-        <button data-tab="tasks" class="tab">Tasks</button>
-      </div>
-
-      <div id="tab-map" class="tabpane hidden">
-        <div class="card map-card">
-          <div class="card-head map-head">
-            <div><h3>Mod map</h3><p class="muted">Every feature as a card; arrows show what derives from what. Click a card for details and to request a change — the coder gets that card's files and relations, not the whole project. Drag to arrange, wheel to zoom.</p></div>
-            <div class="actions" style="margin:0"><button type="button" class="primary" id="map-new-feature">＋ New feature</button><button type="button" class="secondary" id="map-multi" title="Click several cards, then send one change to all of them">Select cards</button><button type="button" class="secondary" id="map-fit">Fit</button></div>
-          </div>
-          <div class="map-wrap">
-            <svg id="map-svg" class="map-svg"></svg>
-            <aside id="map-side" class="map-side hidden"></aside>
-          </div>
-        </div>
-      </div>
-      <div id="tab-features" class="tabpane hidden">
-        <div class="subtabs" id="subtabs">
-          <button data-sub="mobs" class="subtab active">Mobs</button>
-          <button data-sub="items" class="subtab">Items</button>
-          <button data-sub="worldgen" class="subtab">World-Gen</button>
-        </div>
-        <div id="sub-mobs" class="subpane">
-          <div class="card"><div class="card-head"><h3>Mobs</h3><p class="muted">Each mob starts as a placeholder. A designer agent authors the real model with the Blockbench MCP and renders previews here. Tell it what to change; your note goes into its next run.</p></div>
-            <div id="gallery"></div>
-            <div class="add-bar"><button type="button" class="primary" data-modal="modal-mob">＋ Add a mob</button></div>
-          </div>
-        </div>
-        <div id="sub-items" class="subpane hidden">
-          <div class="card"><div class="card-head"><h3>Items &amp; blocks</h3><p class="muted">Simple items and cube blocks with placeholder textures. Recipes and block drops live in the spec (<code>craftctl add-recipe / add-drop</code> before generation).</p></div>
-            <div id="features-list"></div>
-            <div class="add-bar">
-              <button type="button" class="primary" data-modal="modal-mat">＋ Tool &amp; armor set</button>
-              <button type="button" class="primary" data-modal="modal-food">＋ Food</button>
-              <button type="button" class="primary" data-modal="modal-feat">＋ Item or block</button>
-              <button type="button" class="primary" data-modal="modal-ench">＋ Enchantment</button>
-              <button type="button" class="secondary" id="sprites-btn">🎨 Paint icons with the designer</button>
-            </div>
-            <div id="sheet-box" class="hidden"><div class="muted" style="margin-top:12px">Latest contact sheet from the designer (click to enlarge):</div><div class="previews"><div class="preview" id="sheet-preview"><img id="sheet-img" alt="contact sheet"><small>sprites_contact_sheet.png</small></div></div></div>
-          </div>
-        </div>
-        <div id="sub-worldgen" class="subpane hidden">
-          <div class="card">
-            <div class="card-head"><h3>World generation</h3><p class="muted">Ores are set on each block (Items tab). Structures, biomes and dimensions are added here <b>before generation</b>; afterwards ask for them as a change on the Map.</p></div>
-            <div id="wg-list"></div>
-            <div class="add-bar">
-              <button type="button" class="primary" data-modal="modal-struct">＋ Structure</button>
-              <button type="button" class="primary" data-modal="modal-biome">＋ Biome</button>
-              <button type="button" class="primary" data-modal="modal-dim">＋ Dimension</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="tab-spec" class="tabpane hidden">
-        <div class="card"><div class="card-head"><h3>Visual theme</h3><p class="muted">The brief every designer run receives: era, palette, materials, motifs, mood. The interpreter proposes one from your idea; edit it any time (it changes future art only).</p></div>
-          <textarea id="theme-text" rows="3" placeholder="e.g. Egyptian royal: gold #e3b341 with lapis #2b4fa3 bands, falcon and sun motifs, polished stone; heavy, ceremonial"></textarea>
-          <div class="actions"><button class="secondary" id="theme-save" type="button">Save theme</button></div>
-        </div>
-        <div class="card"><div class="card-head"><h3>Spec</h3><p class="muted" id="spec-state"></p></div><div id="spec-body"></div><div id="spec-questions"></div></div>
-      </div>
-
-      <div id="tab-activity" class="tabpane">
         <div class="card"><div class="card-head"><h3>Agent runs</h3><p class="muted">One bounded agent worker per task (the runtime you picked under Environment), started by the controller. It cannot approve, decide, build or claim in-game results.</p></div><div id="runs-list"></div></div>
         <div class="card"><div class="card-head"><h3>Event log</h3></div><div id="events-list" class="events"></div></div>
       </div>
@@ -183,6 +241,13 @@
         <div class="card"><div class="card-head"><h3>Task board</h3><p class="muted">Dependencies decide what is READY. Repairs run first. FAILED/WAITING tasks can be requeued.</p></div><div id="task-list"></div></div>
         <div class="card"><div class="card-head"><h3>Approvals</h3></div><div id="approvals-list"></div></div>
       </div>
+      <!-- The chat, at hand from every tab: the button opens a small panel that holds the same conversation and message box as the Chat tab. -->
+      <button type="button" id="chat-fab" class="chat-fab hidden" title="Talk to the coordinator without leaving this tab" aria-label="Open the chat"><img src="/blockminion.png" alt="" width="26" height="26"><span>Chat</span></button>
+      <div id="chat-bubble" class="chat-bubble hidden" role="status" aria-live="polite"></div>
+      <aside id="chat-dock" class="chat-dock hidden" aria-label="Chat">
+        <div class="chat-dock-head"><b>Coordinator</b><span id="chat-dock-status" class="muted"></span><span class="chat-dock-btns"><button type="button" class="mini secondary" id="chat-dock-open" title="Go to the Chat tab (the plan is there)">Open chat</button><button type="button" class="mini secondary" id="chat-dock-close" aria-label="Close the chat panel" title="Close">✕</button></span></div>
+        <div id="chat-dock-slot" class="chat-dock-slot"></div>
+      </aside>
     </section>
   </main>
 </div>
@@ -403,6 +468,8 @@
   <div id="dlg-actions" class="actions dlg-actions"></div>
 </div></div>
 <script src="/kit.js"></script>
+<script src="/mapcore.js"></script>
+<script src="/mapview.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

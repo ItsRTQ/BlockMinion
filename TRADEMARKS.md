@@ -8,7 +8,7 @@ clearance search has not been performed. Registration, and the enforceability of
 
 - **BlockMinion** — the project name (formerly "Minecraft Mod Orchestra").
 - **craftctl** — the name of the command-line tool.
-- The project's logo, if and when one is published in this repository.
+- The project's logo: the BlockMinion mark (`src/mod_orchestra/static/blockminion.png` and the favicons derived from it).
 
 The `LICENSE` grants rights to the software, not to these marks (section 7).
 

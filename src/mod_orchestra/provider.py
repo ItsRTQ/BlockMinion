@@ -120,7 +120,8 @@ code never emits, a thing to animate), do not fake it and do not stop silently: 
 must exist and why; the controller has it made by the right role and runs you again right after, with it in place.
 Rules: you are running with the project workspace as your current directory. Only claim BUILD_PASS if you ran
 `./gradlew build` (or `gradlew.bat build`) here and it exited 0. Never claim client/server/in-game results.
-Never run `craftctl approve-spec|request-build|decide|build|evidence|delete|release|new`; list them under
+Never run `craftctl approve-spec|request-build|decide|build|evidence|delete|release|new`, nor the commands that ask for work in the user's name
+(`craftctl chat|ask|change|animate|make-3d|modify-model|dispatch|gametest` and the like: what the CLI help marks USER-ONLY); list them under
 needs_user instead. Do not modify files outside this workspace.
 """
 

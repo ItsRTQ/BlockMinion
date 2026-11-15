@@ -157,10 +157,17 @@ def serve(store: Store, port: int = 8765) -> None:
                         return item_catalog(store, pid)
                     if op == "map":
                         from .modmap import mod_map
-                        return mod_map(store, pid)
+                        from .mapmeta import load as load_map_meta
+                        return mod_map(store, pid) | {"meta": load_map_meta(store, pid)}   # the user's organisation rides beside the graph, never inside it
                     if op == "art":
                         from .content import list_art
                         return list_art(store, pid)
+                    if op == "chat":
+                        from .chat import view
+                        return view(store, pid)
+                    if op == "made":
+                        from .made import view as made_view
+                        return made_view(store, pid)
                     if op == "projectiles":
                         from .model3d import projectile_assets
                         return projectile_assets(store, pid)
@@ -297,10 +304,40 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "map-layout":
                         store.set_setting(pid, "map_layout", {str(k): v for k, v in (payload.get("layout") or {}).items() if isinstance(v, dict)})
                         return {"saved": True}
+                    if op == "map-meta":   # folders, tags and positions: view metadata only, no file of the mod changes
+                        from .mapmeta import save as save_map_meta
+                        return {"meta": save_map_meta(store, pid, payload.get("meta"))}
                     if op == "feature":
                         from .modmap import request_feature
                         return request_feature(store, pid, title=str(payload.get("title", "")), description=str(payload.get("description", "")),
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
+                    if op == "chat":
+                        from .chat import send
+                        return send(store, pid, str(payload.get("text", "")), [str(a) for a in (payload.get("attachments") or [])][:50], [str(t) for t in (payload.get("tasks") or [])][:50])
+                    if op == "chat-attach":   # one file per request (base64): what it is is decided by its bytes
+                        from .attachments import add_base64
+                        return add_base64(store, pid, str(payload.get("name", "")), str(payload.get("data_base64", "")))
+                    if op == "chat-detach":
+                        from .attachments import remove
+                        return remove(store, pid, str(payload.get("id", "")))
+                    if op == "chat-launch":
+                        from .chat import launch
+                        return launch(store, pid)
+                    if op == "made-adopt":   # something found in the code becomes tracked content (a card)
+                        from .made import adopt
+                        return adopt(store, pid, str(payload.get("id", "")), kind=payload.get("kind") or None, card=payload.get("card") or None, what=str(payload.get("what") or ""))
+                    if op == "made-ignore":
+                        from .made import ignore
+                        return ignore(store, pid, str(payload.get("id", "")), bool(payload.get("ignored", True)))
+                    if op == "made-scan":
+                        from .made import scan
+                        return scan(store, pid)
+                    if op == "chat-skip":
+                        from .chat import skip_step
+                        return skip_step(store, pid, int(payload.get("step") or 0))
+                    if op == "chat-discard":
+                        from .chat import discard
+                        return discard(store, pid)
                     if op == "ask":
                         from .ask import request_ask
                         return request_ask(store, pid, str(payload.get("text", "")))
@@ -431,10 +468,15 @@ def serve(store: Store, port: int = 8765) -> None:
 
         def do_GET(self):
             path = urlparse(self.path).path
-            if path in ("/", "/app.js", "/kit.js", "/style.css"):
+            if path in ("/favicon.ico", "/favicon.png", "/apple-touch-icon.png", "/blockminion.png"):   # the BlockMinion mark
+                raw = files("mod_orchestra").joinpath("static", path[1:]).read_bytes()
+                self.send_response(200); self.send_header("Content-Type", "image/x-icon" if path.endswith(".ico") else "image/png")
+                self.send_header("Cache-Control", "private, max-age=86400"); self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw); return
+            if path in ("/", "/app.js", "/kit.js", "/mapcore.js", "/mapview.js", "/style.css"):
                 if self.headers.get("Host") != f"127.0.0.1:{port}":
                     return self.response({"error": "Invalid host"}, 403)
-                resource = {"/": "index.html", "/app.js": "app.js", "/kit.js": "kit.js", "/style.css": "style.css"}[path]
+                resource = "index.html" if path == "/" else path[1:]
                 raw = files("mod_orchestra").joinpath("static", resource).read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8" if path == "/" else "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")
@@ -465,12 +507,19 @@ def serve(store: Store, port: int = 8765) -> None:
                 if self.headers.get("Host") != f"127.0.0.1:{port}" or qs.get("token", [""])[0] != token:
                     return self.response({"error": "Unauthorized"}, 403)
                 pid = path.strip("/").split("/")[2]
+                rel, inline = qs.get("path", [""])[0].replace("\\", "/"), True
                 try:
-                    file_path, ctype = file_for_ui(store, pid, qs.get("path", [""])[0])
+                    if rel.startswith("attachments/"):   # a file the user attached in the chat: pictures are shown, the rest is a download
+                        from .attachments import file_for_ui as attached_file
+                        file_path, ctype, inline = attached_file(store, pid, rel)
+                    else:
+                        file_path, ctype = file_for_ui(store, pid, rel)
                 except (InputError, StateError) as exc:
                     return self.response({"error": str(exc)}, 404)
                 raw = file_path.read_bytes()
                 self.send_response(200)
+                if not inline:
+                    self.send_header("Content-Disposition", f'attachment; filename="{file_path.name}"')
                 self.send_header("Content-Type", ctype); self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Content-Length", str(len(raw)))
                 self.end_headers(); self.wfile.write(raw)

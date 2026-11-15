@@ -4,7 +4,8 @@ import {startServer, loadPage} from './harness.mjs';
 
 // A custom feature on the Map can be given its own art: coder lists what it borrows, the designer paints, the coder wires.
 let server, page;
-const side = () => page.$('#map-side');
+const side = () => page.$('#map-inspector');   // a card's details and actions: the floating inspector
+const panel = () => page.$('#map-side');       // the Select cards panel
 const btnOf = (root, label) => [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
 const posts = (suffix) => page.calls.filter((c) => c.method === 'POST' && c.path.endsWith(suffix));
 const dlgOpen = () => !page.hidden('#dlg');
@@ -77,12 +78,15 @@ test('Select cards: click several cards on the map, then one change goes to all 
   page.overrides['/api/project/infect/change'] = {card: 'infection', cards: ['infection', 'runner'], task: 'infect:CHANGE:infection+runner:1'};
   const node = (id) => page.$(`#map-svg .node[data-id="${id}"]`);
   const tap = (id) => { const n = node(id); n.dispatchEvent(new page.w.Event('pointerdown', {bubbles: true})); n.dispatchEvent(new page.w.Event('pointerup', {bubbles: true})); };
-  page.click(page.$('#map-multi')); await page.waitFor(() => /Click cards on the map/.test(side().textContent), 'the selection panel');
-  tap('infection'); tap('runner'); await page.waitFor(() => /2 cards selected/.test(side().textContent), 'two picked');
+  const go = (id) => { page.eval(`MapView.reveal("${id}", {instant: true}); MapView.frame()`); };   // travel to the card; the selection survives the trip
+  page.click(page.$('#map-multi')); await page.waitFor(() => /Click cards on the map/.test(panel().textContent), 'the selection panel');
+  assert.ok(page.hidden('#map-inspector'), 'no inspector while selecting');
+  go('infection'); tap('infection'); go('runner'); tap('runner'); await page.waitFor(() => /2 cards selected/.test(panel().textContent), 'two picked');
+  page.eval('MapView.frame()');
   assert.ok(node('runner').classList.contains('picked')); assert.ok(page.$('#map-multi').classList.contains('active'));
-  tap('runner'); await page.waitFor(() => /1 card selected/.test(side().textContent), 'one dropped'); tap('runner');
-  side().querySelector('.multi-request').value = 'all zombies reload their bile from a pouch';
-  page.click(btnOf(side(), 'Send to a coder (2)')); await page.waitFor(() => posts('/change').length === 1, 'the request');
+  tap('runner'); await page.waitFor(() => /1 card selected/.test(panel().textContent), 'one dropped'); tap('runner');
+  panel().querySelector('.multi-request').value = 'all zombies reload their bile from a pouch';
+  page.click(btnOf(panel(), 'Send to a coder (2)')); await page.waitFor(() => posts('/change').length === 1, 'the request');
   const b = posts('/change')[0].body; assert.equal(b.card, 'infection'); assert.deepEqual([...b.cards], ['runner']);
   await page.waitFor(dlgOpen); press('Cancel');
 });

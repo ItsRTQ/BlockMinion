@@ -139,6 +139,9 @@ const fingerprint = (p) => JSON.stringify({ ...p, job: p.job ? { job: p.job.job,
 async function openProject(id) {
   selected = id; show("project");
   let p; try { p = await api("/api/project/" + encodeURIComponent(id)); } catch (e) { toast(e.message, "bad"); return; }
+  // before the source exists the stages (in Activity) guide the user; once it does, the Chat is the main panel
+  const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  const want = generated ? "chat" : "activity"; if (activeTab !== want) document.querySelector(`.tab[data-tab="${want}"]`)?.click();
   await renderProject(p);
   Activity.seen(id);
 }
@@ -152,7 +155,7 @@ async function renderProject(p) {
     const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
     qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
     const pending = [];
-    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["chat", renderChat], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["made", renderMade], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
       try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) pending.push(r.catch(e => toast(`${name}: ${e.message}`, "bad"))); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
     }
     await Promise.allSettled(pending);
@@ -176,7 +179,7 @@ async function goTo(pid, target = {}) {
     const n = document.querySelector(`[data-focus="${focus}"]`);
     if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("flash"); setTimeout(() => n.classList.remove("flash"), 1800); }
   } else if (focus && target.tab === "map" && mapState.data && mapState.data.cards.some(c => c.id === focus)) {
-    mapState.sel = focus; drawMap(lastProject); openCard(lastProject, focus);
+    openCard(lastProject, focus);
   }
 }
 
@@ -330,7 +333,7 @@ async function renderGallery(p) {
   await loadArt(p.id);
   for (const m of p.gallery) {
     const card = el("div", null, "mob"); card.dataset.focus = "mob:" + m.mob;
-    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`));
+    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`)); dragToChat(head.firstChild, { card: m.mob });
     const meta = el("div", null, "mob-meta");
     meta.append(el("span", m.placeholder ? "placeholder model" : "designer model", "pill " + (m.placeholder ? "warn" : "purple")));
     if (m.task_state) meta.append(el("span", "MODEL task " + m.task_state, "pill " + (m.task_state === "DONE" ? "ok" : m.task_state === "FAILED" ? "bad" : "info")));
@@ -455,6 +458,327 @@ async function renderGallery(p) {
     fb.append(row); card.append(fb); g.append(card);
   }
 }
+
+// ---------- Other content: what coders made beyond the spec, and what is in the code and tracked by nothing ----------
+const MADE_KIND = { projectile: "projectile", effect: "effect", particle: "particle", entity: "entity", gui: "screen", sound: "sound", made_item: "item", made_block: "block", content: "content" };
+async function renderMade(p) {
+  const list = qs("made-list"); if (!list) return;
+  const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  qs("made-scan").disabled = !generated; if (!generated) { list.replaceChildren(el("p", "Nothing yet: the project has no source.", "muted")); qs("made-found").replaceChildren(); return; }
+  let v; try { v = await api(`/api/project/${p.id}/made`); } catch (e) { list.replaceChildren(el("p", e.message, "muted")); return; }
+  list.replaceChildren();
+  if (!v.entries.length) list.append(el("p", "No coder has declared content of its own yet. If something exists in the game and is not listed anywhere, look in the code below.", "muted"));
+  for (const e of v.entries) {
+    const row = el("div", null, "made-row"); row.dataset.id = e.id; const name = el("div", null, "fname"); name.append(document.createTextNode(e.id.replace(/_/g, " ")), el("span", MADE_KIND[e.kind] || e.kind, "fk")); dragToChat(name, { card: e.id });
+    const mid = el("div"); mid.append(name, el("small", `${p.id}:${e.id} · ` + (e.source === "found" ? "found in the code, adopted by you" : "declared by the coder") + (e.card ? ` · made by ${e.card}` : " · no feature recorded")));
+    if (e.what) mid.append(el("small", e.what));
+    const right = el("div", null, "actions");
+    right.append(btn("Show on the map", async () => { document.querySelector('[data-tab="map"]').click(); await renderMap(p); openCard(p, e.id); }, "mini secondary"), btn("Send to chat", () => chatPoint([e.id]), "mini secondary"));
+    row.append(mid, right); list.append(row);
+  }
+  if (v.ignored.length) { const ig = el("div", "Ignored when looking in the code: ", "muted"); for (const id of v.ignored) ig.append(btn(id + " ↺", async () => { await api(`/api/project/${p.id}/made-ignore`, { id, ignored: false }); await renderMade(p); }, "linklike")); list.append(ig); }
+  qs("made-scan").onclick = async () => {
+    const box = qs("made-found"); box.replaceChildren(el("p", "Reading the source…", "muted"));
+    let out; try { out = await api(`/api/project/${p.id}/made-scan`, {}); } catch (e) { box.replaceChildren(el("p", e.message, "bad")); return; }
+    box.replaceChildren(el("div", "Found in the code", "eyebrow"), el("p", `${out.registered} things are registered in the game by this mod's code: ${out.generated} come from the spec, ${out.tracked} are tracked here, ${out.untracked.length} ${out.untracked.length === 1 ? "is" : "are"} tracked by nothing.` + (out.untracked.length ? " Adopt what is part of the mod (it becomes a card), or ignore it." : ""), "muted"));
+    const features = (await chatCards(p.id)).filter((c) => c.kind === "custom");
+    for (const f of out.untracked) {
+      const row = el("div", null, "made-row found"); row.dataset.id = f.id; const name = el("div", null, "fname"); name.append(document.createTextNode(f.id), el("span", MADE_KIND[f.kind] || f.kind, "fk"));
+      const mid = el("div"); mid.append(name); for (const pl of f.places.slice(0, 4)) mid.append(el("small", `${pl.registry.toLowerCase().replace(/_/g, " ")} · ${pl.file}:${pl.line}`));
+      const kind = el("select"); kind.setAttribute("aria-label", "What it is"); for (const k of Object.keys(MADE_KIND)) { const o = el("option", MADE_KIND[k]); o.value = k; o.selected = k === f.kind; kind.append(o); }
+      const parent = el("select"); parent.setAttribute("aria-label", "The feature it belongs to"); const none = el("option", "no feature"); none.value = ""; parent.append(none);
+      for (const c of features) { const o = el("option", c.title || c.id); o.value = c.id; o.selected = c.id === f.feature; parent.append(o); }
+      const right = el("div", null, "actions");
+      right.append(kind, parent, btn("Adopt", async () => { await api(`/api/project/${p.id}/made-adopt`, { id: f.id, kind: kind.value, card: parent.value || null }); toast(`${f.id} is tracked now: it is a card of the map.`, "ok"); mentionCards.at = 0; row.remove(); await renderMade(p); await renderMap(p); }, "mini primary"),
+        btn("Ignore", async () => { await api(`/api/project/${p.id}/made-ignore`, { id: f.id }); row.remove(); await renderMade(p); }, "mini secondary"));
+      row.append(mid, right); box.append(row);
+    }
+  };
+}
+// ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false, tasks: [] };
+const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };
+// One step of a launched plan: where it stands and the one thing the user can do about it, right here.
+function planStepRun(p, run, busy) {
+  const box = el("div", null, "plan-run " + run.status), start = (task, label, retry) => {
+    const b = btn(label, async () => { if (retry) await api(`/api/task/${encodeURIComponent(task)}/requeue`, { reason: "retried from the plan" }); await api(`/api/project/${p.id}/dispatch`, { task }); toast(`Step ${run.step} is running.`, "ok"); await chatRefresh(p.id); }, retry ? "mini secondary" : "mini primary");
+    if (busy) { b.disabled = true; b.title = "Another task is running: one at a time"; } return b; };
+  box.append(el("span", STEP_WORD[run.status] || run.status, "plan-state " + run.status));
+  if (run.tasks && run.tasks.length > 1) box.append(el("span", `${run.done_tasks} of ${run.tasks.length} parts`, "muted"));
+  if (run.status === "ready") box.append(start(run.start, run.done_tasks ? "Start next part" : "Start"));
+  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry && run.status === "stopped") box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "stopped" && run.retry) box.append(btn("Ask the coordinator", () => chatPointTask({ id: run.retry, title: `Step ${run.step}`, state: "stopped" }, `Step ${run.step} stopped. What went wrong, and what do we do?`), "mini secondary"));
+  if (run.can_skip) box.append(btn("Skip", async () => {
+    if (!await confirmBox(`Go on without step ${run.step}? Its work is not done, and a later step may need what it was going to make. The steps after it stop waiting for it.`, { title: `Skip step ${run.step}`, ok: "Skip it", danger: true })) return;
+    await api(`/api/project/${p.id}/chat-skip`, { step: run.step }); await chatRefresh(p.id); }, "mini secondary"));
+  if (run.status === "waiting") {
+    if (run.waiting_for.length) box.append(el("span", "for step " + run.waiting_for.join(", "), "muted"));
+    for (const b of run.blockers) { const row = el("span", null, "plan-blocker"); row.append(el("span", `needs first: ${b.title} (${b.state.toLowerCase().replace(/_/g, " ")})`, "muted")); if (b.start) row.append(start(b.start, "Start it")); if (b.retry) row.append(start(b.retry, "Retry it", true)); box.append(row); }
+  }
+  return box;
+}
+function planFooter(p, prog) {
+  const box = el("div", null, "plan-progress " + prog.state);
+  if (prog.state === "done") {
+    box.append(el("div", `Done: ${prog.done} of ${prog.total} step${prog.total === 1 ? "" : "s"} finished.`, "ok-note"), el("div", "The workers handed in their work. Nothing has been tried in the game yet.", "muted"));
+    const acts = el("div", null, "actions");
+    acts.append(btn("Test in game", async () => { if (!await confirmBox("Opens Minecraft with only this mod (isolated run/ folder). It compiles the current source first. Close the game when done.", { title: "Test in game", ok: "Open the game" })) return; await api(`/api/project/${p.id}/run-client`, {}); toast("Client launching. When you close it, tell the coordinator what you saw.", "ok"); qs("chat-text").placeholder = "What did you see in the game?"; }, "primary"));
+    box.append(acts);
+  } else {
+    const word = { running: "a step is running", ready: "the next step waits for you: press Start", stopped: "a step stopped; the ones after it wait", waiting: "waiting" }[prog.state] || prog.state;
+    box.append(el("div", `${prog.done} of ${prog.total} step${prog.total === 1 ? "" : "s"} finished · ${word}.`, prog.state === "stopped" ? "plan-problems" : "muted"));
+  }
+  return box;
+}
+// What the plan said since the user last looked: a toast and a mark on the Chat tab when they are somewhere else.
+function chatNews(p, v) {
+  const messages = v.messages, prog = v.plan && v.plan.progress;
+  const notes = messages.filter((m) => m.meta && m.meta.plan_note), last = notes.length ? notes[notes.length - 1].id : 0, seen = chatState.seen[p.id];
+  chatState.seen[p.id] = last; if (seen === undefined || last <= seen) return;
+  const tab = document.querySelector('.tab[data-tab="chat"]'), away = (!tab.classList.contains("active") && qs("chat-dock").classList.contains("hidden")) || !isProjectView();
+  const fresh = notes.filter((n) => n.id > seen), fabUp = !qs("chat-fab").classList.contains("hidden") && isProjectView();
+  if (fabUp) { const m = fresh[fresh.length - 1]; sayBubble(p, m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok", prog); }   // the button says it
+  else for (const m of fresh) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
+  if (away) { tab.classList.add("has-news"); qs("chat-fab").classList.add("has-news"); }
+}
+// ---- the chat at hand from every tab: one conversation and one message box, shown in the Chat tab or in the small panel ----
+// The same elements move between the two places (nothing is duplicated), so files, mentions and the refresh work the same in both.
+function syncDock() {
+  const tab = document.querySelector(".tab.active"), onChat = !tab || tab.dataset.tab === "chat", want = !onChat && chatState.dock && !qs("chat-send").disabled;
+  const target = want ? qs("chat-dock-slot") : document.querySelector(".chat-left"), box = qs("chat-messages");
+  if (box.parentNode !== target) { target.append(box, qs("chat-drop")); box.scrollTop = box.scrollHeight; }
+  qs("chat-dock").classList.toggle("hidden", !want); qs("chat-fab").classList.toggle("hidden", onChat || want || qs("chat-send").disabled);
+  if (qs("chat-fab").classList.contains("hidden")) hideBubble();
+  if (want || onChat) for (const n of [qs("chat-fab"), document.querySelector('.tab[data-tab="chat"]')]) n.classList.remove("has-news");
+  document.body.classList.toggle("dock-open", want); document.body.classList.toggle("fab-on", !qs("chat-fab").classList.contains("hidden"));   // toasts keep clear of both
+  if (typeof MapView !== "undefined") MapView.invalidate();   // the map's note steps out from under the panel
+}
+function openDock(focus) { chatState.dock = true; hideBubble(); syncDock(); if (focus) qs("chat-text").focus(); }
+// The button has a little life: it shows what the coordinator or a worker is doing, and says the news itself instead of a toast.
+function fabState(v) { const prog = v.plan && v.plan.progress; qs("chat-fab").dataset.state = v.thinking ? "thinking" : prog && (prog.state === "running" || prog.busy) ? "working" : ""; }
+let bubbleTimer = 0;
+function hideBubble() { clearTimeout(bubbleTimer); qs("chat-bubble").classList.add("hidden"); document.body.classList.remove("bubble-on"); }
+function sayBubble(p, text, tone, prog) {
+  const box = qs("chat-bubble"), fab = qs("chat-fab"); box.replaceChildren(); box.className = "chat-bubble " + (tone || "");
+  const words = btn(text, () => openDock(true), "bubble-text"); words.title = "Open the chat"; box.append(words);
+  const ready = prog && !prog.busy && prog.steps.find((s) => s.status === "ready");
+  if (ready && tone !== "bad") box.append(btn(`Start step ${ready.step}`, async () => { hideBubble(); await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
+  const x = btn("×", () => hideBubble(), "tag-x"); x.setAttribute("aria-label", "Dismiss"); box.append(x);
+  fab.classList.remove("hop"); void fab.offsetWidth; fab.classList.add("hop");   // one small hop to catch the eye
+  document.body.classList.add("bubble-on"); clearTimeout(bubbleTimer); bubbleTimer = setTimeout(hideBubble, 12000);
+}
+function dockStatus(p, v) {
+  const box = qs("chat-dock-status"), plan = v.plan, prog = plan && plan.progress; box.replaceChildren();
+  if (v.thinking) return box.append("thinking…");
+  if (prog) {
+    box.append(prog.state === "done" ? `plan done: ${prog.done} of ${prog.total}` : `plan: ${prog.done} of ${prog.total} steps` + (prog.state === "stopped" ? " · a step stopped" : prog.state === "running" ? " · running" : ""));
+    const ready = prog.steps.find((s) => s.status === "ready");
+    if (ready && !prog.busy) box.append(btn(`Start step ${ready.step}`, async () => { await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
+  } else if (plan && plan.steps && plan.steps.length) box.append("a plan is ready: open the chat to launch it");
+}
+// ---- dragging things of the page onto the chat points at them (the same as Send to chat) ----
+const DRAG_TYPE = "application/x-blockminion";
+function dragToChat(node, what) {
+  node.draggable = true; node.classList.add("to-chat"); node.title = (node.title ? node.title + " · " : "") + "Drag onto the chat to point at it";
+  node.addEventListener("dragstart", (ev) => { ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify(what)); ev.dataTransfer.setData("text/plain", what.card ? "@" + what.card + " " : what.task.title); ev.dataTransfer.effectAllowed = "copy"; document.body.classList.add("dragging-to-chat"); });
+  node.addEventListener("dragend", () => document.body.classList.remove("dragging-to-chat"));
+}
+const carriesOurs = (ev) => !!(ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes(DRAG_TYPE));
+function dropOnChat(ev) {
+  if (!carriesOurs(ev)) return false; ev.preventDefault(); document.body.classList.remove("dragging-to-chat");
+  let what; try { what = JSON.parse(ev.dataTransfer.getData(DRAG_TYPE)); } catch (e) { return true; }
+  if (what && what.card) chatPoint([String(what.card)]); else if (what && what.task && what.task.id) chatPointTask(what.task, "This task stopped. What went wrong, and what do we do?");
+  return true;
+}
+// ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
+const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
+const mentionCards = { pid: null, at: 0, list: [], folders: [] };
+const MAX_POINTED = 40;
+async function chatCards(pid) {
+  if (mentionCards.pid === pid && Date.now() - mentionCards.at < 20000) return mentionCards.list;
+  let data; try { data = await api(`/api/project/${pid}/map`); } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
+  Object.assign(mentionCards, { pid, at: Date.now(), list: (data.cards || []).filter((c) => c.kind !== "tab"), folders: mapFolders(data) }); return mentionCards.list;
+}
+// The map's folders as the user organised them (and the automatic groups), each with the cards inside it and its subfolders.
+// A folder is a shortcut for its cards: picking one writes those cards into the message. Its name is not sent anywhere.
+function mapFolders(data) {
+  try {
+    const index = MapCore.buildIndex(data), tree = MapCore.buildTree(index, MapCore.normMeta(data.meta), MapCore.inferTags(index)), out = [];
+    for (const f of tree.folders.values()) {
+      if (f.id === MapCore.ROOT || !f.total) continue; const ids = [];
+      for (const fid of MapCore.descendants(tree, f.id)) { const d = tree.folders.get(fid); for (const id of d.features.concat(d.refs)) if (!ids.includes(id)) ids.push(id); }
+      out.push({ folder: true, id: f.id, title: f.name, where: MapCore.pathLabel(tree, f.parent), ids });
+    }
+    return out;
+  } catch (e) { return []; }
+}
+const titleSlug = (c) => String(c.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+function resolveMention(cards, word) { word = word.replace(/[:\-]+$/, ""); const w = word.toLowerCase(); return cards.find((c) => c.id === word) || cards.find((c) => c.id.toLowerCase() === w) || cards.find((c) => titleSlug(c) === w) || null; }
+function mentionsIn(cards, text) { const out = [], seen = new Set(); for (const m of String(text || "").matchAll(MENTION)) { const c = resolveMention(cards, m[2]); if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); } } return out; }
+// Under the box, while typing: what the message points at, so the user sees it was understood before sending.
+async function renderChatPoints() {
+  const pid = selected, text = qs("chat-text").value; if (!text.includes("@")) return drawPoints(pid, []);
+  const cards = await chatCards(pid); if (selected !== pid || qs("chat-text").value !== text) return;
+  drawPoints(pid, mentionsIn(cards, text));
+}
+function drawPoints(pid, found) {
+  const box = qs("chat-points"); box.replaceChildren(); if (!found.length && !chatState.tasks.length) return;
+  box.append(el("span", "Pointing at:", "muted")); for (const c of found.slice(0, 14)) box.append(cardChip(pid, c));
+  if (found.length > 14) box.append(el("span", `+${found.length - 14} more`, "muted"));
+  for (const t of chatState.tasks) box.append(taskChip(t, () => { chatState.tasks = chatState.tasks.filter((x) => x.id !== t.id); renderChatPoints(); }));
+}
+function taskChip(t, onRemove) {
+  const chip = el("span", null, "task-chip " + String(t.state || "").toLowerCase()); chip.dataset.task = t.id; chip.title = t.id;
+  chip.append(el("small", "task"), el("span", t.title || t.id), el("small", String(t.state || "").toLowerCase().replace(/_/g, " ")));
+  if (onRemove) { const x = btn("×", onRemove, "tag-x"); x.setAttribute("aria-label", "Stop pointing at this task"); chip.append(x); }
+  return chip;
+}
+// Point at a task (a step that stopped, a failed task): the coordinator is told how it ended and where its log is.
+function chatPointTask(task, suggestion) {
+  if (!chatState.tasks.some((t) => t.id === task.id)) chatState.tasks.push({ id: task.id, title: task.title, state: task.state });
+  const ta = qs("chat-text"); if (!ta.value.trim() && suggestion) ta.value = suggestion;
+  openDock(true); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints(); toast("The coordinator will be told how that task ended. Send when ready.", "ok");
+}
+function cardChip(pid, c) { const b = btn("", () => { document.querySelector('[data-tab="map"]').click(); if (lastProject && lastProject.id === pid) setTimeout(() => openCard(lastProject, c.id), 0); }, "card-chip " + c.kind); b.append(el("span", c.title || c.id), el("small", c.kind === "custom" ? "feature" : c.kind)); b.title = `@${c.id} · show it on the map`; return b; }
+// The list that opens while an @word is being typed. Arrow keys move, Enter or Tab picks, Escape closes.
+const mentionPop = { open: false, items: [], at: 0, start: 0 };
+function closeMention() { mentionPop.open = false; qs("chat-mention").classList.add("hidden"); }
+async function updateMention() {
+  const ta = qs("chat-text"), pid = selected, upto = ta.value.slice(0, ta.selectionStart), m = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_:\-]*)$/.exec(upto);
+  if (!m) return closeMention();
+  const q = m[2].toLowerCase(), cards = await chatCards(pid); if (selected !== pid || ta.value.slice(0, ta.selectionStart) !== upto) return;
+  const rank = (c) => { const id = c.id.toLowerCase(), t = String(c.title || "").toLowerCase(); return (id.startsWith(q) || t.startsWith(q) ? 0 : t.split(/[\s_]+/).some((w) => w.startsWith(q)) ? 1 : id.includes(q) || t.includes(q) ? 2 : 9) + (c.kind === "vanilla" ? 3 : 0); };
+  const folderRank = (f) => { const t = f.title.toLowerCase(); return q && t.startsWith(q) ? 0.5 : q && t.includes(q) ? 2.5 : 9; };   // folders show once something is typed
+  const items = cards.map((c) => [rank(c), c]).concat(mentionCards.folders.map((f) => [folderRank(f), f])).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
+  if (!items.length) return closeMention();
+  Object.assign(mentionPop, { open: true, items, at: 0, start: upto.length - m[2].length - 1 }); drawMention();
+}
+function drawMention() {
+  const box = qs("chat-mention"); box.replaceChildren(); box.classList.remove("hidden");
+  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", c.folder ? `folder${c.where ? " in " + c.where : ""} · its ${c.ids.length} card${c.ids.length === 1 ? "" : "s"}` : `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
+}
+function pickMention(i) {
+  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end);
+  if (c.folder && c.ids.length > MAX_POINTED) toast(`${c.title} has ${c.ids.length} cards: the first ${MAX_POINTED} were added.`, "");
+  const word = (c.folder ? c.ids.slice(0, MAX_POINTED).map((id) => "@" + id).join(" ") : "@" + c.id) + " ";
+  ta.value = before + word + after.replace(/^ /, ""); ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + word.length; closeMention(); renderChatPoints();
+}
+// From anywhere in the page (the map's Send to chat): put the cards in the message being written and bring the chat forward.
+function chatPoint(ids) {
+  const ta = qs("chat-text"), have = new Set([...ta.value.matchAll(MENTION)].map((m) => m[2])), add = ids.filter((id) => !have.has(id)).map((id) => "@" + id);
+  if (add.length) ta.value = (ta.value && !/\s$/.test(ta.value) ? ta.value + " " : ta.value) + add.join(" ") + " ";
+  openDock(true); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints();   // the chat comes to the user: they stay where the card is
+  toast(ids.length === 1 ? "Added to your message. Say what you want from it." : `${ids.length} cards added to your message. Say what you want from them.`, "ok");
+}
+const fileSize = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
+// One attached file as the chat shows it: a picture is a thumbnail that opens large; anything else is a named chip that downloads it.
+function chatFileChip(pid, f, onRemove) {
+  const chip = el("div", null, "chat-file " + f.kind); chip.dataset.id = f.id;
+  if (f.kind === "image") { const img = el("img"); img.src = fileUrl(pid, f.path); img.alt = f.name; img.onclick = () => openLightbox(img.src, f.name); chip.append(img); }
+  else { const a = el("a", f.kind === "pdf" ? "PDF" : "TXT", "chat-file-kind"); a.href = fileUrl(pid, f.path); a.download = f.name; a.title = "Download " + f.name; chip.append(a); }
+  chip.append(el("span", f.name, "chat-file-name"), el("small", fileSize(f.bytes), "muted"));
+  if (onRemove) { const x = btn("×", onRemove, "tag-x"); x.setAttribute("aria-label", "Remove " + f.name); chip.append(x); }
+  return chip;
+}
+function renderChatFiles() {
+  const box = qs("chat-files"), pid = selected; box.replaceChildren();
+  for (const f of chatState.files) box.append(chatFileChip(pid, f, async () => { const out = await api(`/api/project/${pid}/chat-detach`, { id: f.id }); chatState.files = out.waiting; renderChatFiles(); }));
+  if (chatState.busy) box.append(el("div", `Attaching ${chatState.busy} file${chatState.busy === 1 ? "" : "s"}…`, "muted"));
+}
+// Files are uploaded one by one as soon as they are chosen, dropped or pasted; the server decides what each one is by its bytes.
+async function chatAttach(fileList) {
+  const pid = selected, files = [...(fileList || [])]; if (!pid || !files.length) return;
+  const lim = chatState.limits || { per_message: 6, binary_bytes: 4e6, text_bytes: 1e6 };
+  for (const file of files) {
+    if (chatState.files.length + chatState.busy >= lim.per_message) { toast(`A message carries at most ${lim.per_message} files.`, "bad"); break; }
+    if (file.size > lim.binary_bytes) { toast(`${file.name} is too large (${fileSize(file.size)}): at most ${fileSize(lim.binary_bytes)}.`, "bad"); continue; }
+    chatState.busy++; renderChatFiles();
+    try { const out = await api(`/api/project/${pid}/chat-attach`, { name: file.name, data_base64: await readBase64(file) }); if (selected === pid) chatState.files.push(out); }
+    catch (e) { toast(`${file.name}: ${e.message}`, "bad"); }
+    chatState.busy--; renderChatFiles();
+  }
+}
+async function renderChat(p) {
+  const box = qs("chat-messages"), planBox = qs("chat-plan");
+  const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; syncDock(); return; }
+  qs("chat-send").disabled = false; syncDock();
+  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; chatState.tasks = []; renderChatFiles(); renderChatPoints(); }
+  let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
+  chatState.limits = v.file_limits || chatState.limits; fabState(v); chatNews(p, v); dockStatus(p, v);
+  if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.replaceChildren();
+  if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
+  for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text"));
+    const pointed = (m.meta && m.meta.cards) || [], about = (m.meta && m.meta.tasks) || [];
+    if (pointed.length || about.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed.slice(0, 14)) row.append(cardChip(p.id, c)); if (pointed.length > 14) row.append(el("span", `+${pointed.length - 14} more`, "muted")); for (const t of about) row.append(taskChip(t)); d.append(row); }
+    const sent = (m.meta && m.meta.attachments) || []; if (sent.length) { const row = el("div", null, "chat-files sent"); for (const f of sent) row.append(chatFileChip(p.id, f)); d.append(row); }
+    box.append(d); }
+  if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
+  if (stick || v.thinking) box.scrollTop = box.scrollHeight;
+  planBox.replaceChildren();
+  const plan = v.plan;
+  if (!plan || !plan.steps?.length) {
+    planBox.append(el("div", "No plan yet. When the coordinator has understood enough, the steps appear here: what will be done, in what order, by whom, and what you will have at the end.", "placeholder-note"));
+  } else {
+    planBox.append(el("div", plan.result || "", "plan-result"));
+    const ol = el("ol", null, "plan-steps");
+    const prog = plan.progress, runs = new Map(((prog && prog.steps) || []).map((r) => [r.step, r]));
+    for (const s of plan.steps) { const li = el("li"), run = runs.get(s.step); if (run) li.className = "step-" + run.status; li.append(el("b", `${s.action}`), el("span", ` · ${s.target || s.card || (s.cards || []).join(", ") || s.title || ""}`), el("div", s.text || (s.anims || []).map((a) => `${a.name}: ${a.what} — ${a.when}`).join("; ") || "", "muted"));
+      if (s.attachments?.length) li.append(el("div", `The worker is given your file${s.attachments.length === 1 ? "" : "s"}: ${s.attachments.join(", ")}`, "muted plan-files"));
+      if (run) li.append(planStepRun(p, run, prog.busy));
+      ol.append(li); }
+    planBox.append(ol);
+    if (plan.problems?.length) planBox.append(el("div", "Cannot run as written: " + plan.problems.join("; ") + " — tell the coordinator.", "plan-problems"));
+    const est = v.designer_cost || {}; const coders = plan.steps.filter((s) => ["change", "feature", "art_pass"].includes(s.action)).length, designers = plan.steps.filter((s) => ["make_3d", "animate", "modify_model"].includes(s.action)).length;
+    planBox.append(el("div", `${plan.steps.length} step(s): ${coders} coder, ${designers} designer run(s)` + (est.runs ? ` · your designer runs averaged $${est.avg_usd}` : ""), "muted"));
+    const acts = el("div", null, "actions");
+    if (plan.launched && prog) planBox.append(planFooter(p, prog));
+    else if (plan.launched) acts.append(el("div", "Launched. Follow the tasks in Now.", "ok-note"));
+    else {
+      acts.append(btn("Launch", async () => { const out = await api(`/api/project/${p.id}/chat-launch`, {}); if (out.first) await api(`/api/project/${p.id}/dispatch`, { task: out.first }); toast("Launched: step 1 is running. Each next step waits for you to press Start here.", "ok"); await chatRefresh(p.id); }, "primary"));
+      acts.append(btn("Discard plan", async () => { await api(`/api/project/${p.id}/chat-discard`, {}); await chatRefresh(p.id); }, "secondary"));
+    }
+    planBox.append(acts);
+  }
+  const working = v.thinking || (plan && plan.progress && (plan.progress.state === "running" || plan.progress.busy));   // while something runs, the panel keeps itself current
+  if (working && !chatState.polling) chatState.polling = setTimeout(() => { chatState.polling = null; chatRefresh(p.id); }, 3000);
+}
+// The chat refreshes on its own (the page-wide refresh waits while the cursor is in a field, and here it always is).
+async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
+qs("chat-send").onclick = async () => {
+  const ta = qs("chat-text"); const text = ta.value.trim(); if (chatState.busy) { toast("Wait for the files to finish attaching", "bad"); return; }
+  const files = chatState.files.map((f) => f.id), tasks = chatState.tasks.map((t) => t.id); if (!text && !files.length && !tasks.length) { toast("Say something first", "bad"); return; }
+  const p = { id: selected };
+  try { const out = await api(`/api/project/${p.id}/chat`, Object.assign({ text }, files.length ? { attachments: files } : {}, tasks.length ? { tasks } : {})); ta.value = ""; chatState.tasks = []; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+};
+qs("chat-text").addEventListener("keydown", (ev) => {
+  if (mentionPop.open) {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const n = mentionPop.items.length; mentionPop.at = (mentionPop.at + (ev.key === "ArrowDown" ? 1 : n - 1)) % n; drawMention(); return; }
+    if ((ev.key === "Enter" && !ev.ctrlKey && !ev.metaKey) || ev.key === "Tab") { ev.preventDefault(); pickMention(mentionPop.at); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); closeMention(); return; }
+  }
+  if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click();
+});
+qs("chat-text").addEventListener("input", () => { updateMention(); renderChatPoints(); });
+qs("chat-text").addEventListener("click", () => updateMention());
+qs("chat-text").addEventListener("blur", () => setTimeout(() => { if (!qs("chat-mention").contains(document.activeElement)) closeMention(); }, 150));
+for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => syncDock());
+qs("chat-fab").onclick = () => openDock(true);
+qs("chat-dock-close").onclick = () => { chatState.dock = false; syncDock(); };
+qs("chat-dock-open").onclick = () => document.querySelector('.tab[data-tab="chat"]').click();
+qs("chat-attach").onclick = () => qs("chat-file-input").click();
+qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
+qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text
+for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && ([...(ev.dataTransfer.types || [])].includes("Files") || carriesOurs(ev))) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+for (const id of ["chat-fab", "chat-dock"]) {   // the button and the panel take what is dragged onto them too
+  for (const type of ["dragenter", "dragover"]) qs(id).addEventListener(type, (ev) => { if (carriesOurs(ev)) { ev.preventDefault(); qs(id).classList.add("over"); } });
+  qs(id).addEventListener("dragleave", (ev) => { if (!qs(id).contains(ev.relatedTarget)) qs(id).classList.remove("over"); });
+  qs(id).addEventListener("drop", (ev) => { qs(id).classList.remove("over"); dropOnChat(ev); });
+}
+qs("chat-drop").addEventListener("dragleave", (ev) => { if (!qs("chat-drop").contains(ev.relatedTarget)) qs("chat-drop").classList.remove("over"); });
+qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); if (dropOnChat(ev)) { ev.stopPropagation(); return; } const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
 
 // ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
 function holdPanel(p, f) {
@@ -736,8 +1060,23 @@ async function editArt(pid, kind, identifier, onDone) {
   if (onDone) await onDone();
 }
 
+// Search and pages for the items list (sets stay whole; plain items are paged)
+const featuresView = { q: "", page: 1, size: 12 };
+const featureMatches = (f) => !featuresView.q || `${f.label || ""} ${f.identifier || ""} ${f.kind || ""} ${f.material || ""}`.toLowerCase().includes(featuresView.q);
+const pageSlice = (arr) => { const pages = Math.max(1, Math.ceil(arr.length / featuresView.size)); if (featuresView.page > pages) featuresView.page = pages; const s = (featuresView.page - 1) * featuresView.size; return arr.slice(s, s + featuresView.size); };
+function drawFeaturesPager(p, total) {
+  const pager = qs("features-pager"); if (!pager) return; pager.replaceChildren();
+  const pages = Math.max(1, Math.ceil(total / featuresView.size)); if (total <= featuresView.size && !featuresView.q) return;
+  const from = total ? (featuresView.page - 1) * featuresView.size + 1 : 0, to = Math.min(total, featuresView.page * featuresView.size);
+  pager.append(btn("‹", () => { featuresView.page = Math.max(1, featuresView.page - 1); renderFeatures(featuresView.p); }, "mini secondary"),
+               el("span", `${from}–${to} of ${total}${featuresView.q ? " matching" : ""}`, "muted"),
+               btn("›", () => { featuresView.page = Math.min(pages, featuresView.page + 1); renderFeatures(featuresView.p); }, "mini secondary"));
+  pager.querySelector("button").disabled = featuresView.page <= 1; pager.querySelectorAll("button")[1].disabled = featuresView.page >= pages;
+}
 async function renderFeatures(p) {
   const list = qs("features-list"); list.replaceChildren();
+  featuresView.p = p;   // the search re-renders whichever project is on screen now, not the one that wired it
+  const search = qs("features-search"); if (search && !search.dataset.wired) { search.dataset.wired = "1"; search.oninput = () => { featuresView.q = search.value.trim().toLowerCase(); featuresView.page = 1; return renderFeatures(featuresView.p); }; }
   let feats = []; try { feats = await api(`/api/project/${p.id}/features`); } catch (e) { list.append(el("p", e.message, "muted")); return; }
   featureCache = feats;
   await loadArt(p.id);
@@ -786,6 +1125,7 @@ async function renderFeatures(p) {
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
+    dragToChat(nm, { card: f.material || f.identifier });   // a piece of a set points at its set, which is the card
     row.append(img, mid, right); return row;
   };
   // Material sets: one card per material with the set-level actions once, pieces inside.
@@ -810,11 +1150,12 @@ async function renderFeatures(p) {
       else card.append(el("div", "Worn armor: tinted placeholder. Use Design worn armor (designer, renders it worn) or upload your own layers.", "placeholder-note"));
     } else { head.append(acts); card.append(head); }
     for (const f of pieces) card.append(featureRow(f));
-    list.append(card);
+    if (!featuresView.q || pieces.some(featureMatches) || mat.toLowerCase().includes(featuresView.q)) list.append(card);
   }
   const plain = feats.filter(f => !f.material);
   if (!plain.length && !materials.length) list.append(el("p", "No items or blocks yet.", "muted"));
-  for (const f of plain) list.append(featureRow(f));
+  for (const f of pageSlice(plain.filter(featureMatches))) list.append(featureRow(f));
+  drawFeaturesPager(p, plain.filter(featureMatches).length);
   const addForm = qs("addfeature-form");
   addForm.onsubmit = async (e) => {
     e.preventDefault();
@@ -1006,9 +1347,10 @@ function renderVerify(p) {
 function renderTasks(p) {
   const t = qs("task-list"); t.replaceChildren();
   for (const task of p.tasks) {
-    const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state));
+    const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state)); dragToChat(row.firstChild, { task: { id: task.id, title: task.title, state: task.state } });
     const mid = el("div"); mid.append(el("div", task.title, "ttl"), el("small", task.id + " · " + task.role + (task.last_error ? " · " + task.last_error : ""))); row.append(mid);
     const right = el("div");
+    if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Send to chat", () => chatPointTask(task, "This task stopped. What went wrong, and what do we do?"), "mini secondary"));
     if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Requeue", async () => { await api(`/api/task/${encodeURIComponent(task.id)}/requeue`, {}); await openProject(p.id); }, "mini"));
     if (task.state === "READY" && !p.dispatching) right.append(btn("Run agent", async () => { if (!await confirmBox("Start ONE worker on " + task.id + "?")) return; await api(`/api/project/${p.id}/dispatch`, { task: task.id }); await openProject(p.id); }, "mini primary"));
     row.append(right); t.append(row);
@@ -1039,142 +1381,7 @@ function renderTasks(p) {
 })();
 
 // ---------- mod map ----------
-const mapState = { data: null, pid: null, sel: null, view: { x: 0, y: 0, k: 1 }, pos: {}, dirty: false, multi: false, picked: new Set() };
-const NODE_W = 190, NODE_H = 54, COL_GAP = 110, ROW_GAP = 26;
-function layoutMap(cards, edges) {
-  const ids = cards.map(c => c.id), inSet = new Set(ids);
-  const preds = Object.fromEntries(ids.map(i => [i, []])); const succs = Object.fromEntries(ids.map(i => [i, []]));
-  for (const e of edges) if (inSet.has(e.from) && inSet.has(e.to)) { preds[e.to].push(e.from); succs[e.from].push(e.to); }
-  const depth = {}; const visiting = new Set();
-  const d = (id) => { if (depth[id] != null) return depth[id]; if (visiting.has(id)) return 0; visiting.add(id); const v = preds[id].length ? 1 + Math.max(...preds[id].map(d)) : 0; visiting.delete(id); depth[id] = v; return v; };
-  for (const id of ids) d(id);
-  const cols = {}; for (const id of ids) { const isolated = !preds[id].length && !succs[id].length; const col = isolated ? -1 : depth[id]; (cols[col] ||= []).push(id); }
-  const pos = {}; const colKeys = Object.keys(cols).map(Number).sort((a, b) => a - b);
-  colKeys.forEach((col, ci) => { const list = cols[col].sort(); list.forEach((id, ri) => { pos[id] = { x: 40 + ci * (NODE_W + COL_GAP), y: 40 + ri * (NODE_H + ROW_GAP) }; }); });
-  return pos;
-}
-function svgEl(tag, attrs = {}) { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; }
-async function renderMap(p) {
-  const svg = qs("map-svg"); if (!svg) return;
-  let data; try { data = await api(`/api/project/${p.id}/map`); } catch (e) { toast("map: " + e.message, "bad"); return; }
-  const cards = data.cards.filter(c => c.kind !== "tab"), edges = data.edges;
-  if (mapState.pid !== p.id) { mapState.pid = p.id; mapState.view = { x: 0, y: 0, k: 1 }; mapState.sel = null; }
-  mapState.data = data;
-  const auto = layoutMap(cards, edges);
-  mapState.pos = Object.fromEntries(cards.map(c => [c.id, (data.layout && data.layout[c.id]) || mapState.pos[c.id] || auto[c.id]]));
-  drawMap(p);
-  qs("map-fit").onclick = () => { mapState.view = { x: 0, y: 0, k: 1 }; drawMap(p); };
-  qs("map-multi").onclick = () => { mapState.multi = !mapState.multi; if (!mapState.multi) mapState.picked.clear(); qs("map-multi").classList.toggle("active", mapState.multi); drawMap(p); if (mapState.multi) openMulti(p); else if (mapState.sel) openCard(p, mapState.sel); };
-  qs("map-new-feature").onclick = () => { qs("modal-feature").classList.remove("hidden"); qs("ft-title").focus(); };
-  if (mapState.sel) openCard(p, mapState.sel);
-}
-function drawMap(p) {
-  const svg = qs("map-svg"); svg.replaceChildren();
-  const { cards, edges } = { cards: mapState.data.cards.filter(c => c.kind !== "tab"), edges: mapState.data.edges };
-  const g = svgEl("g", { transform: `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})` }); svg.append(g);
-  const defs = svgEl("defs"); defs.innerHTML = '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-2)"/></marker>'; svg.prepend(defs);
-  const byId = Object.fromEntries(cards.map(c => [c.id, c]));
-  for (const e of edges) {
-    const a = mapState.pos[e.from], b = mapState.pos[e.to]; if (!a || !b) continue;
-    const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2; const dx = Math.max(40, (x2 - x1) / 2);
-    const path = svgEl("path", { d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`, class: "edge " + e.kind, "marker-end": "url(#arrow)" }); g.append(path);
-    const lbl = (mapState.data.edge_labels[e.kind] || e.kind) + (e.label ? " · " + e.label : ""); const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-    const t = svgEl("text", { x: mx, y: my - 4, "text-anchor": "middle", class: "edge-label" }); t.textContent = lbl;
-    g.append(t); const bb = { w: lbl.length * 5.6 + 8, h: 14 }; const bg = svgEl("rect", { x: mx - bb.w / 2, y: my - 15, width: bb.w, height: bb.h, class: "edge-label-bg", rx: 3 }); g.insertBefore(bg, t);
-  }
-  for (const c of cards) {
-    const pos = mapState.pos[c.id]; const node = svgEl("g", { class: "node " + c.kind + (c.id === mapState.sel ? " sel" : "") + (mapState.picked.has(c.id) ? " picked" : ""), transform: `translate(${pos.x},${pos.y})`, "data-id": c.id });
-    node.append(svgEl("rect", { width: NODE_W, height: NODE_H }));
-    const kind = svgEl("text", { x: 12, y: 16, class: "kind" }); kind.textContent = (c.kind === "material" ? "TOOL & ARMOR SET" : c.kind.toUpperCase()) + (c.open_tasks?.length ? " · " + c.open_tasks.length + " task" : ""); node.append(kind);
-    const title = svgEl("text", { x: 12, y: 34 }); title.textContent = (c.title || c.id).slice(0, 24); node.append(title);
-    const sub = svgEl("text", { x: 12, y: 47, class: "sub" }); sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? (c.status || "") : c.id; node.append(sub);
-    node.append(svgEl("circle", { cx: NODE_W - 12, cy: 12, r: 4, class: "dot " + (c.status || "vanilla") }));
-    let drag = null;
-    node.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); drag = { sx: ev.clientX, sy: ev.clientY, ox: pos.x, oy: pos.y, moved: false }; node.setPointerCapture?.(ev.pointerId); });
-    node.addEventListener("pointermove", (ev) => { if (!drag) return; const k = mapState.view.k; const nx = drag.ox + (ev.clientX - drag.sx) / k, ny = drag.oy + (ev.clientY - drag.sy) / k; if (Math.abs(nx - drag.ox) + Math.abs(ny - drag.oy) > 2) drag.moved = true; mapState.pos[c.id] = { x: nx, y: ny }; node.setAttribute("transform", `translate(${nx},${ny})`); });
-    node.addEventListener("pointerup", async (ev) => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) { drawMap(p); api(`/api/project/${p.id}/map-layout`, { layout: mapState.pos }).catch(() => {}); } else if (mapState.multi) { mapPick(p, c.id); } else { mapState.sel = c.id; drawMap(p); openCard(p, c.id); } });
-    g.append(node);
-  }
-  let pan = null;
-  svg.onpointerdown = (ev) => { pan = { sx: ev.clientX, sy: ev.clientY, ox: mapState.view.x, oy: mapState.view.y }; };
-  svg.onpointermove = (ev) => { if (!pan) return; mapState.view.x = pan.ox + (ev.clientX - pan.sx); mapState.view.y = pan.oy + (ev.clientY - pan.sy); g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${mapState.view.k})`); };
-  svg.onpointerup = () => { pan = null; };
-  svg.onwheel = (ev) => { ev.preventDefault(); const k = Math.max(0.3, Math.min(2.5, mapState.view.k * (ev.deltaY < 0 ? 1.1 : 0.9))); mapState.view.k = k; g.setAttribute("transform", `translate(${mapState.view.x},${mapState.view.y}) scale(${k})`); };
-}
-// Select cards: click several cards on the map, then send ONE change to all of them (one coder task with every card's context).
-function mapPick(p, cid) {
-  const c = (mapState.data?.cards || []).find((x) => x.id === cid); if (!c || c.kind === "vanilla" || c.kind === "tab") { toast("Vanilla and tab cards cannot be changed.", "bad"); return; }
-  if (mapState.picked.has(cid)) mapState.picked.delete(cid); else mapState.picked.add(cid);
-  drawMap(p); openMulti(p);
-}
-function openMulti(p) {
-  const side = qs("map-side"); side.replaceChildren(); side.classList.remove("hidden");
-  const ids = [...mapState.picked]; const cards = ids.map((id) => (mapState.data?.cards || []).find((c) => c.id === id)).filter(Boolean);
-  side.append(el("div", "SELECT CARDS", "eyebrow"), el("h3", ids.length ? `${ids.length} card${ids.length === 1 ? "" : "s"} selected` : "Click cards on the map"));
-  side.append(el("div", "Every card you click joins the selection; click again to drop it. One change request goes to all of them as a single coder task, with each card's files and relations.", "muted"));
-  const list = el("div", null, "picked-list");
-  for (const c of cards) { const row = el("div", null, "picked-row"); row.append(el("span", `${c.title || c.id} `), el("small", c.kind, "muted"), btn("×", () => mapPick(p, c.id), "mini secondary")); list.append(row); }
-  side.append(list);
-  const ta = el("textarea"); ta.placeholder = "the change, once, for all of them"; ta.rows = 4; ta.className = "multi-request"; side.append(el("div", "Request a change", "eyebrow"), ta);
-  const acts = el("div", null, "actions");
-  acts.append(btn(ids.length ? `Send to a coder (${ids.length})` : "Send to a coder", async () => {
-    if (!ids.length) throw new Error("Click at least one card on the map first"); if (!ta.value.trim()) throw new Error("Describe the change first");
-    const out = await api(`/api/project/${p.id}/change`, { card: ids[0], request: ta.value.trim(), cards: ids.slice(1) });
-    if (await confirmBox(`Task ${out.task} created for ${ids.length} card(s). Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); }
-    mapState.picked.clear(); mapState.multi = false; qs("map-multi").classList.remove("active"); await openProject(p.id);
-  }, "primary"));
-  acts.append(btn("Clear", () => { mapState.picked.clear(); drawMap(p); openMulti(p); }, "secondary"));
-  side.append(acts);
-}
-function openCard(p, cid) {
-  const side = qs("map-side"); const c = mapState.data.cards.find(x => x.id === cid); if (!c) { side.classList.add("hidden"); return; }
-  side.replaceChildren(); side.classList.remove("hidden");
-  const close = btn("✕", () => { mapState.sel = null; side.classList.add("hidden"); drawMap(p); }, "mini secondary"); close.style.float = "right"; side.append(close);
-  side.append(el("div", (c.kind === "material" ? "tool & armor set" : c.kind) + (c.status ? " · " + c.status : ""), "eyebrow"), el("h3", c.title || c.id), el("div", c.id, "fid"));
-  const descBox = el("p", c.description || ""); side.append(descBox);
-  if (c.pieces) { const ul = el("ul"); for (const pc of c.pieces) ul.append(el("li", `${pc.id} (${pc.kind})`)); side.append(el("div", "Pieces", "eyebrow"), ul); }
-  const rel = mapState.data.edges.filter(e => e.from === cid || e.to === cid);
-  if (rel.length) { const ul = el("ul"); for (const e of rel) ul.append(el("li", e.from === cid ? `→ ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""} → ${e.to}` : `← ${e.from} ${mapState.data.edge_labels[e.kind] || e.kind}${e.label ? " (" + e.label + ")" : ""}`)); side.append(el("div", "Relations", "eyebrow"), ul); }
-  if (c.acceptance?.length) { const ul = el("ul"); for (const a of c.acceptance) ul.append(el("li", a)); side.append(el("div", "Acceptance criteria", "eyebrow"), ul); }
-  if (c.files?.length) { const ul = el("ul", null, "files"); for (const f of c.files.slice(0, 12)) ul.append(el("li", f)); side.append(el("div", "Implemented in", "eyebrow"), ul); }
-  if (c.open_tasks?.length) { const ul = el("ul"); for (const t of c.open_tasks) ul.append(el("li", `${t.id} · ${t.state}`)); side.append(el("div", "Open tasks", "eyebrow"), ul); }
-  if (c.history?.length) { const ul = el("ul", null, "hist"); for (const h of c.history.slice(-5).reverse()) ul.append(el("li", `${ago(h.at)} · ${h.by}: ${h.what}`)); side.append(el("div", "History", "eyebrow"), ul); }
-  if (c.kind !== "vanilla") {
-    side.append(el("div", "Request a change", "eyebrow"));
-    const ta = el("textarea"); ta.rows = 3; ta.placeholder = c.kind === "custom" ? "e.g. make the inventory 25 slots instead of 20" : c.kind === "mob" ? "e.g. make it drop 2 scrap instead of 1 and walk faster" : "e.g. 1500 durability instead of 1200";
-    side.append(ta);
-    const acts = el("div", null, "actions");
-    acts.append(btn("Send to a coder", async () => { if (!ta.value.trim()) throw new Error("Describe the change first"); const out = await api(`/api/project/${p.id}/change`, { card: cid, request: ta.value.trim() }); if (await confirmBox(`Task ${out.task} created with this card's context. Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); } await openProject(p.id); }, "primary"));
-    if (c.kind === "mob") acts.append(btn("Open in Mobs", () => document.querySelector('[data-tab="features"]').click(), "secondary"));
-    if (c.kind === "material" || c.kind === "item" || c.kind === "block" || c.kind === "food") acts.append(btn("Open in Items", () => { document.querySelector('[data-tab="features"]').click(); document.querySelector('[data-sub="items"]').click(); }, "secondary"));
-    if (c.kind === "custom") {   // its projectiles (once they have their own art) can fly as 3D models
-      const box = el("div", null, "card-projectiles"); side.append(box);
-      api(`/api/project/${p.id}/projectiles`).then((all) => {
-        const mine = Object.entries(all || {}).filter(([, a]) => a.card === cid); if (!mine.length) return;
-        box.append(el("div", "Projectiles", "eyebrow"));
-        for (const [pid3, a] of mine) {
-          const line = el("div", null, "proj-line"); line.append(el("span", `${pid3}: ${a.what}`, "muted"));
-          line.append(btn(a.model3d ? "3D model…" : "Make it 3D", () => make3d(p, { identifier: pid3, label: pid3, model3d: a.model3d, projectile: true }), "mini"));
-          if (a.model3d) line.append(btn("Open in Blockbench", () => openModel(p, { projectile: pid3 }), "mini secondary"));
-          if (a.model3d) line.append(btn("Animate", async () => {
-            const v = await promptBox("How does it move while it flies? (the designer animates it; its shape and texture stay as they are)", "", { title: `Animate ${pid3}`, ok: "Animate", multiline: true, required: true });
-            if (v == null) return;
-            const out = await api(`/api/project/${p.id}/animate`, { kind: "projectile", ident: pid3, anims: [{ name: "flight", what: v.trim() }] });
-            if (await confirmBox("Saved. Start the designer now?", { title: "Start the designer", ok: "Start designer", cancel: "Not now" })) { await api(`/api/project/${p.id}/dispatch`, { task: out.first || out.task }); toast("Designer animating…", "ok"); }
-          }, "mini secondary"));
-          box.append(line);
-        }
-      }).catch(() => {});
-    }
-    if (c.kind === "custom") acts.append(btn("Give it its own art", async () => {
-      if (!await confirmBox("A coder finds every visual this feature borrows from vanilla and gives it its own placeholder; then the designer paints them and the coder wires them in. Nothing else changes. Start the coder now?", { title: "Own art for this feature", ok: "Start coder", cancel: "Not now" })) return;
-      const out = await api(`/api/project/${p.id}/art-pass`, { card: cid });
-      await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started: it lists what needs art; the designer follows.", "ok"); await refreshProject(p.id);
-    }, "secondary"));
-    if (c.kind === "custom") acts.append(btn("Edit description", async () => { const d = await promptBox("Description:", c.description || ""); if (d == null) return; await api(`/api/project/${p.id}/card`, { card: cid, description: d }); toast("Card updated.", "ok"); await openProject(p.id); }, "secondary"));
-    side.append(acts);
-  }
-}
+// The map lives in mapcore.js (logic) and mapview.js (drawing): renderMap, openCard and mapState come from there.
 qs("feature-form").onsubmit = async (e) => {
   e.preventDefault(); if (!selected) return;
   const acceptance = qs("ft-accept").value.split("\n").map(s => s.trim()).filter(Boolean);

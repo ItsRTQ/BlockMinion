@@ -19,7 +19,7 @@ class MultiCard(Base):
         self.assertEqual(out["cards"], ["acid_spit", "ammo_pouch", "gem"]); self.assertEqual(out["task"], "s_mod:CHANGE:acid_spit+ammo_pouch+gem:1")
         brief = self.store.task_instructions(out["task"])
         self.assertIn("Change request across 3 feature cards", brief); self.assertIn("- `ammo_pouch` (custom): Ammo pouch", brief); self.assertIn("- `gem` (item)", brief)
-        self.assertIn("change it once there rather than per card", brief); self.assertIn("every weapon reloads from magazines", brief)
+        self.assertIn("build the behaviour once and let each card contribute only its own values", brief); self.assertIn("every weapon reloads from magazines", brief)
         cards = {c["id"]: c for c in mod_map(self.store, "s_mod")["cards"]}
         for cid in ("acid_spit", "ammo_pouch", "gem"):
             self.assertIn(out["task"], [t["id"] for t in cards[cid]["open_tasks"]], f"{cid} shows the shared task")

@@ -8,7 +8,7 @@ const DIALOGS = ['confirmBox', 'promptBox', 'formBox', 'noticeBox'];
 
 test('every dialog call in the page is awaited, because a Promise is always truthy', () => {
   // Regression: `if (!confirmBox(...))` never waited for the answer, so "Not now" still started a $12 designer run.
-  const src = readFileSync(path.join(STATIC, 'app.js'), 'utf8');
+  const src = ['app.js', 'mapview.js'].map((f) => readFileSync(path.join(STATIC, f), 'utf8')).join('\n');
   const bad = [];
   for (const name of DIALOGS) {
     for (const m of src.matchAll(new RegExp(`(.{0,24})\\b${name}\\(`, 'g'))) {
@@ -19,7 +19,7 @@ test('every dialog call in the page is awaited, because a Promise is always trut
 });
 
 test('the page never calls a native popup', () => {
-  for (const file of ['app.js', 'kit.js']) {
+  for (const file of ['app.js', 'kit.js', 'mapcore.js', 'mapview.js']) {
     const code = readFileSync(path.join(STATIC, file), 'utf8').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
     assert.ok(!/(^|[^A-Za-z_.])(confirm|prompt|alert)\(/.test(code), `${file} calls a native popup`);
   }

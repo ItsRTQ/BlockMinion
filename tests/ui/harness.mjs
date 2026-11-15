@@ -52,6 +52,7 @@ export async function loadPage(server, {overrides = {}, settle = true} = {}) {
         const headers = {...(init.headers || {})}; if (init.method && init.method !== 'GET') headers.Origin = server.base;
         return fetch(server.base + u, {...init, headers});
       };
+      w.HTMLCanvasElement.prototype.getContext = () => null;   // jsdom has no canvas: the map then draws its SVG layers only
       w.scrollTo = (x, y) => { w.__x = x; w.__y = y; };
       Object.defineProperty(w, 'scrollY', {get: () => w.__y || 0, configurable: true}); Object.defineProperty(w, 'scrollX', {get: () => w.__x || 0, configurable: true});
       w.Element.prototype.scrollIntoView = function () { w.__scrolledTo = this; };
@@ -59,7 +60,7 @@ export async function loadPage(server, {overrides = {}, settle = true} = {}) {
     },
   });
   const w = dom.window, doc = w.document;
-  for (const file of ['kit.js', 'app.js']) { const s = doc.createElement('script'); s.textContent = readFileSync(path.join(STATIC, file), 'utf8'); doc.body.append(s); }
+  for (const file of ['kit.js', 'mapcore.js', 'mapview.js', 'app.js']) { const s = doc.createElement('script'); s.textContent = readFileSync(path.join(STATIC, file), 'utf8'); doc.body.append(s); }
   const page = {
     dom, w, doc, calls, popups, overrides,
     $: (sel) => doc.querySelector(sel), $$: (sel) => [...doc.querySelectorAll(sel)],

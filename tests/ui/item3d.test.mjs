@@ -89,3 +89,18 @@ test('Ask: your words become a planner task, started on confirmation', async () 
   page.click(btnOf(box, 'Plan it')); await page.waitFor(() => posts('/ask').length === 1, 'the request'); assert.equal(posts('/ask')[0].body.text, 'make the ruby glow when held');
   await page.waitFor(dlgOpen); press('Start planner'); await page.waitFor(() => posts('/dispatch').length >= 1 && posts('/dispatch').at(-1).body.task === 'quiet:ASK:1', 'the dispatch');
 });
+
+test('Items: the create buttons sit above the list; search filters; pages appear past 12 items', async () => {
+  const pane = page.$('#sub-items'); const order = [...pane.querySelectorAll('.add-bar, .features-toolbar, #features-list')].map((n) => n.id || n.className);
+  assert.deepEqual(order, ['add-bar', 'features-toolbar', 'features-list']);
+  const search = page.$('#features-search'); search.value = 'sapph'; search.dispatchEvent(new page.w.Event('input', {bubbles: true}));
+  await page.waitFor(() => row('sapphire') && !row('ruby'), 'only the sapphire matches');
+  search.value = ''; search.dispatchEvent(new page.w.Event('input', {bubbles: true})); await page.waitFor(() => row('ruby'), 'all back');
+  assert.equal(page.$('#features-pager').children.length, 0, 'no pager with a handful of items');
+  const many = Array.from({length: 30}, (_, i) => ({identifier: `gem_${i}`, label: `Gem ${i}`, kind: 'item', icon_status: 'placeholder', recipes: [], can3d: true, model3d: false}));
+  page.overrides['/api/project/quiet/features'] = many;
+  await page.eval('renderFeatures({id: "quiet", status: "BUILD_PASSED_GAME_UNTESTED"})'); await page.waitFor(() => page.$('#features-pager').children.length === 3, 'the pager');
+  assert.match(page.$('#features-pager').textContent, /1–12 of 30/); assert.equal(page.$$('#features-list .feature').length, 12);
+  page.click(page.$$('#features-pager button')[1]); await page.waitFor(() => /13–24 of 30/.test(page.$('#features-pager').textContent), 'page 2');
+  delete page.overrides['/api/project/quiet/features']; await page.eval('renderFeatures({id: "quiet", status: "BUILD_PASSED_GAME_UNTESTED"})'); await page.waitFor(() => row('ruby'));
+});
