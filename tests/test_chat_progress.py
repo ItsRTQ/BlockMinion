@@ -76,6 +76,28 @@ class Progress(Base):
         dispatch(self.store, "s_mod", task_id=t1, provider=worker(t1))
         self.assertEqual(self.states(), ["done", "ready", "waiting"])
 
+    def test_the_user_can_go_on_without_a_step_that_stopped_or_that_is_ready(self):
+        from mod_orchestra.validation import InputError
+        launched = self.plan()
+        t1, t2, t3 = (a["tasks"][0] for a in launched["applied"])
+        with self.assertRaisesRegex(StateError, "only a step that stopped or is ready"):
+            chat.skip_step(self.store, "s_mod", 2)      # a waiting step is not skipped past the one it waits for
+        with self.assertRaisesRegex(InputError, "no step 9"):
+            chat.skip_step(self.store, "s_mod", 9)
+        dispatch(self.store, "s_mod", task_id=t1, provider=FakeProvider("no handoff here"))
+        self.assertTrue(self.prog()["steps"][0]["can_skip"])
+        out = chat.skip_step(self.store, "s_mod", 1)
+        self.assertEqual([s["status"] for s in out["progress"]["steps"]], ["skipped", "ready", "waiting"]); self.assertEqual(out["progress"]["total"], 2)
+        states = {t["id"]: t["state"] for t in self.store.tasks("s_mod")}; self.assertEqual((states[t1], states[t2], states[t3]), ("CANCELLED", "READY", "BACKLOG"))
+        self.assertEqual(self.notes()[-1], "Step 1 skipped by you. Step 2 is ready: press Start in the plan when you want it to run.")
+        self.assertIsNone(self.prog()["steps"][0]["retry"]); self.assertFalse(self.prog()["steps"][0]["can_skip"])
+        with self.assertRaises(StateError):
+            chat.skip_step(self.store, "s_mod", 1)
+        dispatch(self.store, "s_mod", task_id=t2, provider=worker(t2))
+        chat.skip_step(self.store, "s_mod", 3)          # a ready step the user no longer wants
+        p = self.prog(); self.assertEqual((p["state"], p["done"], p["total"]), ("done", 1, 1))
+        self.assertIn("All 1 step finished (step 1, 3 was skipped).", self.notes()[-1]); self.assertNotIn("- part 1", self.notes()[-1]); self.assertIn("- part 2", self.notes()[-1])
+
     def test_a_step_that_could_not_become_a_task_is_shown_and_the_next_still_waits_in_order(self):
         steps = [{"step": 1, "action": "change", "card": "acid_spit", "text": "one"}, {"step": 2, "action": "change", "card": "ghost_card", "text": "two"},
                  {"step": 3, "action": "change", "card": "acid_spit", "text": "three"}]

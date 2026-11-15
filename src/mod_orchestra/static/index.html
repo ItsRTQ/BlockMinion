@@ -235,6 +235,7 @@
       </div>
       <!-- The chat, at hand from every tab: the button opens a small panel that holds the same conversation and message box as the Chat tab. -->
       <button type="button" id="chat-fab" class="chat-fab hidden" title="Talk to the coordinator without leaving this tab" aria-label="Open the chat"><img src="/blockminion.png" alt="" width="26" height="26"><span>Chat</span></button>
+      <div id="chat-bubble" class="chat-bubble hidden" role="status" aria-live="polite"></div>
       <aside id="chat-dock" class="chat-dock hidden" aria-label="Chat">
         <div class="chat-dock-head"><b>Coordinator</b><span id="chat-dock-status" class="muted"></span><span class="chat-dock-btns"><button type="button" class="mini secondary" id="chat-dock-open" title="Go to the Chat tab (the plan is there)">Open chat</button><button type="button" class="mini secondary" id="chat-dock-close" aria-label="Close the chat panel" title="Close">✕</button></span></div>
         <div id="chat-dock-slot" class="chat-dock-slot"></div>

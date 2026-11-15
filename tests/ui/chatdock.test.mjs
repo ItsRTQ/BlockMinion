@@ -65,6 +65,25 @@ test('news marks the button when the panel is closed, and opening it clears the 
   page.click(page.$('#chat-fab')); assert.ok(!page.$('#chat-fab').classList.contains('has-news')); assert.ok(!page.$('.tab[data-tab="chat"]').classList.contains('has-news'));
 });
 
+test('the button says the news itself, offers to start the step that is ready, and shows when someone is working', async () => {
+  page.click(page.$('#chat-dock-close')); const step = (n, status) => ({step: n, action: 'change', status, tasks: [{id: T, state: 'X'}], done_tasks: 0, start: status === 'ready' ? T : null, retry: null, waiting_for: [], blockers: [], error: null});
+  const v = view({plan: {result: 'r', problems: [], launched: {applied: [], skipped: [], first: T}, steps: [{step: 1, action: 'change', card: 'runner', text: 'a'}, {step: 2, action: 'change', card: 'runner', text: 'b'}],
+    progress: {state: 'ready', done: 1, total: 2, busy: false, steps: [step(1, 'done'), step(2, 'ready')]}}});
+  v.messages.push({id: 20, role: 'system', text: 'Step 1 of 2 finished: 2 files changed\nStep 2 is ready', meta: {plan_note: 'done:1b', plan_state: 'done'}});
+  page.overrides['/api/project/infect/chat'] = v; await page.eval('chatRefresh("infect")'); await page.idle();
+  const bubble = page.$('#chat-bubble'); assert.ok(!page.hidden('#chat-bubble')); assert.equal(bubble.getAttribute('role'), 'status');
+  assert.equal(bubble.querySelector('.bubble-text').textContent, 'Step 1 of 2 finished: 2 files changed'); assert.ok(page.$('#chat-fab').classList.contains('hop'));
+  assert.ok(!/Step 1 of 2 finished/.test(page.toasts().split('Step 1 of 2 finished').slice(2).join('')), 'said once, by the button');
+  const n = posts('/dispatch').length; page.click(btnOf(bubble, 'Start step 2')); await page.waitFor(() => posts('/dispatch').length === n + 1, 'started from the bubble'); assert.ok(page.hidden('#chat-bubble'));
+  v.messages.push({id: 21, role: 'system', text: 'Step 2 of 2 stopped: boom', meta: {plan_note: 'stopped:2', plan_state: 'stopped'}}); v.plan.progress.steps[1] = step(2, 'ready');
+  await page.eval('chatRefresh("infect")'); await page.idle(); assert.ok(page.$('#chat-bubble').classList.contains('bad')); assert.equal(btnOf(page.$('#chat-bubble'), 'Start step 2'), undefined, 'bad news offers no Start');
+  page.click(page.$('#chat-bubble .bubble-text')); assert.ok(!page.hidden('#chat-dock'), 'the words open the chat'); assert.ok(page.hidden('#chat-bubble')); page.click(page.$('#chat-dock-close'));
+  page.overrides['/api/project/infect/chat'] = view({thinking: true}); await page.eval('chatRefresh("infect")'); await page.idle(); assert.equal(page.$('#chat-fab').dataset.state, 'thinking');
+  const busy = view({plan: {...v.plan, progress: {state: 'running', done: 1, total: 2, busy: true, steps: [step(1, 'done'), step(2, 'running')]}}});
+  page.overrides['/api/project/infect/chat'] = busy; await page.eval('chatRefresh("infect")'); await page.idle(); assert.equal(page.$('#chat-fab').dataset.state, 'working');
+  page.overrides['/api/project/infect/chat'] = view(); await page.eval('chatRefresh("infect")'); await page.idle(); assert.equal(page.$('#chat-fab').dataset.state, '');
+});
+
 test('a project that has no chat yet has no button', async () => {
   await page.eval('openProject("draft")'); await page.idle(); tab('tasks'); assert.ok(page.hidden('#chat-fab')); assert.ok(page.hidden('#chat-dock'));
 });

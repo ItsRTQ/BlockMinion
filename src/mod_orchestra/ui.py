@@ -310,7 +310,7 @@ def serve(store: Store, port: int = 8765) -> None:
                                                acceptance=[str(a) for a in (payload.get("acceptance") or [])], derived_from=[str(d) for d in (payload.get("derived_from") or [])])
                     if op == "chat":
                         from .chat import send
-                        return send(store, pid, str(payload.get("text", "")), [str(a) for a in (payload.get("attachments") or [])][:50])
+                        return send(store, pid, str(payload.get("text", "")), [str(a) for a in (payload.get("attachments") or [])][:50], [str(t) for t in (payload.get("tasks") or [])][:50])
                     if op == "chat-attach":   # one file per request (base64): what it is is decided by its bytes
                         from .attachments import add_base64
                         return add_base64(store, pid, str(payload.get("name", "")), str(payload.get("data_base64", "")))
@@ -320,6 +320,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "chat-launch":
                         from .chat import launch
                         return launch(store, pid)
+                    if op == "chat-skip":
+                        from .chat import skip_step
+                        return skip_step(store, pid, int(payload.get("step") or 0))
                     if op == "chat-discard":
                         from .chat import discard
                         return discard(store, pid)

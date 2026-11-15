@@ -333,7 +333,7 @@ async function renderGallery(p) {
   await loadArt(p.id);
   for (const m of p.gallery) {
     const card = el("div", null, "mob"); card.dataset.focus = "mob:" + m.mob;
-    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`));
+    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`)); dragToChat(head.firstChild, { card: m.mob });
     const meta = el("div", null, "mob-meta");
     meta.append(el("span", m.placeholder ? "placeholder model" : "designer model", "pill " + (m.placeholder ? "warn" : "purple")));
     if (m.task_state) meta.append(el("span", "MODEL task " + m.task_state, "pill " + (m.task_state === "DONE" ? "ok" : m.task_state === "FAILED" ? "bad" : "info")));
@@ -460,7 +460,7 @@ async function renderGallery(p) {
 }
 
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
-const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false };
+const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false, tasks: [] };
 const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };
 // One step of a launched plan: where it stands and the one thing the user can do about it, right here.
 function planStepRun(p, run, busy) {
@@ -470,7 +470,11 @@ function planStepRun(p, run, busy) {
   box.append(el("span", STEP_WORD[run.status] || run.status, "plan-state " + run.status));
   if (run.tasks && run.tasks.length > 1) box.append(el("span", `${run.done_tasks} of ${run.tasks.length} parts`, "muted"));
   if (run.status === "ready") box.append(start(run.start, run.done_tasks ? "Start next part" : "Start"));
-  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry) box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry && run.status === "stopped") box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "stopped" && run.retry) box.append(btn("Ask the coordinator", () => chatPointTask({ id: run.retry, title: `Step ${run.step}`, state: "stopped" }, `Step ${run.step} stopped. What went wrong, and what do we do?`), "mini secondary"));
+  if (run.can_skip) box.append(btn("Skip", async () => {
+    if (!await confirmBox(`Go on without step ${run.step}? Its work is not done, and a later step may need what it was going to make. The steps after it stop waiting for it.`, { title: `Skip step ${run.step}`, ok: "Skip it", danger: true })) return;
+    await api(`/api/project/${p.id}/chat-skip`, { step: run.step }); await chatRefresh(p.id); }, "mini secondary"));
   if (run.status === "waiting") {
     if (run.waiting_for.length) box.append(el("span", "for step " + run.waiting_for.join(", "), "muted"));
     for (const b of run.blockers) { const row = el("span", null, "plan-blocker"); row.append(el("span", `needs first: ${b.title} (${b.state.toLowerCase().replace(/_/g, " ")})`, "muted")); if (b.start) row.append(start(b.start, "Start it")); if (b.retry) row.append(start(b.retry, "Retry it", true)); box.append(row); }
@@ -491,11 +495,14 @@ function planFooter(p, prog) {
   return box;
 }
 // What the plan said since the user last looked: a toast and a mark on the Chat tab when they are somewhere else.
-function chatNews(p, messages) {
+function chatNews(p, v) {
+  const messages = v.messages, prog = v.plan && v.plan.progress;
   const notes = messages.filter((m) => m.meta && m.meta.plan_note), last = notes.length ? notes[notes.length - 1].id : 0, seen = chatState.seen[p.id];
   chatState.seen[p.id] = last; if (seen === undefined || last <= seen) return;
   const tab = document.querySelector('.tab[data-tab="chat"]'), away = (!tab.classList.contains("active") && qs("chat-dock").classList.contains("hidden")) || !isProjectView();
-  for (const m of notes.filter((n) => n.id > seen)) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
+  const fresh = notes.filter((n) => n.id > seen), fabUp = !qs("chat-fab").classList.contains("hidden") && isProjectView();
+  if (fabUp) { const m = fresh[fresh.length - 1]; sayBubble(p, m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok", prog); }   // the button says it
+  else for (const m of fresh) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
   if (away) { tab.classList.add("has-news"); qs("chat-fab").classList.add("has-news"); }
 }
 // ---- the chat at hand from every tab: one conversation and one message box, shown in the Chat tab or in the small panel ----
@@ -505,9 +512,25 @@ function syncDock() {
   const target = want ? qs("chat-dock-slot") : document.querySelector(".chat-left"), box = qs("chat-messages");
   if (box.parentNode !== target) { target.append(box, qs("chat-drop")); box.scrollTop = box.scrollHeight; }
   qs("chat-dock").classList.toggle("hidden", !want); qs("chat-fab").classList.toggle("hidden", onChat || want || qs("chat-send").disabled);
+  if (qs("chat-fab").classList.contains("hidden")) hideBubble();
   if (want || onChat) for (const n of [qs("chat-fab"), document.querySelector('.tab[data-tab="chat"]')]) n.classList.remove("has-news");
+  document.body.classList.toggle("dock-open", want); document.body.classList.toggle("fab-on", !qs("chat-fab").classList.contains("hidden"));   // toasts keep clear of both
+  if (typeof MapView !== "undefined") MapView.invalidate();   // the map's note steps out from under the panel
 }
-function openDock(focus) { chatState.dock = true; syncDock(); if (focus) qs("chat-text").focus(); }
+function openDock(focus) { chatState.dock = true; hideBubble(); syncDock(); if (focus) qs("chat-text").focus(); }
+// The button has a little life: it shows what the coordinator or a worker is doing, and says the news itself instead of a toast.
+function fabState(v) { const prog = v.plan && v.plan.progress; qs("chat-fab").dataset.state = v.thinking ? "thinking" : prog && (prog.state === "running" || prog.busy) ? "working" : ""; }
+let bubbleTimer = 0;
+function hideBubble() { clearTimeout(bubbleTimer); qs("chat-bubble").classList.add("hidden"); document.body.classList.remove("bubble-on"); }
+function sayBubble(p, text, tone, prog) {
+  const box = qs("chat-bubble"), fab = qs("chat-fab"); box.replaceChildren(); box.className = "chat-bubble " + (tone || "");
+  const words = btn(text, () => openDock(true), "bubble-text"); words.title = "Open the chat"; box.append(words);
+  const ready = prog && !prog.busy && prog.steps.find((s) => s.status === "ready");
+  if (ready && tone !== "bad") box.append(btn(`Start step ${ready.step}`, async () => { hideBubble(); await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
+  const x = btn("×", () => hideBubble(), "tag-x"); x.setAttribute("aria-label", "Dismiss"); box.append(x);
+  fab.classList.remove("hop"); void fab.offsetWidth; fab.classList.add("hop");   // one small hop to catch the eye
+  document.body.classList.add("bubble-on"); clearTimeout(bubbleTimer); bubbleTimer = setTimeout(hideBubble, 12000);
+}
 function dockStatus(p, v) {
   const box = qs("chat-dock-status"), plan = v.plan, prog = plan && plan.progress; box.replaceChildren();
   if (v.thinking) return box.append("thinking…");
@@ -517,23 +540,68 @@ function dockStatus(p, v) {
     if (ready && !prog.busy) box.append(btn(`Start step ${ready.step}`, async () => { await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
   } else if (plan && plan.steps && plan.steps.length) box.append("a plan is ready: open the chat to launch it");
 }
+// ---- dragging things of the page onto the chat points at them (the same as Send to chat) ----
+const DRAG_TYPE = "application/x-blockminion";
+function dragToChat(node, what) {
+  node.draggable = true; node.classList.add("to-chat"); node.title = (node.title ? node.title + " · " : "") + "Drag onto the chat to point at it";
+  node.addEventListener("dragstart", (ev) => { ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify(what)); ev.dataTransfer.setData("text/plain", what.card ? "@" + what.card + " " : what.task.title); ev.dataTransfer.effectAllowed = "copy"; document.body.classList.add("dragging-to-chat"); });
+  node.addEventListener("dragend", () => document.body.classList.remove("dragging-to-chat"));
+}
+const carriesOurs = (ev) => !!(ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes(DRAG_TYPE));
+function dropOnChat(ev) {
+  if (!carriesOurs(ev)) return false; ev.preventDefault(); document.body.classList.remove("dragging-to-chat");
+  let what; try { what = JSON.parse(ev.dataTransfer.getData(DRAG_TYPE)); } catch (e) { return true; }
+  if (what && what.card) chatPoint([String(what.card)]); else if (what && what.task && what.task.id) chatPointTask(what.task, "This task stopped. What went wrong, and what do we do?");
+  return true;
+}
 // ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
 const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
-const mentionCards = { pid: null, at: 0, list: [] };
+const mentionCards = { pid: null, at: 0, list: [], folders: [] };
+const MAX_POINTED = 40;
 async function chatCards(pid) {
   if (mentionCards.pid === pid && Date.now() - mentionCards.at < 20000) return mentionCards.list;
-  let cards = []; try { cards = (await api(`/api/project/${pid}/map`)).cards || []; } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
-  Object.assign(mentionCards, { pid, at: Date.now(), list: cards.filter((c) => c.kind !== "tab") }); return mentionCards.list;
+  let data; try { data = await api(`/api/project/${pid}/map`); } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
+  Object.assign(mentionCards, { pid, at: Date.now(), list: (data.cards || []).filter((c) => c.kind !== "tab"), folders: mapFolders(data) }); return mentionCards.list;
+}
+// The map's folders as the user organised them (and the automatic groups), each with the cards inside it and its subfolders.
+// A folder is a shortcut for its cards: picking one writes those cards into the message. Its name is not sent anywhere.
+function mapFolders(data) {
+  try {
+    const index = MapCore.buildIndex(data), tree = MapCore.buildTree(index, MapCore.normMeta(data.meta), MapCore.inferTags(index)), out = [];
+    for (const f of tree.folders.values()) {
+      if (f.id === MapCore.ROOT || !f.total) continue; const ids = [];
+      for (const fid of MapCore.descendants(tree, f.id)) { const d = tree.folders.get(fid); for (const id of d.features.concat(d.refs)) if (!ids.includes(id)) ids.push(id); }
+      out.push({ folder: true, id: f.id, title: f.name, where: MapCore.pathLabel(tree, f.parent), ids });
+    }
+    return out;
+  } catch (e) { return []; }
 }
 const titleSlug = (c) => String(c.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 function resolveMention(cards, word) { word = word.replace(/[:\-]+$/, ""); const w = word.toLowerCase(); return cards.find((c) => c.id === word) || cards.find((c) => c.id.toLowerCase() === w) || cards.find((c) => titleSlug(c) === w) || null; }
 function mentionsIn(cards, text) { const out = [], seen = new Set(); for (const m of String(text || "").matchAll(MENTION)) { const c = resolveMention(cards, m[2]); if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); } } return out; }
 // Under the box, while typing: what the message points at, so the user sees it was understood before sending.
 async function renderChatPoints() {
-  const box = qs("chat-points"), pid = selected, text = qs("chat-text").value; if (!text.includes("@")) { box.replaceChildren(); return; }
+  const pid = selected, text = qs("chat-text").value; if (!text.includes("@")) return drawPoints(pid, []);
   const cards = await chatCards(pid); if (selected !== pid || qs("chat-text").value !== text) return;
-  const found = mentionsIn(cards, text); box.replaceChildren(); if (!found.length) return;
-  box.append(el("span", "Pointing at:", "muted")); for (const c of found) box.append(cardChip(pid, c));
+  drawPoints(pid, mentionsIn(cards, text));
+}
+function drawPoints(pid, found) {
+  const box = qs("chat-points"); box.replaceChildren(); if (!found.length && !chatState.tasks.length) return;
+  box.append(el("span", "Pointing at:", "muted")); for (const c of found.slice(0, 14)) box.append(cardChip(pid, c));
+  if (found.length > 14) box.append(el("span", `+${found.length - 14} more`, "muted"));
+  for (const t of chatState.tasks) box.append(taskChip(t, () => { chatState.tasks = chatState.tasks.filter((x) => x.id !== t.id); renderChatPoints(); }));
+}
+function taskChip(t, onRemove) {
+  const chip = el("span", null, "task-chip " + String(t.state || "").toLowerCase()); chip.dataset.task = t.id; chip.title = t.id;
+  chip.append(el("small", "task"), el("span", t.title || t.id), el("small", String(t.state || "").toLowerCase().replace(/_/g, " ")));
+  if (onRemove) { const x = btn("×", onRemove, "tag-x"); x.setAttribute("aria-label", "Stop pointing at this task"); chip.append(x); }
+  return chip;
+}
+// Point at a task (a step that stopped, a failed task): the coordinator is told how it ended and where its log is.
+function chatPointTask(task, suggestion) {
+  if (!chatState.tasks.some((t) => t.id === task.id)) chatState.tasks.push({ id: task.id, title: task.title, state: task.state });
+  const ta = qs("chat-text"); if (!ta.value.trim() && suggestion) ta.value = suggestion;
+  openDock(true); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints(); toast("The coordinator will be told how that task ended. Send when ready.", "ok");
 }
 function cardChip(pid, c) { const b = btn("", () => { document.querySelector('[data-tab="map"]').click(); if (lastProject && lastProject.id === pid) setTimeout(() => openCard(lastProject, c.id), 0); }, "card-chip " + c.kind); b.append(el("span", c.title || c.id), el("small", c.kind === "custom" ? "feature" : c.kind)); b.title = `@${c.id} · show it on the map`; return b; }
 // The list that opens while an @word is being typed. Arrow keys move, Enter or Tab picks, Escape closes.
@@ -544,16 +612,19 @@ async function updateMention() {
   if (!m) return closeMention();
   const q = m[2].toLowerCase(), cards = await chatCards(pid); if (selected !== pid || ta.value.slice(0, ta.selectionStart) !== upto) return;
   const rank = (c) => { const id = c.id.toLowerCase(), t = String(c.title || "").toLowerCase(); return (id.startsWith(q) || t.startsWith(q) ? 0 : t.split(/[\s_]+/).some((w) => w.startsWith(q)) ? 1 : id.includes(q) || t.includes(q) ? 2 : 9) + (c.kind === "vanilla" ? 3 : 0); };
-  const items = cards.map((c) => [rank(c), c]).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
+  const folderRank = (f) => { const t = f.title.toLowerCase(); return q && t.startsWith(q) ? 0.5 : q && t.includes(q) ? 2.5 : 9; };   // folders show once something is typed
+  const items = cards.map((c) => [rank(c), c]).concat(mentionCards.folders.map((f) => [folderRank(f), f])).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
   if (!items.length) return closeMention();
   Object.assign(mentionPop, { open: true, items, at: 0, start: upto.length - m[2].length - 1 }); drawMention();
 }
 function drawMention() {
   const box = qs("chat-mention"); box.replaceChildren(); box.classList.remove("hidden");
-  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
+  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", c.folder ? `folder${c.where ? " in " + c.where : ""} · its ${c.ids.length} card${c.ids.length === 1 ? "" : "s"}` : `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
 }
 function pickMention(i) {
-  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end), word = `@${c.id} `;
+  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end);
+  if (c.folder && c.ids.length > MAX_POINTED) toast(`${c.title} has ${c.ids.length} cards: the first ${MAX_POINTED} were added.`, "");
+  const word = (c.folder ? c.ids.slice(0, MAX_POINTED).map((id) => "@" + id).join(" ") : "@" + c.id) + " ";
   ta.value = before + word + after.replace(/^ /, ""); ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + word.length; closeMention(); renderChatPoints();
 }
 // From anywhere in the page (the map's Send to chat): put the cards in the message being written and bring the chat forward.
@@ -596,15 +667,16 @@ async function renderChat(p) {
   const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
   if (!generated) { box.replaceChildren(el("div", "The chat opens once the project is generated: before that, the Spec is where the idea takes shape.", "placeholder-note")); planBox.replaceChildren(); qs("chat-send").disabled = true; syncDock(); return; }
   qs("chat-send").disabled = false; syncDock();
-  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; renderChatFiles(); }
+  if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; chatState.tasks = []; renderChatFiles(); renderChatPoints(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
-  chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages); dockStatus(p, v);
+  chatState.limits = v.file_limits || chatState.limits; fabState(v); chatNews(p, v); dockStatus(p, v);
   if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.replaceChildren();
   if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
   for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text"));
-    const pointed = (m.meta && m.meta.cards) || []; if (pointed.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed) row.append(cardChip(p.id, c)); d.append(row); }
+    const pointed = (m.meta && m.meta.cards) || [], about = (m.meta && m.meta.tasks) || [];
+    if (pointed.length || about.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed.slice(0, 14)) row.append(cardChip(p.id, c)); if (pointed.length > 14) row.append(el("span", `+${pointed.length - 14} more`, "muted")); for (const t of about) row.append(taskChip(t)); d.append(row); }
     const sent = (m.meta && m.meta.attachments) || []; if (sent.length) { const row = el("div", null, "chat-files sent"); for (const f of sent) row.append(chatFileChip(p.id, f)); d.append(row); }
     box.append(d); }
   if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
@@ -641,9 +713,9 @@ async function renderChat(p) {
 async function chatRefresh(id) { if (selected !== id) return; try { const p = await api("/api/project/" + encodeURIComponent(id)); await renderChat(p); } catch (e) { /* next poll */ } }
 qs("chat-send").onclick = async () => {
   const ta = qs("chat-text"); const text = ta.value.trim(); if (chatState.busy) { toast("Wait for the files to finish attaching", "bad"); return; }
-  const files = chatState.files.map((f) => f.id); if (!text && !files.length) { toast("Say something first", "bad"); return; }
+  const files = chatState.files.map((f) => f.id), tasks = chatState.tasks.map((t) => t.id); if (!text && !files.length && !tasks.length) { toast("Say something first", "bad"); return; }
   const p = { id: selected };
-  try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+  try { const out = await api(`/api/project/${p.id}/chat`, Object.assign({ text }, files.length ? { attachments: files } : {}, tasks.length ? { tasks } : {})); ta.value = ""; chatState.tasks = []; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
 };
 qs("chat-text").addEventListener("keydown", (ev) => {
   if (mentionPop.open) {
@@ -663,9 +735,14 @@ qs("chat-dock-open").onclick = () => document.querySelector('.tab[data-tab="chat
 qs("chat-attach").onclick = () => qs("chat-file-input").click();
 qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
 qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text
-for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes("Files")) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && ([...(ev.dataTransfer.types || [])].includes("Files") || carriesOurs(ev))) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+for (const id of ["chat-fab", "chat-dock"]) {   // the button and the panel take what is dragged onto them too
+  for (const type of ["dragenter", "dragover"]) qs(id).addEventListener(type, (ev) => { if (carriesOurs(ev)) { ev.preventDefault(); qs(id).classList.add("over"); } });
+  qs(id).addEventListener("dragleave", (ev) => { if (!qs(id).contains(ev.relatedTarget)) qs(id).classList.remove("over"); });
+  qs(id).addEventListener("drop", (ev) => { qs(id).classList.remove("over"); dropOnChat(ev); });
+}
 qs("chat-drop").addEventListener("dragleave", (ev) => { if (!qs("chat-drop").contains(ev.relatedTarget)) qs("chat-drop").classList.remove("over"); });
-qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
+qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); if (dropOnChat(ev)) { ev.stopPropagation(); return; } const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
 
 // ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
 function holdPanel(p, f) {
@@ -1012,6 +1089,7 @@ async function renderFeatures(p) {
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
+    dragToChat(nm, { card: f.material || f.identifier });   // a piece of a set points at its set, which is the card
     row.append(img, mid, right); return row;
   };
   // Material sets: one card per material with the set-level actions once, pieces inside.
@@ -1233,9 +1311,10 @@ function renderVerify(p) {
 function renderTasks(p) {
   const t = qs("task-list"); t.replaceChildren();
   for (const task of p.tasks) {
-    const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state));
+    const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state)); dragToChat(row.firstChild, { task: { id: task.id, title: task.title, state: task.state } });
     const mid = el("div"); mid.append(el("div", task.title, "ttl"), el("small", task.id + " · " + task.role + (task.last_error ? " · " + task.last_error : ""))); row.append(mid);
     const right = el("div");
+    if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Send to chat", () => chatPointTask(task, "This task stopped. What went wrong, and what do we do?"), "mini secondary"));
     if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Requeue", async () => { await api(`/api/task/${encodeURIComponent(task.id)}/requeue`, {}); await openProject(p.id); }, "mini"));
     if (task.state === "READY" && !p.dispatching) right.append(btn("Run agent", async () => { if (!await confirmBox("Start ONE worker on " + task.id + "?")) return; await api(`/api/project/${p.id}/dispatch`, { task: task.id }); await openProject(p.id); }, "mini primary"));
     row.append(right); t.append(row);

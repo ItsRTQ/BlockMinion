@@ -199,10 +199,16 @@ const MapView = (() => {
     g.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); closePops(); d = { sx: ev.clientX || 0, sy: ev.clientY || 0, moved: false }; if (g.setPointerCapture && ev.pointerId != null) try { g.setPointerCapture(ev.pointerId); } catch (e) { /* not a real pointer */ } });
     g.addEventListener("pointermove", (ev) => {
       if (!d || layer === "focus") return; const dx = (ev.clientX || 0) - d.sx, dy = (ev.clientY || 0) - d.sy;
-      if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; const n = S.lay.nodes.get(key); d.ox = n.x; d.oy = n.y; }
+      if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; const n = S.lay.nodes.get(key); d.ox = n.x; d.oy = n.y; dragging(true); }
       if (d.moved) { const n = S.lay.nodes.get(key); n.x = d.ox + dx / S.cam.k; n.y = d.oy + dy / S.cam.k; invalidate(); }
     });
-    g.addEventListener("pointerup", (ev) => { ev.stopPropagation(); const was = d; d = null; if (!was) return; if (was.moved) cardDropped(key, was); else cardClicked(id); });
+    g.addEventListener("pointercancel", () => { d = null; dragging(false); });
+    g.addEventListener("pointerup", (ev) => {
+      ev.stopPropagation(); const was = d; d = null; if (!was) return; if (!was.moved) return cardClicked(id);
+      dragging(false);
+      if (overChat(ev)) { const n = S.lay.nodes.get(key); n.x = was.ox; n.y = was.oy; invalidate(); return chatPoint([id]); }   // onto the chat: the card stays where it was
+      cardDropped(key, was);
+    });
     return g;
   }
   function fillCard(g, c, o) {
@@ -212,6 +218,9 @@ const MapView = (() => {
     const name = c.title || c.id, max = o.compact ? 17 : 24; ttl.textContent = name.length > max ? name.slice(0, max - 1) + "…" : name; sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? c.status || "" : c.id;
     dot.setAttribute("class", "dot " + (c.status || "vanilla"));
   }
+  // Is the pointer over the chat (its panel or its button)? Dropping a card or a folder there points at it instead of moving it.
+  function overChat(ev) { const e = document.elementFromPoint ? document.elementFromPoint(ev.clientX || 0, ev.clientY || 0) : null; return !!(e && e.closest && e.closest("#chat-dock, #chat-fab")); }
+  function dragging(on) { document.body.classList.toggle("dragging-to-chat", on); }
   function cardClicked(id) {
     if (S.multi) return mapPick(id);
     S.sel = id; S.selFolder = null; S.insp = { type: "card", id, full: false }; buildInspector(); invalidate();
@@ -246,14 +255,21 @@ const MapView = (() => {
     g.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); closePops(); d = { sx: ev.clientX || 0, sy: ev.clientY || 0, moved: false }; if (g.setPointerCapture && ev.pointerId != null) try { g.setPointerCapture(ev.pointerId); } catch (e) { /* not a real pointer */ } });
     g.addEventListener("pointermove", (ev) => {
       if (!d) return; const dx = ((ev.clientX || 0) - d.sx) / S.cam.k, dy = ((ev.clientY || 0) - d.sy) / S.cam.k;
-      if (!d.moved && Math.abs(dx * S.cam.k) + Math.abs(dy * S.cam.k) > 4) { d.moved = true; d.last = { x: 0, y: 0 }; }
+      if (!d.moved && Math.abs(dx * S.cam.k) + Math.abs(dy * S.cam.k) > 4) { d.moved = true; d.last = { x: 0, y: 0 }; dragging(true); }
       if (d.moved) { shiftFolder(fid, dx - d.last.x, dy - d.last.y); d.last = { x: dx, y: dy }; invalidate(); }
     });
     g.addEventListener("pointerup", (ev) => {
       ev.stopPropagation(); const was = d; d = null; if (!was) return;
+      if (was.moved) dragging(false);
+      if (was.moved && overChat(ev)) {   // a folder onto the chat: its cards, and the folder goes back where it was
+        shiftFolder(fid, -was.last.x, -was.last.y); invalidate(); const ids = [];
+        for (const id of C.descendants(S.tree, fid)) { const f = S.tree.folders.get(id); for (const c of f.features.concat(f.refs)) if (!ids.includes(c)) ids.push(c); }
+        return ids.length ? chatPoint(ids.slice(0, 40)) : toast("That folder is empty.", "");
+      }
       if (was.moved) { const c = S.lay.folders.get(fid), pc = S.lay.folders.get(S.tree.folders.get(fid).parent); return setMeta(C.setFolderPos(S.meta, fid, c.x - pc.x, c.y - pc.y)); }
       selectFolder(fid);
     });
+    g.addEventListener("pointercancel", () => { d = null; dragging(false); });
     g.addEventListener("dblclick", (ev) => { ev.stopPropagation(); enterFolder(fid); });
     g.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); enterFolder(fid); } else if (ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); selectFolder(fid); } });
     return g;
@@ -558,6 +574,8 @@ const MapView = (() => {
     const path = C.pathLabel(S.tree, f.parent); box.append(el("div", `${f.total} feature${f.total === 1 ? "" : "s"}` + (f.children.length ? ` · ${f.children.length} subfolder${f.children.length === 1 ? "" : "s"}` : "") + (f.refs.length ? ` · ${f.refs.length} reference${f.refs.length === 1 ? "" : "s"}` : "") + (path ? ` · in ${path}` : ""), "muted"));
     const acts = el("div", null, "actions insp-actions"); box.append(acts);
     acts.append(btn("Enter", () => enterFolder(fid), "primary"));
+    if (f.total) { const ids = []; for (const id of C.descendants(S.tree, fid)) { const d = S.tree.folders.get(id); for (const c of d.features.concat(d.refs)) if (!ids.includes(c)) ids.push(c); }
+      const b = btn(`Send to chat (${ids.length})`, () => chatPoint(ids.slice(0, 40)), "secondary"); b.title = "Point at this folder's cards in the chat (the folder's name is not sent)"; acts.append(b); }
     if (sug.length && !full) acts.append(btn(`${sug.length} suggestion${sug.length === 1 ? "" : "s"}`, () => { S.insp.full = true; buildInspector(); }, "secondary"));
     acts.append(btn(full ? "Collapse" : "Expand", () => { S.insp.full = !full; buildInspector(); }, "secondary"));
     if (!full) return;
@@ -712,11 +730,17 @@ const MapView = (() => {
       if (rep.node != null) { const n = S.lay.nodes.get(i.id), s = C.toScreen(S.cam, v, n.x, n.y), isCard = els.cards.has(n.key); ax = s.x; ay = s.y; half = isCard ? (C.NODE_W / 2) * S.cam.k : 9; halfH = isCard ? (C.NODE_H / 2) * S.cam.k : 9; }
       else { const c = S.lay.folders.get(rep.folder), s = C.toScreen(S.cam, v, c.x, c.y); ax = s.x; ay = s.y; half = halfH = C.dotRadius(S.tree.folders.get(rep.folder).total) + 6; }
     }
-    const w = box.offsetWidth || (i.full ? 360 : 270), h = box.offsetHeight || (i.full ? 420 : 130), gap = 18, fits = (x, y) => x >= 8 && y >= 8 && x + w <= v.w - 8 && y + h <= v.h - 8;
+    const w = box.offsetWidth || (i.full ? 360 : 270), h = box.offsetHeight || (i.full ? 420 : 130), gap = 18;
+    // The chat panel floats over the corner of the page: the note keeps out of the part of the map it covers.
+    const dock = qs("chat-dock"), wr = wrap.getBoundingClientRect(), dr = dock && !dock.classList.contains("hidden") ? dock.getBoundingClientRect() : null;
+    const taken = dr && dr.width && dr.left < wr.right && dr.top < wr.bottom ? { x: dr.left - wr.left - 8, y: dr.top - wr.top - 8 } : null;   // it reaches the right and bottom edges
+    const clear = (x, y) => !taken || x + w <= taken.x || y + h <= taken.y;
+    const fits = (x, y) => x >= 8 && y >= 8 && x + w <= v.w - 8 && y + h <= v.h - 8 && clear(x, y);
     const cy = Math.max(8, Math.min(v.h - h - 8, ay - Math.min(h / 2, 60))), cx = Math.max(8, Math.min(v.w - w - 8, ax - w / 2));
     const spots = [[ax + half + gap, cy], [ax - half - gap - w, cy], [cx, ay + halfH + gap], [cx, ay - halfH - gap - h]];
     let [x, y] = spots.find(([px, py]) => fits(px, py)) || [Math.max(8, Math.min(v.w - w - 8, ax + half + gap)), cy];
     x = Math.max(8, Math.min(Math.max(8, v.w - w - 8), x)); y = Math.max(8, Math.min(Math.max(8, v.h - h - 8), y));
+    if (!clear(x, y)) { if (taken.x - w >= 8) x = taken.x - w; else if (taken.y - h >= 8) y = taken.y - h; }   // beside the panel if there is room, else above it
     box.style.left = Math.round(x) + "px"; box.style.top = Math.round(y) + "px";
     const offscreen = ax < -40 || ax > v.w + 40 || ay < -40 || ay > v.h + 40, tx = Math.max(x, Math.min(x + w, ax)), ty = Math.max(y, Math.min(y + h, ay));
     link.setAttribute("x1", ax); link.setAttribute("y1", ay); link.setAttribute("x2", tx); link.setAttribute("y2", ty); link.setAttribute("opacity", offscreen || (tx === ax && ty === ay) ? "0" : "1");
