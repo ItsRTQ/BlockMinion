@@ -312,10 +312,13 @@ class FakeProvider(AgentProvider):
         return RunResult(self.exit_code, self.duration_s, log_path, self.reply, handoff, errors)
 
 
-def _load_agent_definitions() -> dict:
-    """Agent JSON for `claude --agents`, with each role's skill inlined (no .claude/ dir in the workspace)."""
+def _load_agent_definitions(only: str | None = None) -> dict:
+    """Agent JSON for `claude --agents`, with each role's skill inlined (no .claude/ dir in the workspace).
+    `only` keeps one role: a run is one role, and the other eleven definitions are text it pays for and never uses."""
     agents = {}
     for path in sorted((RESOURCES / "agents").glob("*.md")):
+        if only is not None and path.stem != only:
+            continue
         text = path.read_text(encoding="utf8")
         head, _, body = text.partition("\n---\n")
         fm: dict[str, str] = {}
@@ -366,7 +369,11 @@ class ClaudeCodeProvider(AgentProvider):
         return bool(self.binary) and Path(self.binary).exists() if self.binary and os.sep in self.binary else bool(self.binary)
 
     def _materialize(self, tmp: Path, envelope: TaskEnvelope | None = None) -> tuple[Path, Path, Path]:
-        agents = tmp / "agents.json"; agents.write_text(json.dumps(_load_agent_definitions()), encoding="utf8")
+        only = envelope.role if envelope is not None else None   # the run's own role, alone: no other role is described to it
+        defs = _load_agent_definitions(only)
+        if only is not None and only not in defs:
+            raise StateError(f"unknown role {only!r}; known: {', '.join(sorted(_load_agent_definitions()))}")
+        agents = tmp / "agents.json"; agents.write_text(json.dumps(defs), encoding="utf8")
         guard = RESOURCES / "hooks" / "guard.py"
         settings = tmp / "settings.json"; settings.write_text(json.dumps(_settings_for_run(guard), indent=1), encoding="utf8")
         servers = {"minecraft-orchestra": {"command": "python", "args": ["-m", "mod_orchestra.cli", "mcp"], "env": {"CRAFTCTL_HOME": str(HOME)}}}

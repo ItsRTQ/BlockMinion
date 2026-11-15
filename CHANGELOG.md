@@ -13,6 +13,7 @@
 - **A model per role**: Environment → Agent runtime now takes a model for every role (Claude Code too; `CRAFTCTL_CLAUDE_MODEL` in a
   terminal) and, under "A model per role", one for each role that runs tasks: a lighter one where the work is talking and planning, a
   stronger one where it is building. Empty boxes change nothing: with none set, a run is started exactly as before.
+- **A run is given its own role alone**: the eleven other roles are no longer described to every agent.
 
 ## v0.15.0-prealpha — 2026-11-15
 
