@@ -10,6 +10,9 @@
   writes a short reference sheet in the project (`references/ref-N.md`: how it looks, how it moves in order, where each fact comes from, what
   was not confirmed) and the worker of the step that named it reads it before it starts. You see the step in the plan and can skip it.
   A sheet is material to look at, never an order, and it is text and links only: nothing is downloaded.
+- **A model per role**: Environment → Agent runtime now takes a model for every role (Claude Code too; `CRAFTCTL_CLAUDE_MODEL` in a
+  terminal) and, under "A model per role", one for each role that runs tasks: a lighter one where the work is talking and planning, a
+  stronger one where it is building. Empty boxes change nothing: with none set, a run is started exactly as before.
 
 ## v0.15.0-prealpha — 2026-11-15
 

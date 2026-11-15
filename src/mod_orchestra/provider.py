@@ -279,8 +279,18 @@ def parse_gemini_stream(raw: str) -> dict:
     return rec
 
 
+MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._()\[\]:\-]{0,79}")   # what a CLI prints for a model: a name, an alias, a display string
+ROLES_WITH_TASKS = ("coordinator", "interpreter", "planner", "coder", "designer", "debugger", "researcher")   # the roles the tool gives tasks to
+
+
 class AgentProvider:
     name = "abstract"
+    model: str | None = None              # the runtime's model for every role; None lets the CLI choose
+    role_models: dict | None = None       # {role: model}: one role on another model (a cheaper one to talk, a stronger one to build)
+
+    def model_for(self, role: str) -> str | None:
+        """The model a run of this role asks for: the role's own, else the runtime's, else none (the CLI's default)."""
+        return (self.role_models or {}).get(role) or self.model or None
 
     def run(self, envelope: TaskEnvelope, log_path: Path) -> RunResult:  # synchronous, one worker
         raise NotImplementedError
@@ -347,9 +357,10 @@ class ClaudeCodeProvider(AgentProvider):
     """Runs one bounded worker with the user's installed Claude Code (`claude -p`), their session and subscription."""
     name = "claude-code"
 
-    def __init__(self, binary: str | None = None, timeout: int = AGENT_TIMEOUT, max_turns: int = AGENT_MAX_TURNS):
+    def __init__(self, binary: str | None = None, timeout: int = AGENT_TIMEOUT, max_turns: int = AGENT_MAX_TURNS, model: str | None = None):
         self.binary = binary or os.environ.get("CRAFTCTL_CLAUDE_BIN") or shutil.which("claude")
         self.timeout, self.max_turns = timeout, max_turns
+        self.model = model or os.environ.get("CRAFTCTL_CLAUDE_MODEL") or None   # none: the account's own default, as before
 
     def available(self) -> bool:
         return bool(self.binary) and Path(self.binary).exists() if self.binary and os.sep in self.binary else bool(self.binary)
@@ -377,6 +388,9 @@ class ClaudeCodeProvider(AgentProvider):
             cmd = [self.binary, "-p", "--agent", envelope.role, "--agents", str(agents),
                    "--settings", str(settings), "--mcp-config", str(mcp), "--strict-mcp-config",
                    "--permission-mode", "acceptEdits", "--max-turns", str(self.max_turns), "--output-format", "stream-json", "--verbose"]
+            model = self.model_for(envelope.role)
+            if model:   # every agent file says `model: inherit`, so the session's model is the role's model
+                cmd += ["--model", model]
             env = controlled_env({"CRAFTCTL_HOME": str(HOME), "CLAUDE_PROJECT_DIR": str(envelope.workspace)})
             for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME"):
                 if passthrough in os.environ:
@@ -467,8 +481,9 @@ class GeminiCliProvider(AgentProvider):
         try:
             cmd = [self.binary, "--prompt", "Carry out the task described in the input below, in this workspace. Finish with the handoff block.",
                    "--output-format", "stream-json", "--approval-mode", self.approval_mode, "--skip-trust"]
-            if self.model:
-                cmd += ["--model", self.model]
+            model = self.model_for(envelope.role)
+            if model:
+                cmd += ["--model", model]
             env = controlled_env({"CRAFTCTL_HOME": str(HOME)})
             for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY",
                                 "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "NO_BROWSER"):
@@ -547,8 +562,9 @@ class AntigravityCliProvider(GeminiCliProvider):
             cmd = [self.binary, "--prompt",
                    f"Read {self.TASK_REL.as_posix()} in this workspace (the same text may also arrive on stdin) and carry out the task it describes. Finish with the handoff block.",
                    "--output-format", "stream-json", "--dangerously-skip-permissions", "--print-timeout", f"{self.timeout}s"]
-            if self.model:   # opt-in: without it agy picks its own default, which some accounts cannot use for every call
-                cmd += ["--model", self.model]
+            model = self.model_for(envelope.role)
+            if model:   # opt-in: without it agy picks its own default, which some accounts cannot use for every call
+                cmd += ["--model", model]
             env = controlled_env({"CRAFTCTL_HOME": str(HOME)})
             for passthrough in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY",
                                 "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "NO_BROWSER"):

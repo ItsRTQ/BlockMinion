@@ -120,9 +120,11 @@ def serve(store: Store, port: int = 8765) -> None:
                     from .dispatch import provider_name_for, PROVIDER_NAMES
                     from .provider import ClaudeCodeProvider, GeminiCliProvider, AntigravityCliProvider
                     current = provider_name_for(store)
+                    from .provider import ROLES_WITH_TASKS
                     return {"provider": current, "saved": store.get_global("provider"), "env": os.environ.get("CRAFTCTL_PROVIDER"),
                             "model": store.get_global("model:" + current),
-                            "model_env": os.environ.get("CRAFTCTL_AGY_MODEL" if current == "antigravity-cli" else "CRAFTCTL_GEMINI_MODEL"),
+                            "model_env": os.environ.get({"antigravity-cli": "CRAFTCTL_AGY_MODEL", "claude-code": "CRAFTCTL_CLAUDE_MODEL"}.get(current, "CRAFTCTL_GEMINI_MODEL")),
+                            "roles": list(ROLES_WITH_TASKS), "role_models": store.get_global("role_models:" + current) or {},
                             "choices": [n for n in PROVIDER_NAMES if n != "fake"],
                             "available": {"claude-code": ClaudeCodeProvider().available(), "gemini-cli": GeminiCliProvider().available(),
                                           "antigravity-cli": AntigravityCliProvider().available()}}
@@ -202,8 +204,26 @@ def serve(store: Store, port: int = 8765) -> None:
                         if model is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._()\-]{0,79}", model):
                             raise InputError("model may only contain letters, digits, spaces and . _ ( ) -  (as printed by `agy models`)")
                         store.set_global("model:" + provider_name_for(store), model)
+                    if "role_models" in payload:   # {role: model} for the runtime now in force; an empty model puts the role back on the runtime's
+                        from .provider import MODEL_NAME, ROLES_WITH_TASKS
+                        given = payload.get("role_models")
+                        if not isinstance(given, dict):
+                            raise InputError("role_models must be an object {role: model}")
+                        key = "role_models:" + provider_name_for(store)
+                        saved = dict(store.get_global(key) or {})
+                        for role, model in given.items():
+                            if role not in ROLES_WITH_TASKS:
+                                raise InputError(f"no role {role!r}; roles that run tasks: {', '.join(ROLES_WITH_TASKS)}")
+                            model = (model or "").strip() if isinstance(model, str) or model is None else None
+                            if model is None or (model and not MODEL_NAME.fullmatch(model)):
+                                raise InputError(f"the model for {role} may only contain letters, digits, spaces and . _ ( ) [ ] : -")
+                            saved.pop(role, None)
+                            if model:
+                                saved[role] = model
+                        store.set_global(key, saved or None)
                     current = provider_name_for(store)
-                    return {"provider": current, "saved": store.get_global("provider"), "model": store.get_global("model:" + current)}
+                    return {"provider": current, "saved": store.get_global("provider"), "model": store.get_global("model:" + current),
+                            "role_models": store.get_global("role_models:" + current) or {}}
                 if path == "/api/projects":
                     return new_project(store, name=payload["name"], mod_id=payload["id"], package=payload["package"], idea=payload["idea"])
                 if path.startswith("/api/project/"):

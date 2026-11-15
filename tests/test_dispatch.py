@@ -172,6 +172,35 @@ class ClaudeCodeCommand(unittest.TestCase):
         self.assertEqual((res.session_id, res.cost_usd, res.turns, res.errors), ("s1", 0.02, 3, []))
         self.assertEqual(res.handoff["status"], "DONE")
 
+    def test_a_run_asks_for_its_roles_model_and_for_none_when_none_is_set(self):
+        from mod_orchestra.capabilities import CAPABILITIES
+        from mod_orchestra.dispatch import provider_for
+        from mod_orchestra.state import Store
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        ws = Path(tmp.name) / "ws"; ws.mkdir(); store = Store(Path(tmp.name) / "s.sqlite")
+        seen = []
+        def fake_run(cmd, *, cwd, log, timeout, env, stdin_text=None):
+            seen.append(cmd[cmd.index("--model") + 1] if "--model" in cmd else None)
+            log.parent.mkdir(parents=True, exist_ok=True); log.write_text(json.dumps({"result": reply(GOOD), "session_id": "s", "total_cost_usd": 0, "num_turns": 1}))
+            return {"pid": 1, "exit_code": 0, "killed": False, "timeout_s": timeout, "duration_s": 1.0, "cmd": cmd}
+        def run(role):
+            prov = provider_for(store); prov.binary = "claude-fake"
+            prov.run(TaskEnvelope("d_mod", "d_mod:X", role, "t", ws, "# packet"), ws / "r.log"); return seen[-1]
+        with patch.object(pmod, "run_logged", fake_run), patch.dict("os.environ", {}, clear=False) as env:
+            env.pop("CRAFTCTL_CLAUDE_MODEL", None); env.pop("CRAFTCTL_PROVIDER", None)
+            self.assertIsNone(run("coder"), "nothing chosen: the command is the one it always was, and the account's default model runs")
+            store.set_global("role_models:claude-code", {"coordinator": "light-one"})
+            self.assertEqual(run("coordinator"), "light-one"); self.assertIsNone(run("coder"))
+            store.set_global("model:claude-code", "middle-one")
+            self.assertEqual(run("coder"), "middle-one"); self.assertEqual(run("coordinator"), "light-one", "the role's own model wins")
+            store.set_global("model:claude-code", None); env["CRAFTCTL_CLAUDE_MODEL"] = "from-env"
+            self.assertEqual(run("designer"), "from-env"); self.assertEqual(run("coordinator"), "light-one")
+            store.set_global("role_models:gemini-cli", {"coder": "other-runtime"})
+            self.assertEqual(run("coder"), "from-env", "a model saved for another runtime is not used here")
+        self.assertTrue(set(pmod.ROLES_WITH_TASKS) <= set(CAPABILITIES))
+        for path in (RESOURCES / "agents").glob("*.md"):
+            self.assertIn("\nmodel: inherit\n", path.read_text(encoding="utf8"), f"{path.name}: the session's model must be the role's model")
+
     def test_parse_envelope_survives_header_after_output_and_noise_before(self):
         # Reproduces host run F3ooCkRVv_dq: JSON first, then the (buffered) command header holding the prompt,
         # whose example handoff block is NOT valid JSON. Also stderr noise before the envelope.
