@@ -13,6 +13,8 @@
 - **The plan runs from the chat**: after Launch every step shows where it stands (done, running, ready, waiting, stopped). Steps run in order, one at
   a time; the ready one has **Start** right in the plan and a stopped one has **Retry**. The chat says when a step finishes or stops and when the
   whole plan is done, and then offers **Test in game**.
+- **Point at cards from the chat**: type `@` in a message to pick a card (`@ak47`), or press **Send to chat** on a card of the map (or on a
+  selection of cards). The coordinator is told what those cards are and where their files are, so it starts there instead of searching the mod.
 
 ## v0.14.0-prealpha — 2026-11-12
 

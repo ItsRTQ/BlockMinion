@@ -79,7 +79,7 @@ test('Click = inspect: a small note beside the card, the camera does not move, n
   ev('MapView.reveal("runner", {instant: true}); mapState.sel = null'); frame(); const before = cam(), n0 = coderCalls();
   tap(node('runner')); frame();
   assert.ok(!page.hidden('#map-inspector')); assert.ok(insp().classList.contains('quick')); assert.equal(insp().querySelector('h3').textContent, 'Runner'); assert.match(insp().querySelector('.insp-type').textContent, /^Mob • /);
-  assert.deepEqual([...insp().querySelectorAll('.insp-actions button')].map((b) => b.textContent), ['Modify with Minion', 'Expand', 'Focus']);
+  assert.deepEqual([...insp().querySelectorAll('.insp-actions button')].map((b) => b.textContent), ['Modify with Minion', 'Expand', 'Send to chat', 'Focus']);
   assert.deepEqual(cam(), before, 'the camera stayed'); assert.equal(coderCalls(), n0); assert.equal(ev('mapState.focus'), null, 'a click is not Focus');
   assert.ok(node('runner').classList.contains('sel')); assert.ok(insp().style.left && insp().style.top, 'placed beside the card, in screen space');
 });

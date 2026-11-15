@@ -75,8 +75,10 @@
             <p class="muted">Say what you want in your own words, and attach what helps: a picture of how something should look, a log, a list of values. The coordinator asks what it needs, explains how things usually work in the game, and writes the plan on the right. Nothing runs until you press Launch.</p>
             <div id="chat-messages" class="chat-messages"></div>
             <div id="chat-drop" class="chat-drop">
+              <div id="chat-mention" class="chat-mention hidden" role="listbox" aria-label="Cards to point at"></div>
+              <div id="chat-points" class="chat-points" aria-live="polite"></div>
               <div id="chat-files" class="chat-files" aria-live="polite"></div>
-              <div class="chat-compose"><textarea id="chat-text" rows="3" placeholder="What do you want next? (drop or paste files here)" aria-label="Message"></textarea>
+              <div class="chat-compose"><textarea id="chat-text" rows="3" placeholder="What do you want next? Type @ to point at a card; drop or paste files here." aria-label="Message"></textarea>
                 <div class="chat-buttons"><button type="button" class="primary" id="chat-send">Send</button><button type="button" class="secondary" id="chat-attach" title="Pictures (PNG, JPEG, WebP, GIF), PDFs and text files. You can also drop or paste them.">Attach</button></div>
                 <input type="file" id="chat-file-input" class="hidden" multiple aria-label="Files to attach"></div>
             </div>

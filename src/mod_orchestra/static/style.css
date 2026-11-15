@@ -401,3 +401,12 @@ button.danger{background:linear-gradient(135deg,#ff5c7a,#c2304f);color:#fff;bord
 .tab.has-news::after{content:"";display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);vertical-align:middle}
 
 .chat-msg.system{align-self:stretch;max-width:100%}
+/* pointing at cards from the chat */
+.chat-drop{position:relative}
+.chat-points{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin-bottom:4px}.chat-points:empty{display:none}.chat-points.sent{margin:6px 0 0}
+button.card-chip{display:inline-flex;align-items:baseline;gap:6px;margin:0;padding:2px 9px;font:12px var(--font);letter-spacing:0;text-transform:none;color:var(--text);background:rgba(var(--cyan-rgb),.1);border:1px solid rgba(var(--cyan-rgb),.45);border-radius:10px;box-shadow:none;clip-path:none}
+button.card-chip:hover{border-color:var(--accent)}button.card-chip small{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}button.card-chip.custom{border-color:var(--purple)}button.card-chip.mob{border-color:var(--warn)}
+.chat-mention{position:absolute;left:0;bottom:100%;z-index:5;width:min(360px,100%);max-height:260px;overflow:auto;margin-bottom:4px;padding:4px;background:linear-gradient(180deg,#102442,#0b1830);border:1px solid rgba(var(--cyan-rgb),.5);border-radius:var(--radius-s);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+button.mention-row{display:flex;flex-direction:column;align-items:flex-start;width:100%;margin:0;padding:5px 8px;text-align:left;background:none;border:0;box-shadow:none;clip-path:none;border-radius:2px}
+button.mention-row.on,button.mention-row:hover{background:rgba(var(--cyan-rgb),.14)}
+

@@ -628,6 +628,7 @@ const MapView = (() => {
     const acts = el("div", null, "actions insp-actions"); box.append(acts);
     if (canChange) { const m = btn("Modify with Minion", () => { S.insp.full = true; S.insp.modify = true; buildInspector(); }, "primary"); m.title = "Write the change you want; nothing is sent until you press Send"; acts.append(m); }
     acts.append(btn(full ? "Collapse" : "Expand", () => { S.insp.full = !full; S.insp.modify = false; buildInspector(); }, "secondary"));
+    const toChat = btn("Send to chat", () => chatPoint([cid]), "secondary"); toChat.title = "Point at this card in the chat (@" + cid + ") and say what you want"; acts.append(toChat);
     if (!(S.focus && S.focus.id === cid)) acts.append(btn("Focus", () => enterFocus(cid), "secondary"));
     if (!full) return;
     box.append(el("div", c.id, "fid"));
@@ -743,6 +744,7 @@ const MapView = (() => {
       if (await confirmBox(`Task ${out.task} created for ${ids.length} card(s). Start the coder now?`)) { await api(`/api/project/${p.id}/dispatch`, { task: out.task }); toast("Coder started on the change.", "ok"); }
       S.picked.clear(); S.multi = false; qs("map-multi").classList.remove("active"); side.classList.add("hidden"); await openProject(p.id);
     }, "primary"));
+    acts.append(btn(ids.length ? `Send to chat (${ids.length})` : "Send to chat", () => { if (!ids.length) throw new Error("Click at least one card on the map first"); chatPoint(ids); }, "secondary"));
     acts.append(btn("Clear", () => { S.picked.clear(); invalidate(); openMulti(); }, "secondary"));
     side.append(acts);
   }

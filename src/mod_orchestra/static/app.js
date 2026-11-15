@@ -498,6 +498,52 @@ function chatNews(p, messages) {
   for (const m of notes.filter((n) => n.id > seen)) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
   if (away) tab.classList.add("has-news");
 }
+// ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
+const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
+const mentionCards = { pid: null, at: 0, list: [] };
+async function chatCards(pid) {
+  if (mentionCards.pid === pid && Date.now() - mentionCards.at < 20000) return mentionCards.list;
+  let cards = []; try { cards = (await api(`/api/project/${pid}/map`)).cards || []; } catch (e) { return mentionCards.pid === pid ? mentionCards.list : []; }
+  Object.assign(mentionCards, { pid, at: Date.now(), list: cards.filter((c) => c.kind !== "tab") }); return mentionCards.list;
+}
+const titleSlug = (c) => String(c.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+function resolveMention(cards, word) { word = word.replace(/[:\-]+$/, ""); const w = word.toLowerCase(); return cards.find((c) => c.id === word) || cards.find((c) => c.id.toLowerCase() === w) || cards.find((c) => titleSlug(c) === w) || null; }
+function mentionsIn(cards, text) { const out = [], seen = new Set(); for (const m of String(text || "").matchAll(MENTION)) { const c = resolveMention(cards, m[2]); if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); } } return out; }
+// Under the box, while typing: what the message points at, so the user sees it was understood before sending.
+async function renderChatPoints() {
+  const box = qs("chat-points"), pid = selected, text = qs("chat-text").value; if (!text.includes("@")) { box.replaceChildren(); return; }
+  const cards = await chatCards(pid); if (selected !== pid || qs("chat-text").value !== text) return;
+  const found = mentionsIn(cards, text); box.replaceChildren(); if (!found.length) return;
+  box.append(el("span", "Pointing at:", "muted")); for (const c of found) box.append(cardChip(pid, c));
+}
+function cardChip(pid, c) { const b = btn("", () => { document.querySelector('[data-tab="map"]').click(); if (lastProject && lastProject.id === pid) setTimeout(() => openCard(lastProject, c.id), 0); }, "card-chip " + c.kind); b.append(el("span", c.title || c.id), el("small", c.kind === "custom" ? "feature" : c.kind)); b.title = `@${c.id} · show it on the map`; return b; }
+// The list that opens while an @word is being typed. Arrow keys move, Enter or Tab picks, Escape closes.
+const mentionPop = { open: false, items: [], at: 0, start: 0 };
+function closeMention() { mentionPop.open = false; qs("chat-mention").classList.add("hidden"); }
+async function updateMention() {
+  const ta = qs("chat-text"), pid = selected, upto = ta.value.slice(0, ta.selectionStart), m = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_:\-]*)$/.exec(upto);
+  if (!m) return closeMention();
+  const q = m[2].toLowerCase(), cards = await chatCards(pid); if (selected !== pid || ta.value.slice(0, ta.selectionStart) !== upto) return;
+  const rank = (c) => { const id = c.id.toLowerCase(), t = String(c.title || "").toLowerCase(); return (id.startsWith(q) || t.startsWith(q) ? 0 : t.split(/[\s_]+/).some((w) => w.startsWith(q)) ? 1 : id.includes(q) || t.includes(q) ? 2 : 9) + (c.kind === "vanilla" ? 3 : 0); };
+  const items = cards.map((c) => [rank(c), c]).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || (a[1].title || a[1].id).localeCompare(b[1].title || b[1].id)).slice(0, 8).map(([, c]) => c);
+  if (!items.length) return closeMention();
+  Object.assign(mentionPop, { open: true, items, at: 0, start: upto.length - m[2].length - 1 }); drawMention();
+}
+function drawMention() {
+  const box = qs("chat-mention"); box.replaceChildren(); box.classList.remove("hidden");
+  mentionPop.items.forEach((c, i) => { const row = btn("", () => pickMention(i), "mention-row" + (i === mentionPop.at ? " on" : "")); row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(i === mentionPop.at)); row.append(el("span", c.title || c.id, "r-title"), el("span", `@${c.id} · ${c.kind === "custom" ? "feature" : c.kind}`, "r-where")); box.append(row); });
+}
+function pickMention(i) {
+  const ta = qs("chat-text"), c = mentionPop.items[i]; if (!c) return; const end = ta.selectionStart, before = ta.value.slice(0, mentionPop.start), after = ta.value.slice(end), word = `@${c.id} `;
+  ta.value = before + word + after.replace(/^ /, ""); ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + word.length; closeMention(); renderChatPoints();
+}
+// From anywhere in the page (the map's Send to chat): put the cards in the message being written and bring the chat forward.
+function chatPoint(ids) {
+  const ta = qs("chat-text"), have = new Set([...ta.value.matchAll(MENTION)].map((m) => m[2])), add = ids.filter((id) => !have.has(id)).map((id) => "@" + id);
+  if (add.length) ta.value = (ta.value && !/\s$/.test(ta.value) ? ta.value + " " : ta.value) + add.join(" ") + " ";
+  document.querySelector('.tab[data-tab="chat"]').click(); ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; renderChatPoints();
+  toast(ids.length === 1 ? "Added to your message. Say what you want from it." : `${ids.length} cards added to your message. Say what you want from them.`, "ok");
+}
 const fileSize = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
 // One attached file as the chat shows it: a picture is a thumbnail that opens large; anything else is a named chip that downloads it.
 function chatFileChip(pid, f, onRemove) {
@@ -539,6 +585,7 @@ async function renderChat(p) {
   box.replaceChildren();
   if (!v.messages.length) box.append(el("div", "No messages yet. Try: what you want to add, change or see in the game.", "placeholder-note"));
   for (const m of v.messages) { const d = el("div", null, `chat-msg ${m.role}`); d.append(el("div", m.role === "user" ? "You" : m.role === "coordinator" ? "Coordinator" : "Tool", "chat-who"), el("div", m.text, "chat-text"));
+    const pointed = (m.meta && m.meta.cards) || []; if (pointed.length) { const row = el("div", null, "chat-points sent"); for (const c of pointed) row.append(cardChip(p.id, c)); d.append(row); }
     const sent = (m.meta && m.meta.attachments) || []; if (sent.length) { const row = el("div", null, "chat-files sent"); for (const f of sent) row.append(chatFileChip(p.id, f)); d.append(row); }
     box.append(d); }
   if (v.thinking) box.append(el("div", "Coordinator is thinking…", "chat-msg thinking"));
@@ -577,9 +624,19 @@ qs("chat-send").onclick = async () => {
   const ta = qs("chat-text"); const text = ta.value.trim(); if (chatState.busy) { toast("Wait for the files to finish attaching", "bad"); return; }
   const files = chatState.files.map((f) => f.id); if (!text && !files.length) { toast("Say something first", "bad"); return; }
   const p = { id: selected };
-  try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
+  try { const out = await api(`/api/project/${p.id}/chat`, files.length ? { text, attachments: files } : { text }); ta.value = ""; closeMention(); renderChatPoints(); chatState.files = chatState.files.filter((f) => !files.includes(f.id)); renderChatFiles(); await api(`/api/project/${p.id}/dispatch`, { task: out.task }); await chatRefresh(p.id); } catch (e) { toast(e.message, "bad"); }
 };
-qs("chat-text").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click(); });
+qs("chat-text").addEventListener("keydown", (ev) => {
+  if (mentionPop.open) {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const n = mentionPop.items.length; mentionPop.at = (mentionPop.at + (ev.key === "ArrowDown" ? 1 : n - 1)) % n; drawMention(); return; }
+    if ((ev.key === "Enter" && !ev.ctrlKey && !ev.metaKey) || ev.key === "Tab") { ev.preventDefault(); pickMention(mentionPop.at); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); closeMention(); return; }
+  }
+  if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) qs("chat-send").click();
+});
+qs("chat-text").addEventListener("input", () => { updateMention(); renderChatPoints(); });
+qs("chat-text").addEventListener("click", () => updateMention());
+qs("chat-text").addEventListener("blur", () => setTimeout(() => { if (!qs("chat-mention").contains(document.activeElement)) closeMention(); }, 150));
 document.querySelector('.tab[data-tab="chat"]').addEventListener("click", (ev) => ev.currentTarget.classList.remove("has-news"));
 qs("chat-attach").onclick = () => qs("chat-file-input").click();
 qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
