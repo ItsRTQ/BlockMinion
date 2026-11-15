@@ -19,7 +19,7 @@ An **early working foundation**, not an autonomous arbitrary-mod generator. Pyth
 3. **Researcher** looks up version-matched official Fabric/GeckoLib/Blockbench references; records links, exact versions, uncertainty.
 4. **Planner** chooses working vertical slices, dependencies and explicit acceptance criteria.
 5. **Scrum Master** outputs independent task contracts and a dependency DAG.
-6. **Coordinator** delegates only relevant workers; avoid spawning everyone for every task.
+6. **Coordinator** talks with the user in the chat and proposes the plan; it starts no work and no other agent. The controller dispatches tasks, one relevant worker each.
 7. **Coder/Designer/World Builder** implement scoped changes. No arbitrary external scripts or downloaded MCPs without user consent.
 8. **Debugger/QA** capture concrete logs, validate behavior, attach reproducible evidence.
 9. **Footprint** is SQLite, not a story an agent can rewrite. Use `craftctl status`, `craftctl footprint` and events.
@@ -28,7 +28,7 @@ An **early working foundation**, not an autonomous arbitrary-mod generator. Pyth
 
 Subagents: `.claude/agents/<role>.md` (12, one per role in `capabilities.py`), each preloading its skill from `.claude/skills/<role>/SKILL.md`. `.claude/settings.json` denies USER-ONLY `craftctl` commands and `git push`; `.claude/hooks/guard.py` is the PreToolUse backstop. The MCP server is registered in `.mcp.json`.
 
-- `coordinator` routes tasks, enforces gates and handoff expectations.
+- `coordinator` talks with the user, agrees on the goal and proposes the plan (read-only; starts nothing).
 - `interpreter` defines the spec, preserving user intent.
 - `planner` makes architecture and vertical slices.
 - `researcher` collects source-grounded versioned knowledge.

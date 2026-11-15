@@ -79,6 +79,24 @@ class AgentFiles(unittest.TestCase):
                     for word in ("approve", "decide", "build_project", "evidence", "delete"):
                         self.assertNotIn(word, tool.removeprefix("mcp__minecraft-orchestra__orchestra_diagnose_"))
 
+    def test_the_coordinator_cannot_start_another_agent(self):
+        # The coordinator is the chat: it talks and proposes a plan, and every step of that plan waits for the user's click.
+        # With the Agent tool a chat turn could start a worker that edits the project before Launch, outside the task board
+        # (no task, no lease, no handoff). No role needs that tool: the controller dispatches tasks, agents do not.
+        shipped = ROOT / "src/mod_orchestra/resources/claude/agents"
+        for folder in (AGENTS, shipped):
+            for path in folder.glob("*.md"):
+                tools = [t.strip() for t in frontmatter(path)["tools"].split(",")]
+                self.assertNotIn("Agent", tools, f"{path}: no role may start another agent"); self.assertNotIn("Task", tools, path)
+            coordinator = frontmatter(folder / "coordinator.md")
+            self.assertFalse(re.search(r"\b(Edit|Write|Bash|PowerShell)\b", coordinator["tools"]), "the coordinator only reads")
+            body = (folder / "coordinator.md").read_text(encoding="utf8")
+            self.assertNotIn("delegate to", body); self.assertIn("python -m mod_orchestra.cli", body)
+            self.assertEqual(body, (shipped / "coordinator.md").read_text(encoding="utf8"), "both copies of the coordinator are the same")
+            skill = (folder.parent / "skills/coordinator/SKILL.md").read_text(encoding="utf8")
+            self.assertNotIn("Delegation envelopes", skill)
+            self.assertEqual(skill, (shipped.parent / "skills/coordinator/SKILL.md").read_text(encoding="utf8"))
+
     def test_only_coder_class_roles_can_edit(self):
         editors = {p.stem for p in AGENTS.glob("*.md") if re.search(r"\b(Edit|Write)\b", frontmatter(p)["tools"])}
         self.assertEqual(editors, {"coder", "designer", "world-builder", "debugger", "researcher"})
