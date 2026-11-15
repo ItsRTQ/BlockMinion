@@ -45,7 +45,7 @@ test('the news marks the Chat tab when the user is elsewhere, and looking clears
   page.click(page.$('.tab[data-tab="tasks"]'));
   await show(view([step(1, 'done'), step(2, 'stopped', {retry: T(2), error: 'gradle build failed', can_skip: true}), step(3, 'waiting', {waiting_for: [2]})], 'stopped',
     [note(5, 'Step 1 of 3 finished', 'done', 1), note(6, 'Step 2 of 3 stopped: gradle build failed\nThe steps after it wait.', 'stopped', 2)]));
-  assert.ok(tab.classList.contains('has-news')); assert.match(page.toasts(), /Step 2 of 3 stopped: gradle build failed/);
+  assert.ok(tab.classList.contains('has-news')); assert.match(page.$('#chat-bubble').textContent, /Step 2 of 3 stopped: gradle build failed/, 'away from the chat, its button says it');
   page.click(tab); assert.ok(!tab.classList.contains('has-news'));
 });
 

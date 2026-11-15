@@ -17,6 +17,8 @@
   selection of cards). The coordinator is told what those cards are and where their files are, so it starts there instead of searching the mod.
 - **The chat at hand from every tab**: a Chat button in the corner opens a small panel with the same conversation and message box, so you can
   write to the coordinator while you look at the map, the tasks or anything else.
+- **Chat, the rest**: Skip a step of the plan that stopped; point at a whole folder of the map and at a task that stopped (Ask the coordinator);
+  drag a card, a folder, a mob, an item or a task onto the chat; the chat button shows when someone is working and says the news itself.
 
 ## v0.14.0-prealpha — 2026-11-12
 

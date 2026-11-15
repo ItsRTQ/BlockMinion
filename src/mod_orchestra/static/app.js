@@ -495,11 +495,14 @@ function planFooter(p, prog) {
   return box;
 }
 // What the plan said since the user last looked: a toast and a mark on the Chat tab when they are somewhere else.
-function chatNews(p, messages) {
+function chatNews(p, v) {
+  const messages = v.messages, prog = v.plan && v.plan.progress;
   const notes = messages.filter((m) => m.meta && m.meta.plan_note), last = notes.length ? notes[notes.length - 1].id : 0, seen = chatState.seen[p.id];
   chatState.seen[p.id] = last; if (seen === undefined || last <= seen) return;
   const tab = document.querySelector('.tab[data-tab="chat"]'), away = (!tab.classList.contains("active") && qs("chat-dock").classList.contains("hidden")) || !isProjectView();
-  for (const m of notes.filter((n) => n.id > seen)) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
+  const fresh = notes.filter((n) => n.id > seen), fabUp = !qs("chat-fab").classList.contains("hidden") && isProjectView();
+  if (fabUp) { const m = fresh[fresh.length - 1]; sayBubble(p, m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok", prog); }   // the button says it
+  else for (const m of fresh) toast(m.text.split("\n")[0], m.meta.plan_state === "stopped" ? "bad" : "ok");
   if (away) { tab.classList.add("has-news"); qs("chat-fab").classList.add("has-news"); }
 }
 // ---- the chat at hand from every tab: one conversation and one message box, shown in the Chat tab or in the small panel ----
@@ -509,11 +512,25 @@ function syncDock() {
   const target = want ? qs("chat-dock-slot") : document.querySelector(".chat-left"), box = qs("chat-messages");
   if (box.parentNode !== target) { target.append(box, qs("chat-drop")); box.scrollTop = box.scrollHeight; }
   qs("chat-dock").classList.toggle("hidden", !want); qs("chat-fab").classList.toggle("hidden", onChat || want || qs("chat-send").disabled);
+  if (qs("chat-fab").classList.contains("hidden")) hideBubble();
   if (want || onChat) for (const n of [qs("chat-fab"), document.querySelector('.tab[data-tab="chat"]')]) n.classList.remove("has-news");
   document.body.classList.toggle("dock-open", want); document.body.classList.toggle("fab-on", !qs("chat-fab").classList.contains("hidden"));   // toasts keep clear of both
   if (typeof MapView !== "undefined") MapView.invalidate();   // the map's note steps out from under the panel
 }
-function openDock(focus) { chatState.dock = true; syncDock(); if (focus) qs("chat-text").focus(); }
+function openDock(focus) { chatState.dock = true; hideBubble(); syncDock(); if (focus) qs("chat-text").focus(); }
+// The button has a little life: it shows what the coordinator or a worker is doing, and says the news itself instead of a toast.
+function fabState(v) { const prog = v.plan && v.plan.progress; qs("chat-fab").dataset.state = v.thinking ? "thinking" : prog && (prog.state === "running" || prog.busy) ? "working" : ""; }
+let bubbleTimer = 0;
+function hideBubble() { clearTimeout(bubbleTimer); qs("chat-bubble").classList.add("hidden"); document.body.classList.remove("bubble-on"); }
+function sayBubble(p, text, tone, prog) {
+  const box = qs("chat-bubble"), fab = qs("chat-fab"); box.replaceChildren(); box.className = "chat-bubble " + (tone || "");
+  const words = btn(text, () => openDock(true), "bubble-text"); words.title = "Open the chat"; box.append(words);
+  const ready = prog && !prog.busy && prog.steps.find((s) => s.status === "ready");
+  if (ready && tone !== "bad") box.append(btn(`Start step ${ready.step}`, async () => { hideBubble(); await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
+  const x = btn("×", () => hideBubble(), "tag-x"); x.setAttribute("aria-label", "Dismiss"); box.append(x);
+  fab.classList.remove("hop"); void fab.offsetWidth; fab.classList.add("hop");   // one small hop to catch the eye
+  document.body.classList.add("bubble-on"); clearTimeout(bubbleTimer); bubbleTimer = setTimeout(hideBubble, 12000);
+}
 function dockStatus(p, v) {
   const box = qs("chat-dock-status"), plan = v.plan, prog = plan && plan.progress; box.replaceChildren();
   if (v.thinking) return box.append("thinking…");
@@ -652,7 +669,7 @@ async function renderChat(p) {
   qs("chat-send").disabled = false; syncDock();
   if (chatState.pid !== p.id) { chatState.pid = p.id; chatState.files = []; chatState.busy = 0; chatState.tasks = []; renderChatFiles(); renderChatPoints(); }
   let v; try { v = await api(`/api/project/${p.id}/chat`); } catch (e) { box.replaceChildren(el("div", e.message, "placeholder-note")); return; }
-  chatState.limits = v.file_limits || chatState.limits; chatNews(p, v.messages); dockStatus(p, v);
+  chatState.limits = v.file_limits || chatState.limits; fabState(v); chatNews(p, v); dockStatus(p, v);
   if (!chatState.busy && v.waiting_files) { chatState.files = v.waiting_files; renderChatFiles(); }   // files attached and not sent yet survive a reload
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.replaceChildren();
