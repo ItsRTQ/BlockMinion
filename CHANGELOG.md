@@ -14,6 +14,11 @@
   terminal) and, under "A model per role", one for each role that runs tasks: a lighter one where the work is talking and planning, a
   stronger one where it is building. Empty boxes change nothing: with none set, a run is started exactly as before.
 - **A run is given its own role alone**: the eleven other roles are no longer described to every agent.
+- **The coder loads the skills its task touches**: a feature or a change used to carry all fifteen of the coder's skills, most of its prompt.
+  Now it carries the core (how the coder works, GameTests, events) plus the ones the request talks about, and lists the others by name: the
+  coder reads any of them in full with one tool call (`orchestra_skill`) before writing that part. On 25 written-out requests the coder's
+  role text went from about 14.7k to about 4.9k tokens on average (characters ÷ 4, not telemetry) with no needed skill missed. Tasks the tool
+  writes itself (wiring a model, registering content) and every other role are unchanged.
 
 ## v0.15.0-prealpha — 2026-11-15
 

@@ -34,6 +34,7 @@ TOOLS = [
     {"name": "orchestra_project_status", "description": "Read project and task status", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_diagnose_build", "description": "Classify recent build log using bounded error patterns (hypotheses only)", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
     {"name": "orchestra_logs_tail", "description": "Read the tail of the local project's latest build log", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
+    {"name": "orchestra_skill", "description": "Read one of the tool's how-to skills in full (a recipe for one kind of Fabric work, with the exact APIs). Call it before writing a part your loaded skills do not cover.", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"], "additionalProperties": False}},
     {"name": "orchestra_knowledge_search", "description": "Read-only Markdown KB search, version-filtered", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "profile": {"type": "string"}}, "required": ["query"], "additionalProperties": False}},
     {"name": "orchestra_capabilities", "description": "List the declared specialist roles and capabilities", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "orchestra_next_tasks", "description": "Read ready tasks and role suggestions", "inputSchema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"], "additionalProperties": False}},
@@ -92,6 +93,13 @@ def invoke(store: Store, name: str, a: dict) -> object:
         return project_diagnose(store, a["project"])
     if name == "orchestra_logs_tail":
         return tail_log(store, a["project"], 80)
+    if name == "orchestra_skill":
+        from .skillset import CORE, TOPICS, skill_text
+        from .validation import InputError
+        text = skill_text(str(a["name"]).strip().lower())
+        if text is None:
+            raise InputError("no skill " + repr(str(a["name"])[:40]) + "; skills: " + ", ".join(list(CORE) + list(TOPICS)))
+        return {"name": str(a["name"]).strip().lower(), "skill": text}
     if name == "orchestra_knowledge_search":
         return kb_search(a["query"], a.get("profile"))
     if name == "orchestra_capabilities":

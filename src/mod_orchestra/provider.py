@@ -43,6 +43,7 @@ class TaskEnvelope:
     workspace: Path
     packet: str                 # bounded handoff packet from capabilities.handoff (already redacted)
     extra_instructions: str = ""
+    skills: list | None = None  # the skills this run loads (skillset.for_task); None: the role's own list
 
 
 @dataclass
@@ -312,9 +313,10 @@ class FakeProvider(AgentProvider):
         return RunResult(self.exit_code, self.duration_s, log_path, self.reply, handoff, errors)
 
 
-def _load_agent_definitions(only: str | None = None) -> dict:
+def _load_agent_definitions(only: str | None = None, skills: list | None = None) -> dict:
     """Agent JSON for `claude --agents`, with each role's skill inlined (no .claude/ dir in the workspace).
-    `only` keeps one role: a run is one role, and the other eleven definitions are text it pays for and never uses."""
+    `only` keeps one role: a run is one role, and the other eleven definitions are text it pays for and never uses.
+    `skills` (with `only`) loads those of the role's skills instead of all of them and lists the rest by name."""
     agents = {}
     for path in sorted((RESOURCES / "agents").glob("*.md")):
         if only is not None and path.stem != only:
@@ -328,10 +330,17 @@ def _load_agent_definitions(only: str | None = None) -> dict:
         name = fm.get("name") or path.stem
         prompt = body.strip()
         preload = [l.strip()[2:] for l in head.splitlines() if l.strip().startswith("- ")] or [name]
+        later = []
+        if only is not None and skills is not None:   # a run with a known subject: the role's skills it touches, in the role's order
+            later = [sk for sk in preload if sk not in skills]
+            preload = [sk for sk in preload if sk in skills]
         for sk in preload:
             skill = RESOURCES / "skills" / sk / "SKILL.md"
             if skill.is_file():
                 prompt += "\n\n# Preloaded skill: " + sk + "\n" + skill.read_text(encoding="utf8")
+        if later:
+            from .skillset import later_block
+            prompt += later_block(later)
         entry = {"description": fm.get("description", name), "prompt": prompt}
         if fm.get("tools"):
             entry["tools"] = [t.strip() for t in fm["tools"].split(",") if t.strip()]
@@ -370,7 +379,7 @@ class ClaudeCodeProvider(AgentProvider):
 
     def _materialize(self, tmp: Path, envelope: TaskEnvelope | None = None) -> tuple[Path, Path, Path]:
         only = envelope.role if envelope is not None else None   # the run's own role, alone: no other role is described to it
-        defs = _load_agent_definitions(only)
+        defs = _load_agent_definitions(only, envelope.skills if envelope is not None else None)
         if only is not None and only not in defs:
             raise StateError(f"unknown role {only!r}; known: {', '.join(sorted(_load_agent_definitions()))}")
         agents = tmp / "agents.json"; agents.write_text(json.dumps(defs), encoding="utf8")
@@ -427,12 +436,11 @@ class ClaudeCodeProvider(AgentProvider):
         return RunResult(record["exit_code"], record["duration_s"], log_path, raw, handoff, errors, session_id, cost, turns, record["killed"])
 
 
-def _role_prompt(role: str) -> str:
+def _role_prompt(role: str, skills: list | None = None) -> str:
     """The role's agent definition with its skills inlined, as plain prompt text (for runtimes without `--agents`)."""
-    agents = _load_agent_definitions()
-    entry = agents.get(role)
+    entry = _load_agent_definitions(role, skills).get(role)
     if entry is None:
-        raise StateError(f"unknown role {role!r}; known: {', '.join(sorted(agents))}")
+        raise StateError(f"unknown role {role!r}; known: {', '.join(sorted(_load_agent_definitions()))}")
     return f"# You are the `{role}` worker\n{entry['description']}\n\n{entry['prompt']}"
 
 
@@ -476,7 +484,7 @@ class GeminiCliProvider(AgentProvider):
     def run(self, envelope: TaskEnvelope, log_path: Path) -> RunResult:
         if not self.binary:
             raise StateError("Gemini CLI (`gemini`) not found on PATH. Install Gemini CLI or set CRAFTCTL_GEMINI_BIN.")
-        prompt = _role_prompt(envelope.role) + "\n\n" + envelope.packet + "\n" + envelope.extra_instructions + HANDOFF_INSTRUCTIONS
+        prompt = _role_prompt(envelope.role, envelope.skills) + "\n\n" + envelope.packet + "\n" + envelope.extra_instructions + HANDOFF_INSTRUCTIONS
         settings_path = envelope.workspace / self.SETTINGS_REL
         previous = settings_path.read_text(encoding="utf8") if settings_path.is_file() else None
         try:
@@ -554,7 +562,7 @@ class AntigravityCliProvider(GeminiCliProvider):
     def run(self, envelope: TaskEnvelope, log_path: Path) -> RunResult:
         if not self.binary:
             raise StateError("Antigravity CLI (`agy`) not found on PATH. Install it from antigravity.google or set CRAFTCTL_AGY_BIN.")
-        prompt = _role_prompt(envelope.role) + "\n\n" + envelope.packet + "\n" + envelope.extra_instructions + HANDOFF_INSTRUCTIONS
+        prompt = _role_prompt(envelope.role, envelope.skills) + "\n\n" + envelope.packet + "\n" + envelope.extra_instructions + HANDOFF_INSTRUCTIONS
         settings_path = envelope.workspace / self.SETTINGS_REL
         task_path = envelope.workspace / self.TASK_REL
         previous = settings_path.read_text(encoding="utf8") if settings_path.is_file() else None
