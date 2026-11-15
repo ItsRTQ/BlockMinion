@@ -155,7 +155,7 @@ async function renderProject(p) {
     const st = qs("p-status"); st.textContent = p.status.replace(/_/g, " "); st.className = "pill " + (p.status === "GAME_VERIFIED" ? "ok" : p.status === "BUILD_FAILED" ? "bad" : p.status.startsWith("BUILD_PASSED") ? "info" : "warn");
     qs("p-cost").textContent = p.guidance.runs ? `${p.guidance.runs} agent run${p.guidance.runs === 1 ? "" : "s"} · ${fmtMoney(p.guidance.cost_usd)} spent` : "no agent runs yet";
     const pending = [];
-    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["chat", renderChat], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
+    for (const [name, fn] of [["stepper", renderStepper], ["now", renderNow], ["chat", renderChat], ["spec", renderSpec], ["map", renderMap], ["mobs", renderGallery], ["items", renderFeatures], ["made", renderMade], ["worldgen", renderWorldgen], ["runs", renderRuns], ["events", renderEvents], ["verification", renderVerify], ["tasks", renderTasks]]) {
       try { const r = fn(name === "stepper" ? p.guidance : p); if (r && r.catch) pending.push(r.catch(e => toast(`${name}: ${e.message}`, "bad"))); } catch (e) { toast(`${name} failed to render: ${e.message} (try a hard reload: Ctrl+F5)`, "bad"); }
     }
     await Promise.allSettled(pending);
@@ -459,6 +459,42 @@ async function renderGallery(p) {
   }
 }
 
+// ---------- Other content: what coders made beyond the spec, and what is in the code and tracked by nothing ----------
+const MADE_KIND = { projectile: "projectile", effect: "effect", particle: "particle", entity: "entity", gui: "screen", sound: "sound", made_item: "item", made_block: "block", content: "content" };
+async function renderMade(p) {
+  const list = qs("made-list"); if (!list) return;
+  const generated = ["SOURCE_GENERATED_UNVERIFIED", "BUILD_PASSED_GAME_UNTESTED", "BUILD_FAILED", "GAME_VERIFIED"].includes(p.status);
+  qs("made-scan").disabled = !generated; if (!generated) { list.replaceChildren(el("p", "Nothing yet: the project has no source.", "muted")); qs("made-found").replaceChildren(); return; }
+  let v; try { v = await api(`/api/project/${p.id}/made`); } catch (e) { list.replaceChildren(el("p", e.message, "muted")); return; }
+  list.replaceChildren();
+  if (!v.entries.length) list.append(el("p", "No coder has declared content of its own yet. If something exists in the game and is not listed anywhere, look in the code below.", "muted"));
+  for (const e of v.entries) {
+    const row = el("div", null, "made-row"); row.dataset.id = e.id; const name = el("div", null, "fname"); name.append(document.createTextNode(e.id.replace(/_/g, " ")), el("span", MADE_KIND[e.kind] || e.kind, "fk")); dragToChat(name, { card: e.id });
+    const mid = el("div"); mid.append(name, el("small", `${p.id}:${e.id} · ` + (e.source === "found" ? "found in the code, adopted by you" : "declared by the coder") + (e.card ? ` · made by ${e.card}` : " · no feature recorded")));
+    if (e.what) mid.append(el("small", e.what));
+    const right = el("div", null, "actions");
+    right.append(btn("Show on the map", async () => { document.querySelector('[data-tab="map"]').click(); await renderMap(p); openCard(p, e.id); }, "mini secondary"), btn("Send to chat", () => chatPoint([e.id]), "mini secondary"));
+    row.append(mid, right); list.append(row);
+  }
+  if (v.ignored.length) { const ig = el("div", "Ignored when looking in the code: ", "muted"); for (const id of v.ignored) ig.append(btn(id + " ↺", async () => { await api(`/api/project/${p.id}/made-ignore`, { id, ignored: false }); await renderMade(p); }, "linklike")); list.append(ig); }
+  qs("made-scan").onclick = async () => {
+    const box = qs("made-found"); box.replaceChildren(el("p", "Reading the source…", "muted"));
+    let out; try { out = await api(`/api/project/${p.id}/made-scan`, {}); } catch (e) { box.replaceChildren(el("p", e.message, "bad")); return; }
+    box.replaceChildren(el("div", "Found in the code", "eyebrow"), el("p", `${out.registered} things are registered in the game by this mod's code: ${out.generated} come from the spec, ${out.tracked} are tracked here, ${out.untracked.length} ${out.untracked.length === 1 ? "is" : "are"} tracked by nothing.` + (out.untracked.length ? " Adopt what is part of the mod (it becomes a card), or ignore it." : ""), "muted"));
+    const features = (await chatCards(p.id)).filter((c) => c.kind === "custom");
+    for (const f of out.untracked) {
+      const row = el("div", null, "made-row found"); row.dataset.id = f.id; const name = el("div", null, "fname"); name.append(document.createTextNode(f.id), el("span", MADE_KIND[f.kind] || f.kind, "fk"));
+      const mid = el("div"); mid.append(name); for (const pl of f.places.slice(0, 4)) mid.append(el("small", `${pl.registry.toLowerCase().replace(/_/g, " ")} · ${pl.file}:${pl.line}`));
+      const kind = el("select"); kind.setAttribute("aria-label", "What it is"); for (const k of Object.keys(MADE_KIND)) { const o = el("option", MADE_KIND[k]); o.value = k; o.selected = k === f.kind; kind.append(o); }
+      const parent = el("select"); parent.setAttribute("aria-label", "The feature it belongs to"); const none = el("option", "no feature"); none.value = ""; parent.append(none);
+      for (const c of features) { const o = el("option", c.title || c.id); o.value = c.id; o.selected = c.id === f.feature; parent.append(o); }
+      const right = el("div", null, "actions");
+      right.append(kind, parent, btn("Adopt", async () => { await api(`/api/project/${p.id}/made-adopt`, { id: f.id, kind: kind.value, card: parent.value || null }); toast(`${f.id} is tracked now: it is a card of the map.`, "ok"); mentionCards.at = 0; row.remove(); await renderMade(p); await renderMap(p); }, "mini primary"),
+        btn("Ignore", async () => { await api(`/api/project/${p.id}/made-ignore`, { id: f.id }); row.remove(); await renderMade(p); }, "mini secondary"));
+      row.append(mid, right); box.append(row);
+    }
+  };
+}
 // ---------- Chat: the project's main panel. Left: the conversation with the coordinator. Right: the plan and Launch. ----------
 const chatState = { pid: null, polling: null, files: [], busy: 0, limits: null, seen: {}, dock: false, tasks: [] };
 const STEP_WORD = { done: "done", running: "running…", ready: "ready", waiting: "waiting", stopped: "stopped", skipped: "not started" };

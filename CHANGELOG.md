@@ -2,6 +2,9 @@
 
 ## Unreleased (on `dev` after merge)
 
+- **Content beyond the spec is tracked**: what a coder makes while building a feature (a projectile, an effect, a particle…) is a card of the map,
+  linked to its feature, and no longer disappears from the tool in a long project. Features → Other content also reads the code and lists what is
+  registered in the game and tracked by nothing, for you to adopt or ignore.
 - **Coders build one mechanic for many pieces**: every coder brief now says to build shared behaviour once and let each piece contribute only its
   values, to notice repetition, and never to change a sibling that was not asked about.
 - **Mod Map 2.0**: the map is a space you travel through. Folders are dots; zooming into one enters it (no double click), zooming out leaves it; a feature

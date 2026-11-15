@@ -130,6 +130,7 @@
           <button data-sub="mobs" class="subtab active">Mobs</button>
           <button data-sub="items" class="subtab">Items</button>
           <button data-sub="worldgen" class="subtab">World-Gen</button>
+          <button data-sub="made" class="subtab">Other content</button>
         </div>
         <div id="sub-mobs" class="subpane">
           <div class="card"><div class="card-head"><h3>Mobs</h3><p class="muted">Each mob starts as a placeholder. A designer agent authors the real model with the Blockbench MCP and renders previews here. Tell it what to change; your note goes into its next run.</p></div>
@@ -149,6 +150,13 @@
             <div class="features-toolbar"><input id="features-search" type="search" placeholder="Search items, blocks, sets… (name, id, kind)" autocomplete="off"><div id="features-pager" class="pager"></div></div>
             <div id="features-list"></div>
             <div id="sheet-box" class="hidden"><div class="muted" style="margin-top:12px">Latest contact sheet from the designer (click to enlarge):</div><div class="previews"><div class="preview" id="sheet-preview"><img id="sheet-img" alt="contact sheet"><small>sprites_contact_sheet.png</small></div></div></div>
+          </div>
+        </div>
+        <div id="sub-made" class="subpane hidden">
+          <div class="card"><div class="card-head"><h3>Other content</h3><p class="muted">What the mod has beyond the spec: things a coder made while building a feature (a projectile, an effect, a particle, a screen) and things found in the code. Each one is a card of the map: you can point at it from the chat and ask for changes like anything else.</p></div>
+            <div id="made-list"></div>
+            <div class="add-bar"><button type="button" class="secondary" id="made-scan" title="Reads the mod's source and lists what is registered in the game and tracked by nothing">Look in the code for untracked content</button></div>
+            <div id="made-found"></div>
           </div>
         </div>
         <div id="sub-worldgen" class="subpane hidden">

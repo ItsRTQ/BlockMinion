@@ -519,6 +519,13 @@ class Store:
         with self.tx() as con:
             self.event(con, pid, actor, kind, payload)
 
+    def events_of(self, pid: str, kind: str) -> list[dict]:
+        """Every event of one kind, oldest first, however long ago. `events` is a window on the newest 500: anything that
+        must still be found later (what a coder declared in the project's first run) is read through here."""
+        with self.tx() as con:
+            rows = con.execute("SELECT * FROM events WHERE project_id=? AND kind=? ORDER BY id", (pid, kind))
+            return [dict(r) | {"payload": json.loads(r["payload_json"])} for r in rows]
+
     def events(self, pid: str, limit: int = 50) -> list[dict]:
         with self.tx() as con:
             rows = con.execute("SELECT * FROM events WHERE project_id=? ORDER BY id DESC LIMIT ?", (pid, min(500, max(1, limit))))

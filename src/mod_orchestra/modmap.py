@@ -23,7 +23,7 @@ from .validation import InputError
 
 CARD_KINDS = ("item", "block", "mob", "material", "food", "tab", "custom")
 STATUSES = ("planned", "generated", "verified")
-EDGE_LABEL = {"crafts": "crafts", "smelts_into": "smelts into", "drops": "drops", "drops_on_death": "drops on death", "made_of": "made of", "repairs": "repairs", "uses": "uses", "related": "related"}
+EDGE_LABEL = {"makes": "makes", "crafts": "crafts", "smelts_into": "smelts into", "drops": "drops", "drops_on_death": "drops on death", "made_of": "made of", "repairs": "repairs", "uses": "uses", "related": "related"}
 
 
 def _local(ident: str, mod_id: str) -> str | None:
@@ -144,6 +144,12 @@ def mod_map(store: Store, pid: str) -> dict:
             edges.append({"from": src, "to": c["id"], "kind": "uses"})
         for dst in c["produces"]:
             edges.append({"from": c["id"], "to": dst, "kind": "related"})
+    from .made import cards as made_cards   # what coders made beyond the spec, and what was found in the code and adopted
+    extra, made_edges = made_cards(store, pid, cards)
+    for c in extra:
+        cards[c["id"]] = c
+    made_pairs = {(e["from"], e["to"]) for e in made_edges}
+    edges = [e for e in edges if not (e["kind"] == "related" and (e["from"], e["to"]) in made_pairs)] + made_edges   # "makes" says more than "related"
     tasks = {t["id"]: t for t in store.tasks(pid)}
     for c in cards.values():
         open_tasks = [t for t in tasks.values() if ((":CHANGE:" in t["id"] and c["id"] in t["id"].split(":CHANGE:")[1].rsplit(":", 1)[0].split("+")) or t["id"].endswith(":FEATURE:" + c["id"]) or t["id"].endswith(":MODEL:" + c["id"]) or t["id"].endswith(":ARMOR:" + c["id"]) or (":ARMOR3D:" + c["id"]) in t["id"]) and t["state"] not in ("DONE", "CANCELLED")]
@@ -364,6 +370,9 @@ def apply_card_handoff(store: Store, pid: str, task_id: str, handoff: dict, run_
     produces = [p for p in (card_obj.get("produces") or []) if isinstance(p, str)]
     if ":FEATURE:" in task_id:
         cid = task_id.split(":FEATURE:")[1]
+        if produces:
+            from .made import record_produces
+            record_produces(store, pid, cid, produces)
         return update_card(store, pid, cid, by=f"run:{run_id}", description=desc, files=files, produces=produces, status="generated", note="implemented by a coder run")
     if ":CHANGE:" in task_id:
         key = task_id.split(":CHANGE:")[1].rsplit(":", 1)[0]

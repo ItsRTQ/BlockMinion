@@ -165,6 +165,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "chat":
                         from .chat import view
                         return view(store, pid)
+                    if op == "made":
+                        from .made import view as made_view
+                        return made_view(store, pid)
                     if op == "projectiles":
                         from .model3d import projectile_assets
                         return projectile_assets(store, pid)
@@ -320,6 +323,15 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "chat-launch":
                         from .chat import launch
                         return launch(store, pid)
+                    if op == "made-adopt":   # something found in the code becomes tracked content (a card)
+                        from .made import adopt
+                        return adopt(store, pid, str(payload.get("id", "")), kind=payload.get("kind") or None, card=payload.get("card") or None, what=str(payload.get("what") or ""))
+                    if op == "made-ignore":
+                        from .made import ignore
+                        return ignore(store, pid, str(payload.get("id", "")), bool(payload.get("ignored", True)))
+                    if op == "made-scan":
+                        from .made import scan
+                        return scan(store, pid)
                     if op == "chat-skip":
                         from .chat import skip_step
                         return skip_step(store, pid, int(payload.get("step") or 0))
