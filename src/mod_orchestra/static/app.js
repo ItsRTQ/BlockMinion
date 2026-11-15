@@ -470,7 +470,10 @@ function planStepRun(p, run, busy) {
   box.append(el("span", STEP_WORD[run.status] || run.status, "plan-state " + run.status));
   if (run.tasks && run.tasks.length > 1) box.append(el("span", `${run.done_tasks} of ${run.tasks.length} parts`, "muted"));
   if (run.status === "ready") box.append(start(run.start, run.done_tasks ? "Start next part" : "Start"));
-  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry) box.append(start(run.retry, "Retry", true)); }
+  if (run.status === "stopped" || run.status === "skipped") { if (run.error) box.append(el("span", run.error, "plan-error")); if (run.retry && run.status === "stopped") box.append(start(run.retry, "Retry", true)); }
+  if (run.can_skip) box.append(btn("Skip", async () => {
+    if (!await confirmBox(`Go on without step ${run.step}? Its work is not done, and a later step may need what it was going to make. The steps after it stop waiting for it.`, { title: `Skip step ${run.step}`, ok: "Skip it", danger: true })) return;
+    await api(`/api/project/${p.id}/chat-skip`, { step: run.step }); await chatRefresh(p.id); }, "mini secondary"));
   if (run.status === "waiting") {
     if (run.waiting_for.length) box.append(el("span", "for step " + run.waiting_for.join(", "), "muted"));
     for (const b of run.blockers) { const row = el("span", null, "plan-blocker"); row.append(el("span", `needs first: ${b.title} (${b.state.toLowerCase().replace(/_/g, " ")})`, "muted")); if (b.start) row.append(start(b.start, "Start it")); if (b.retry) row.append(start(b.retry, "Retry it", true)); box.append(row); }

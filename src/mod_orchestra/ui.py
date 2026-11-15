@@ -320,6 +320,9 @@ def serve(store: Store, port: int = 8765) -> None:
                     if op == "chat-launch":
                         from .chat import launch
                         return launch(store, pid)
+                    if op == "chat-skip":
+                        from .chat import skip_step
+                        return skip_step(store, pid, int(payload.get("step") or 0))
                     if op == "chat-discard":
                         from .chat import discard
                         return discard(store, pid)

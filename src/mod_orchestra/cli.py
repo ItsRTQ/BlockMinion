@@ -115,7 +115,7 @@ def parser() -> argparse.ArgumentParser:
     a = sub.add_parser("change", help="USER-ONLY: a change request on one or several Map cards at once (one coder task with every card's context)")
     a.add_argument("project"); a.add_argument("--cards", nargs="+", required=True, help="card ids; the first is the main one"); a.add_argument("--request", required=True)
     a = sub.add_parser("chat", help="USER-ONLY: talk with the project's coordinator (one message; the reply arrives when its turn runs); --launch runs the plan on screen; --show prints the conversation and the plan")
-    a.add_argument("project"); a.add_argument("text", nargs="?", default=""); a.add_argument("--launch", action="store_true"); a.add_argument("--show", action="store_true"); a.add_argument("--discard", action="store_true")
+    a.add_argument("project"); a.add_argument("text", nargs="?", default=""); a.add_argument("--launch", action="store_true"); a.add_argument("--show", action="store_true"); a.add_argument("--discard", action="store_true"); a.add_argument("--skip", type=int, metavar="STEP", help="go on without a step of the launched plan that stopped or is ready")
     a.add_argument("--attach", nargs="+", type=Path, default=[], metavar="FILE", help="files to send with the message: pictures (PNG, JPEG, WebP, GIF), PDFs, text files")
     a = sub.add_parser("ask", help="USER-ONLY: say what you want in your own words; a planner turns it into an ordered plan of the existing requests (coder, designer), chained")
     a.add_argument("project"); a.add_argument("text")
@@ -383,6 +383,8 @@ def dispatch(args: argparse.Namespace) -> object:
             return _chat.launch(store, args.project)
         if args.discard:
             return _chat.discard(store, args.project)
+        if args.skip:
+            return _chat.skip_step(store, args.project, args.skip)
         if args.show or not (args.text or args.attach):
             return _chat.view(store, args.project)
         from . import attachments as _att
