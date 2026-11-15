@@ -333,7 +333,7 @@ async function renderGallery(p) {
   await loadArt(p.id);
   for (const m of p.gallery) {
     const card = el("div", null, "mob"); card.dataset.focus = "mob:" + m.mob;
-    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`));
+    const head = el("div", null, "mob-head"); head.append(el("h4", `${m.label} · ${m.behavior} · ${m.body_plan || "quadruped"}`)); dragToChat(head.firstChild, { card: m.mob });
     const meta = el("div", null, "mob-meta");
     meta.append(el("span", m.placeholder ? "placeholder model" : "designer model", "pill " + (m.placeholder ? "warn" : "purple")));
     if (m.task_state) meta.append(el("span", "MODEL task " + m.task_state, "pill " + (m.task_state === "DONE" ? "ok" : m.task_state === "FAILED" ? "bad" : "info")));
@@ -523,6 +523,20 @@ function dockStatus(p, v) {
     if (ready && !prog.busy) box.append(btn(`Start step ${ready.step}`, async () => { await api(`/api/project/${p.id}/dispatch`, { task: ready.start }); toast(`Step ${ready.step} is running.`, "ok"); await chatRefresh(p.id); }, "mini primary"));
   } else if (plan && plan.steps && plan.steps.length) box.append("a plan is ready: open the chat to launch it");
 }
+// ---- dragging things of the page onto the chat points at them (the same as Send to chat) ----
+const DRAG_TYPE = "application/x-blockminion";
+function dragToChat(node, what) {
+  node.draggable = true; node.classList.add("to-chat"); node.title = (node.title ? node.title + " · " : "") + "Drag onto the chat to point at it";
+  node.addEventListener("dragstart", (ev) => { ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify(what)); ev.dataTransfer.setData("text/plain", what.card ? "@" + what.card + " " : what.task.title); ev.dataTransfer.effectAllowed = "copy"; document.body.classList.add("dragging-to-chat"); });
+  node.addEventListener("dragend", () => document.body.classList.remove("dragging-to-chat"));
+}
+const carriesOurs = (ev) => !!(ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes(DRAG_TYPE));
+function dropOnChat(ev) {
+  if (!carriesOurs(ev)) return false; ev.preventDefault(); document.body.classList.remove("dragging-to-chat");
+  let what; try { what = JSON.parse(ev.dataTransfer.getData(DRAG_TYPE)); } catch (e) { return true; }
+  if (what && what.card) chatPoint([String(what.card)]); else if (what && what.task && what.task.id) chatPointTask(what.task, "This task stopped. What went wrong, and what do we do?");
+  return true;
+}
 // ---- pointing at cards: @card_id in the message (the server reads the same mentions from the text; chat.mentions) ----
 const MENTION = /(^|[^A-Za-z0-9_@./])@([A-Za-z0-9_][A-Za-z0-9_:\-]*)/g;
 const mentionCards = { pid: null, at: 0, list: [], folders: [] };
@@ -704,9 +718,14 @@ qs("chat-dock-open").onclick = () => document.querySelector('.tab[data-tab="chat
 qs("chat-attach").onclick = () => qs("chat-file-input").click();
 qs("chat-file-input").onchange = async () => { const input = qs("chat-file-input"), picked = [...input.files]; input.value = ""; await chatAttach(picked); };
 qs("chat-text").addEventListener("paste", (ev) => { const files = [...((ev.clipboardData && ev.clipboardData.files) || [])]; if (files.length) { ev.preventDefault(); chatAttach(files); } });   // a pasted screenshot becomes a file; pasted text stays text
-for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes("Files")) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+for (const type of ["dragenter", "dragover"]) qs("chat-drop").addEventListener(type, (ev) => { if (ev.dataTransfer && ([...(ev.dataTransfer.types || [])].includes("Files") || carriesOurs(ev))) { ev.preventDefault(); qs("chat-drop").classList.add("over"); } });
+for (const id of ["chat-fab", "chat-dock"]) {   // the button and the panel take what is dragged onto them too
+  for (const type of ["dragenter", "dragover"]) qs(id).addEventListener(type, (ev) => { if (carriesOurs(ev)) { ev.preventDefault(); qs(id).classList.add("over"); } });
+  qs(id).addEventListener("dragleave", (ev) => { if (!qs(id).contains(ev.relatedTarget)) qs(id).classList.remove("over"); });
+  qs(id).addEventListener("drop", (ev) => { qs(id).classList.remove("over"); dropOnChat(ev); });
+}
 qs("chat-drop").addEventListener("dragleave", (ev) => { if (!qs("chat-drop").contains(ev.relatedTarget)) qs("chat-drop").classList.remove("over"); });
-qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
+qs("chat-drop").addEventListener("drop", (ev) => { qs("chat-drop").classList.remove("over"); if (dropOnChat(ev)) { ev.stopPropagation(); return; } const files = ev.dataTransfer && ev.dataTransfer.files; if (files && files.length) { ev.preventDefault(); chatAttach(files); } });
 
 // ---------- Hold: how a 3D item sits in the hand, computed from three facts; previews before any build ----------
 function holdPanel(p, f) {
@@ -1053,6 +1072,7 @@ async function renderFeatures(p) {
     right.append(up, btn("Upload icon", () => up.click(), "mini secondary"), btn("Redesign", () => openSpritesDialog([f.identifier]), "mini secondary"), btn("Art", () => editArt(p.id, f.kind, f.identifier, () => openProject(p.id)), "mini secondary"));
     right.append(btn("Rename", async () => { const label = await promptBox("Display name for " + f.identifier + ":", f.label); if (!label || label === f.label) return; const out = await api(`/api/project/${p.id}/rename-feature`, { identifier: f.identifier, label }); toast(out.note || "Renamed.", "ok"); await openProject(p.id); }, "mini secondary"));
     if (!f.material) { if (!generated) right.append(btn("Remove", async () => { if (!await confirmBox(`Remove ${f.identifier} from the spec?`, { title: "Remove from the spec", ok: "Remove", danger: true })) return; await api(`/api/project/${p.id}/remove-feature`, { identifier: f.identifier }); toast("Removed.", "ok"); await openProject(p.id); }, "mini secondary")); else { const nb = btn("Remove", () => {}, "mini secondary"); nb.disabled = true; nb.title = "Removing content after generation needs a coder task (coming later)"; right.append(nb); } }
+    dragToChat(nm, { card: f.material || f.identifier });   // a piece of a set points at its set, which is the card
     row.append(img, mid, right); return row;
   };
   // Material sets: one card per material with the set-level actions once, pieces inside.
@@ -1274,7 +1294,7 @@ function renderVerify(p) {
 function renderTasks(p) {
   const t = qs("task-list"); t.replaceChildren();
   for (const task of p.tasks) {
-    const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state));
+    const row = el("div", null, "task"); row.append(el("span", task.state, "state " + task.state)); dragToChat(row.firstChild, { task: { id: task.id, title: task.title, state: task.state } });
     const mid = el("div"); mid.append(el("div", task.title, "ttl"), el("small", task.id + " · " + task.role + (task.last_error ? " · " + task.last_error : ""))); row.append(mid);
     const right = el("div");
     if (["FAILED", "WAITING_USER", "BLOCKED"].includes(task.state)) right.append(btn("Send to chat", () => chatPointTask(task, "This task stopped. What went wrong, and what do we do?"), "mini secondary"));

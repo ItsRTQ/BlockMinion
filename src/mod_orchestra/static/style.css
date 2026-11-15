@@ -423,4 +423,8 @@ button.mention-row.on,button.mention-row:hover{background:rgba(var(--cyan-rgb),.
 .task-chip{display:inline-flex;align-items:baseline;gap:6px;padding:2px 9px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg);font-size:12px;max-width:100%}
 .task-chip small{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.task-chip.failed,.task-chip.stopped,.task-chip.blocked{border-color:var(--bad)}
 body.fab-on .toast{bottom:76px}body.dock-open .toast{bottom:auto;top:20px}
+/* dragging things onto the chat */
+.to-chat{cursor:grab}body.dragging-to-chat .chat-fab{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--cyan-rgb),.25),var(--glow);transform:scale(1.08)}
+body.dragging-to-chat .chat-fab span::after{content:" · drop here"}body.dragging-to-chat .chat-dock,.chat-dock.over{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--cyan-rgb),.25),0 14px 40px rgba(0,0,0,.6)}
+.chat-fab.over{background:rgba(var(--cyan-rgb),.25)}
 

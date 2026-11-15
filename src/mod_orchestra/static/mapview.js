@@ -199,10 +199,16 @@ const MapView = (() => {
     g.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); closePops(); d = { sx: ev.clientX || 0, sy: ev.clientY || 0, moved: false }; if (g.setPointerCapture && ev.pointerId != null) try { g.setPointerCapture(ev.pointerId); } catch (e) { /* not a real pointer */ } });
     g.addEventListener("pointermove", (ev) => {
       if (!d || layer === "focus") return; const dx = (ev.clientX || 0) - d.sx, dy = (ev.clientY || 0) - d.sy;
-      if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; const n = S.lay.nodes.get(key); d.ox = n.x; d.oy = n.y; }
+      if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; const n = S.lay.nodes.get(key); d.ox = n.x; d.oy = n.y; dragging(true); }
       if (d.moved) { const n = S.lay.nodes.get(key); n.x = d.ox + dx / S.cam.k; n.y = d.oy + dy / S.cam.k; invalidate(); }
     });
-    g.addEventListener("pointerup", (ev) => { ev.stopPropagation(); const was = d; d = null; if (!was) return; if (was.moved) cardDropped(key, was); else cardClicked(id); });
+    g.addEventListener("pointercancel", () => { d = null; dragging(false); });
+    g.addEventListener("pointerup", (ev) => {
+      ev.stopPropagation(); const was = d; d = null; if (!was) return; if (!was.moved) return cardClicked(id);
+      dragging(false);
+      if (overChat(ev)) { const n = S.lay.nodes.get(key); n.x = was.ox; n.y = was.oy; invalidate(); return chatPoint([id]); }   // onto the chat: the card stays where it was
+      cardDropped(key, was);
+    });
     return g;
   }
   function fillCard(g, c, o) {
@@ -212,6 +218,9 @@ const MapView = (() => {
     const name = c.title || c.id, max = o.compact ? 17 : 24; ttl.textContent = name.length > max ? name.slice(0, max - 1) + "…" : name; sub.textContent = c.pieces ? `${c.pieces.length} pieces` : c.kind === "custom" ? c.status || "" : c.id;
     dot.setAttribute("class", "dot " + (c.status || "vanilla"));
   }
+  // Is the pointer over the chat (its panel or its button)? Dropping a card or a folder there points at it instead of moving it.
+  function overChat(ev) { const e = document.elementFromPoint ? document.elementFromPoint(ev.clientX || 0, ev.clientY || 0) : null; return !!(e && e.closest && e.closest("#chat-dock, #chat-fab")); }
+  function dragging(on) { document.body.classList.toggle("dragging-to-chat", on); }
   function cardClicked(id) {
     if (S.multi) return mapPick(id);
     S.sel = id; S.selFolder = null; S.insp = { type: "card", id, full: false }; buildInspector(); invalidate();
@@ -246,14 +255,21 @@ const MapView = (() => {
     g.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); closePops(); d = { sx: ev.clientX || 0, sy: ev.clientY || 0, moved: false }; if (g.setPointerCapture && ev.pointerId != null) try { g.setPointerCapture(ev.pointerId); } catch (e) { /* not a real pointer */ } });
     g.addEventListener("pointermove", (ev) => {
       if (!d) return; const dx = ((ev.clientX || 0) - d.sx) / S.cam.k, dy = ((ev.clientY || 0) - d.sy) / S.cam.k;
-      if (!d.moved && Math.abs(dx * S.cam.k) + Math.abs(dy * S.cam.k) > 4) { d.moved = true; d.last = { x: 0, y: 0 }; }
+      if (!d.moved && Math.abs(dx * S.cam.k) + Math.abs(dy * S.cam.k) > 4) { d.moved = true; d.last = { x: 0, y: 0 }; dragging(true); }
       if (d.moved) { shiftFolder(fid, dx - d.last.x, dy - d.last.y); d.last = { x: dx, y: dy }; invalidate(); }
     });
     g.addEventListener("pointerup", (ev) => {
       ev.stopPropagation(); const was = d; d = null; if (!was) return;
+      if (was.moved) dragging(false);
+      if (was.moved && overChat(ev)) {   // a folder onto the chat: its cards, and the folder goes back where it was
+        shiftFolder(fid, -was.last.x, -was.last.y); invalidate(); const ids = [];
+        for (const id of C.descendants(S.tree, fid)) { const f = S.tree.folders.get(id); for (const c of f.features.concat(f.refs)) if (!ids.includes(c)) ids.push(c); }
+        return ids.length ? chatPoint(ids.slice(0, 40)) : toast("That folder is empty.", "");
+      }
       if (was.moved) { const c = S.lay.folders.get(fid), pc = S.lay.folders.get(S.tree.folders.get(fid).parent); return setMeta(C.setFolderPos(S.meta, fid, c.x - pc.x, c.y - pc.y)); }
       selectFolder(fid);
     });
+    g.addEventListener("pointercancel", () => { d = null; dragging(false); });
     g.addEventListener("dblclick", (ev) => { ev.stopPropagation(); enterFolder(fid); });
     g.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); enterFolder(fid); } else if (ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); selectFolder(fid); } });
     return g;
