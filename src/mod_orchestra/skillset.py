@@ -39,11 +39,11 @@ TOPICS: dict[str, str] = {
     "gui": r"screens?|menus?|gui|inventor(?:y|ies)|slots?|windows?|containers?|backpacks?|chests?|stations?|interfaces?|buttons?|storage|workbench\w*",
     "client-ui": (r"keys?|keybind\w*|keyboard|hotkeys?|hud|overlays?|bars?|press(?:es|ed|ing)?|client\w*|packets?|network\w*|sync\w*|payloads?|render\w*|"
                   r"on[- ]screen|display(?:s|ed)?|crosshairs?|scopes?|zoom\w*|indicators?|mouse|scroll\w*|(?<!right[ -])click\w*"),
-    "commands": r"commands?|brigadier|permissions?|operators?|cheats?|/[a-z][a-z0-9_]{2,}(?![/.])",   # `/heal`, never a piece of a path
+    "commands": r"commands?|brigadier|permissions?|operators?|cheats?|(?<![./])/[a-z][a-z0-9_]{2,}(?![/.])",   # `/heal`, never a piece of a path
     "loot-and-trades": r"loot\w*|villagers?|trad(?:e|es|er|ers|ing)|dungeons?|chests?|drops?|fishing|barter\w*",
-    "polish": r"particles?|animated textures?|mcmeta|advancements?|achievements?|configs?|configurable|configuration|settings?|options?|glow\w*|trails?|sparkl\w*|smoke",
+    "polish": r"particles?|animated textures?|mcmeta|advancements?|achievements?|configs?|configurable|configuration|settings|options?|glow\w*|trails?|sparkl\w*|smoke",
     "data": (r"mana|levels?|cooldowns?|persist\w*|sav(?:e|es|ed|ing)|stor(?:e|es|ed|ing)|remember\w*|per[- ]player|attachments?|components?|counters?|"
-             r"stats?|xp|experience|energy|charg(?:e|es|ed|ing)|ammo\w*|durab\w*|nbt|progress\w*|unlock\w*|scores?|points?"),
+             r"stats?|xp|experience|energy|charg(?:e|es|ed|ing)|ammo\w*|durab\w*|nbt|progress\w*|unlock\w*|scores?|(?:skill|xp|mana|experience|stat|level|ability|talent) points?|points? (?:system|per|to spend)"),
     "effects": (r"effects?|potions?|buffs?|debuffs?|brew\w*|enchant\w*|poison\w*|burn\w*|slow\w*|regenerat\w*|wither\w*|status|heal\w*|speed(?! \d)|strength|"
                 r"weak\w*|blind\w*|stun\w*|freez\w*|bleed\w*|invisib\w*|night vision|haste|resist\w*"),
     "items": (r"items?|right[- ]click\w*|throw\w*|thrown|projectiles?|wands?|grenades?|tooltips?|fuel|durab\w*|shoot\w*|shots?|fir(?:e|es|ed|ing)|weapons?|"
