@@ -334,6 +334,42 @@ def in_order(steps: list[dict]) -> list[dict]:
 
 
 STOPPED = ("FAILED", "CANCELLED", "BLOCKED", "WAITING_USER")
+FOLLOW_UP_ROLES = ("coder", "designer", "debugger", "researcher")   # agents' work; a gate that is the user's or the controller's is never a part of a step
+
+
+def adopt_follow_ups(store: Store, pid: str, parent: str, created: list[str]) -> list[str]:
+    """Work that a step's own work called for is part of that step.
+
+    Some requests are two runs and the second does not exist until the first ends: a designer delivers a 3D model and the
+    tool then asks a coder to make the game draw it; a coder lists art it needs and the tool asks a designer to paint it and
+    the coder to put it in. Those tasks are created when the first run is accepted. A plan knew only the tasks made at
+    Launch, so the step read "done" with half of it not started, nothing in the plan offered the rest, and the game showed
+    no change. Called by dispatch with the tasks that appeared while `parent`'s outcome was applied: the ones that are
+    agents' work join `parent`'s step (the plan shows them, Start runs them, the step is done when they are), and whatever
+    waited for that step waits for them too, so the plan stays one thing at a time, in order."""
+    plan = current_plan(store, pid)
+    launched = (plan or {}).get("launched")
+    if not created or not isinstance(launched, dict):
+        return []
+    entry = next((a for a in launched.get("applied", []) if parent in a.get("tasks", [])), None)
+    if entry is None:
+        return []
+    tasks = {t["id"]: t for t in store.tasks(pid)}
+    mine = [t for t in created if t in tasks and tasks[t]["role"] in FOLLOW_UP_ROLES and t not in entry["tasks"] and tasks[t]["state"] not in ("DONE", "CANCELLED")]
+    if not mine:
+        return []
+    step = list(entry["tasks"])
+    marks = ",".join("?" * len(step))
+    with store.tx() as con:
+        waiting = [r["successor"] for r in con.execute(f"SELECT DISTINCT successor FROM task_edges WHERE predecessor IN ({marks})", step)]
+    for successor in waiting:   # the steps after this one (and anything else parked behind it)
+        if successor not in step and successor not in mine and tasks.get(successor, {}).get("state") in ("BACKLOG", "READY"):
+            store.wait_for(successor, mine)
+    entry["tasks"] = step + mine
+    store.set_setting(pid, PLAN_KEY, plan, actor="controller")
+    store.add_event(pid, "controller", "PLAN_STEP_GREW", {"step": entry.get("step"), "after": parent, "tasks": mine})
+    store.refresh_ready(pid)
+    return mine
 
 
 def progress(store: Store, pid: str, plan: dict | None) -> dict | None:

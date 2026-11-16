@@ -2,6 +2,11 @@
 
 ## Unreleased (on `dev` after merge)
 
+- **A plan step is not done until all of its work is**: asking the chat for a 3D model of a projectile (or an item or a block) ran the
+  designer, marked the step done, and left the game drawing the old sprite, because the coder task that switches the renderer is created when
+  the model is accepted and the plan did not know it. The same happened to art a coder asked for (painted by the designer, then placed by the
+  coder). Work that a step's own work calls for now joins that step: the plan shows "1 of 2 parts finished", Start runs the next part, and the
+  step after it keeps waiting. A plan launched before this change does not pick up tasks it already missed: run those from the task list.
 - **The coordinator only talks and plans**: its role no longer has the tool that starts other agents, and its role file now describes the chat
   (agree on the goal, propose the plan) instead of delegating tasks. A chat turn can no longer start a worker before Launch, so every step still
   waits for your click. No role may start another agent; the tool dispatches tasks. Commands it names are written as `python -m mod_orchestra.cli …`.

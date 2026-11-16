@@ -434,8 +434,14 @@ def dispatch(store: Store, pid: str, *, task_id: str | None = None, provider: Ag
         store.release(task["id"], worker, lease["version"], f"provider error: {exc}")
         store.finish_run(run["id"], state="FAILED", exit_code=None, duration_s=None, log_path=str(log_path), error=str(exc)[:500])
         raise
+    existed = {t["id"] for t in store.tasks(pid)}
     outcome = apply_outcome(store, pid, task, lease, run, result)
     store.refresh_ready(pid)
+    try:   # work this run called for (wire a model, paint and place art) belongs to the plan step it came from
+        from .chat import adopt_follow_ups
+        adopt_follow_ups(store, pid, task["id"], [t["id"] for t in store.tasks(pid) if t["id"] not in existed])
+    except Exception as exc:
+        store.add_event(pid, "controller", "PLAN_NOTE_FAILED", {"task": task["id"], "error": str(exc)[:200]})
     try:   # a step of the chat's plan ended: the chat says so (never at the cost of the run's own result)
         from .chat import note_progress
         files = (outcome.get("handoff") or {}).get("changed_files") or []
