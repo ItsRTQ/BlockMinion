@@ -51,6 +51,12 @@ def project_context(store: Store, pid: str) -> str:
     _, idx = _index(ws, pid)
     if idx.get("items") or idx.get("blocks") or idx.get("projectiles"):
         lines.append("3D already: items " + ", ".join(i["id"] for i in idx.get("items", [])) + "; blocks " + ", ".join(b["id"] for b in idx.get("blocks", [])) + "; projectiles " + ", ".join(idx.get("projectiles", [])))
+    from .model3d import projectile_assets, projectiles_without_art
+    ready, bare = projectile_assets(store, pid), projectiles_without_art(store, pid)
+    if ready:
+        lines.append("projectiles with art of their own (can be made 3D; animated once 3D): " + ", ".join(sorted(ready)))
+    if bare:
+        lines.append("made things without art of their own (art_pass on their feature first): " + ", ".join(f"{i} (feature {c})" if c else i for i, c in sorted(bare.items())))
     ev = events_store(ws)["events"]
     if ev:
         lines.append("moments the code emits: " + "; ".join(f"{item}: {', '.join(names)}" for item, names in ev.items()))

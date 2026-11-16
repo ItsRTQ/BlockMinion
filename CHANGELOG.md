@@ -2,6 +2,10 @@
 
 ## Unreleased (on `dev` after merge)
 
+- **A projectile without art says what to do first**: asking for a 3D model of a projectile that has no sprite of its own was refused with
+  "is not a projectile with its own art". The coordinator now sees which projectiles have art and which made things do not (and the feature
+  that makes each), and is told to plan the art pass alone and offer the 3D model as the next plan; if a plan still names one, the problem
+  says which feature needs the art pass, or that the thing must be adopted first.
 - **No more commands for you to run**: workers ended their runs with lines like `craftctl build <project>` and Activity showed them in a box
   with copy buttons, although every one of those steps is a button in Now. Agents are no longer asked for commands (the handoff contract and
   every role file say so): what a worker may ask you is a question or a decision, in plain words, and Activity shows only that. Commands that

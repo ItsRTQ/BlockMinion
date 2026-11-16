@@ -47,6 +47,9 @@ Actions you may plan (each step: {"step": n, "action": ..., "after": [step numbe
 - make_3d: {"kind": "item|block|projectile", "target": id, "text": notes for the designer}
 - animate: {"kind": "item|mob|block|projectile", "target": id, "anims": [{"name": snake, "what": ..., "when": ..., "loop": bool}]}
 - art_pass: {"card": card id}
+- A projectile gets a 3D model (make_3d, kind "projectile") only when it has art of its own: the project lists which ones do.
+  For one that has none, plan the `art_pass` of its feature alone and say in your reply that the 3D model is the next plan, once
+  that art exists (the model is built from the sprite, so the tool cannot plan both at once). Several projectiles: one step each.
 - modify_model: {"target": mob id, "text": what to change on the model, "may_change": [bones]}
 - research: {"text": what to find out}   (a researcher looks up how a thing really looks and moves and leaves a reference sheet)
 - Use a research step when how something looks or moves decides whether the result is right, and neither the user's words, a
@@ -254,7 +257,8 @@ def coerce_plan(store: Store, pid: str, raw) -> dict | None:
             if kind == "block" and target not in {c for c, v in cards.items() if v.get("kind") == "block"}:
                 problems.append(f"step {i}: {target!r} is not a block")
             elif kind == "projectile" and target not in projectile_assets(store, pid):
-                problems.append(f"step {i}: {target!r} is not a projectile with its own art")
+                from .model3d import why_not_a_projectile
+                problems.append(f"step {i}: " + why_not_a_projectile(store, pid, target))
             elif kind in ("item", "") and target not in {c for c, v in cards.items() if v.get("kind") in ("item", "food", "material")} and not any(target.startswith(c + "_") for c, v in cards.items() if v.get("kind") == "material"):
                 problems.append(f"step {i}: {target!r} is not an item")
         elif action == "animate":

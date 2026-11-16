@@ -845,6 +845,28 @@ def projectile_assets(store: Store, pid: str) -> dict[str, dict]:
             for cid, e in entries(store, pid).items() if e["kind"] == "projectile" and e.get("path")}
 
 
+def projectiles_without_art(store: Store, pid: str) -> dict[str, str | None]:
+    """Things a coder made that fly or stand in the world and have no sprite of their own: {id: the feature card that makes it}.
+    They cannot get a 3D model yet (the designer builds it from the sprite); an art pass on their feature gives them one."""
+    from .made import entries
+    return {cid: e.get("card") for cid, e in entries(store, pid).items() if e.get("kind") in ("projectile", "entity", "content") and not e.get("path")}
+
+
+def why_not_a_projectile(store: Store, pid: str, ident: str) -> str:
+    """Why `ident` cannot get a projectile's 3D model, said so that whoever reads it knows the next step."""
+    from .made import entries
+    have = sorted(projectile_assets(store, pid))
+    e = entries(store, pid).get(ident)
+    if e is not None and not e.get("path"):
+        owner = f"its feature `{e['card']}`" if e.get("card") else "the feature that makes it"
+        return (f"{ident!r} has no art of its own yet, so there is nothing to build its model from: plan `art_pass` for {owner} first, "
+                "and ask for the 3D model in the next plan, once that art exists")
+    if e is not None:
+        return f"{ident!r} is tracked as {e.get('kind')}, not as a projectile: only a projectile with its own sprite gets a flying 3D model"
+    return (f"{ident!r} is not a projectile with its own art (" + ("projectiles that have it: " + ", ".join(have) if have else "no projectile of this mod has art of its own yet")
+            + "; one that is in the code and not listed must be adopted first, in Features, Other content)")
+
+
 def request_proj3d(store: Store, pid: str, ident: str, notes: str = "") -> dict:
     """USER-ONLY: a 3D model for a projectile the coder made (designer, then a coder touch-up that switches its renderer)."""
     from .art import brief as art_brief
@@ -856,7 +878,7 @@ def request_proj3d(store: Store, pid: str, ident: str, notes: str = "") -> dict:
         raise StateError("Generate the project first")
     assets = projectile_assets(store, pid)
     if ident not in assets:
-        raise InputError(f"{ident!r} is not a projectile with its own art; these are: {sorted(assets) or 'none yet (give the feature its own art first)'}")
+        raise InputError(why_not_a_projectile(store, pid, ident))
     a = assets[ident]; spec = read_spec(proj["spec"])
     ws = Path(proj["root"]); (ws / PDIR).mkdir(parents=True, exist_ok=True)
     base = f"{pid}:PROJ3D:{ident}"

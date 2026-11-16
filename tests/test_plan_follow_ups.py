@@ -65,6 +65,29 @@ class A3DProjectileFromTheChat(t3.Base):
         self.assertEqual(s[1]["status"], "done"); self.assertEqual((s[2]["status"], s[2]["start"]), ("ready", change)); self.assertEqual(self.state(change), "READY")
         self.assertIn("Step 1 of 2 finished", said(self, "m_mod")[-1]); self.assertIn("Step 2 is ready", said(self, "m_mod")[-1])
 
+    def test_a_projectile_without_art_says_what_to_plan_first(self):
+        from mod_orchestra import made, model3d
+        from mod_orchestra.ask import project_context
+        from mod_orchestra.validation import InputError
+        made.record_art(self.store, "m_mod", "acid_spit", [{"id": "web_ball", "kind": "projectile", "what": "a ball of web", "for": ["moon_beast"]}])
+        self.assertEqual(model3d.projectiles_without_art(self.store, "m_mod"), {"web_ball": "acid_spit"})
+        context = project_context(self.store, "m_mod")
+        self.assertIn("projectiles with art of their own (can be made 3D; animated once 3D): acid_glob", context)
+        self.assertIn("made things without art of their own (art_pass on their feature first): web_ball (feature acid_spit)", context)
+        brief = self.store.task_instructions(chat.send(self.store, "m_mod", "make the web ball 3D")["task"])
+        self.assertIn("plan the `art_pass` of its feature alone", brief); self.assertIn("web_ball (feature acid_spit)", brief)
+        out = chat.send(self.store, "m_mod", "again")
+        plan = {"result": "x", "steps": [{"step": 1, "action": "make_3d", "kind": "projectile", "target": "web_ball", "text": ""},
+                                         {"step": 2, "action": "make_3d", "kind": "projectile", "target": "nothing_like_it", "text": ""},
+                                         {"step": 3, "action": "make_3d", "kind": "projectile", "target": "acid_glob", "text": ""}]}
+        dispatch(self.store, "m_mod", task_id=out["task"], provider=turn(out["task"], "ok", plan))
+        problems = chat.view(self.store, "m_mod")["plan"]["problems"]
+        self.assertEqual(len(problems), 2)
+        self.assertIn("step 1: 'web_ball' has no art of its own yet", problems[0]); self.assertIn("plan `art_pass` for its feature `acid_spit` first", problems[0])
+        self.assertIn("step 2: 'nothing_like_it' is not a projectile with its own art (projectiles that have it: acid_glob", problems[1]); self.assertIn("must be adopted first", problems[1])
+        with self.assertRaisesRegex(InputError, "has no art of its own yet"):
+            model3d.request_proj3d(self.store, "m_mod", "web_ball")
+
     def test_outside_a_plan_nothing_changes(self):
         from mod_orchestra import model3d
         tid = model3d.request_proj3d(self.store, "m_mod", "acid_glob")["task"]
