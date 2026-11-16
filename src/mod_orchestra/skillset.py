@@ -11,8 +11,9 @@ The rest are not lost: the prompt lists them by name with one line each, and the
 `orchestra_skill` tool before writing the part that needs it. Picking is generous on purpose: a skill loaded and not
 needed costs a little text, a skill needed and not loaded costs a wrong guess at an API.
 
-A task whose brief has no such part (the wiring tasks the controller writes itself, and every other role) gets `None`:
-the role's own list, exactly as before.
+A coder task the controller wrote itself (wire a model in, register content, play animations) has no user's part: its
+whole brief says what to do, so the same choice is made from all of it, minus the fixed rules. Every other role, and a
+task with no instructions at all, gets `None`: the role's own list.
 """
 from __future__ import annotations
 
@@ -40,7 +41,7 @@ TOPICS: dict[str, str] = {
                   r"on[- ]screen|display(?:s|ed)?|crosshairs?|scopes?|zoom\w*|indicators?|mouse|scroll\w*|(?<!right[ -])click\w*"),
     "commands": r"commands?|brigadier|permissions?|operators?|cheats?|/[a-z][a-z0-9_]{2,}(?![/.])",   # `/heal`, never a piece of a path
     "loot-and-trades": r"loot\w*|villagers?|trad(?:e|es|er|ers|ing)|dungeons?|chests?|drops?|fishing|barter\w*",
-    "polish": r"particles?|animated textures?|mcmeta|advancements?|achievements?|config\w*|settings?|options?|glow\w*|trails?|sparkl\w*|smoke",
+    "polish": r"particles?|animated textures?|mcmeta|advancements?|achievements?|configs?|configurable|configuration|settings?|options?|glow\w*|trails?|sparkl\w*|smoke",
     "data": (r"mana|levels?|cooldowns?|persist\w*|sav(?:e|es|ed|ing)|stor(?:e|es|ed|ing)|remember\w*|per[- ]player|attachments?|components?|counters?|"
              r"stats?|xp|experience|energy|charg(?:e|es|ed|ing)|ammo\w*|durab\w*|nbt|progress\w*|unlock\w*|scores?|points?"),
     "effects": (r"effects?|potions?|buffs?|debuffs?|brew\w*|enchant\w*|poison\w*|burn\w*|slow\w*|regenerat\w*|wither\w*|status|heal\w*|speed(?! \d)|strength|"
@@ -96,16 +97,27 @@ PAINTED = re.compile(r":(?:ART|SPRITES)(?::|$)")
 
 
 def for_task(role: str, brief: str, task_id: str = "") -> list[str] | None:
-    """The skills to load for this run, or None for "the role's own list" (every other role, every coder task that is not
-    a feature or a change in the user's words, and every designer task that works on a model)."""
+    """The skills to load for this run, or None for "the role's own list" (every other role, a coder task with no
+    instructions, and every designer task that works on a model)."""
     if role == "designer":
         return ["designer"] if PAINTED.search(task_id or "") else None
     if role != "coder":
         return None
     part = request_part(brief or "")
     if part is None:
-        return None
+        part = written_by_the_tool(brief or "")
+    if not part.strip():
+        return None   # a task with no instructions of its own: nothing to choose by
     return list(CORE) + choose(part)
+
+
+def written_by_the_tool(brief: str) -> str:
+    """A coder task the controller wrote itself (wire a model in, register content, play animations): its brief says exactly
+    what to do, so all of it is read, minus the fixed rules some of them end with (those name every kind of thing)."""
+    from .artreq import CODER_ART_RULE
+    from .shape import CODER_SHAPE_RULE
+    fixed = {line.strip() for line in list(CODER_SHAPE_RULE) + list(CODER_ART_RULE) if line.strip()}
+    return "\n".join(line for line in brief.splitlines() if line.strip() not in fixed)
 
 
 def skill_text(name: str) -> str | None:

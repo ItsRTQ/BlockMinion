@@ -8,7 +8,8 @@ from unittest.mock import patch
 import mod_orchestra.provider as pmod
 from mod_orchestra import skillset
 from mod_orchestra.artreq import CODER_ART_RULE
-from mod_orchestra.dispatch import build_envelope
+from mod_orchestra.dispatch import build_envelope, dispatch
+from mod_orchestra.provider import FakeProvider
 from mod_orchestra.mcp import handle
 from mod_orchestra.modmap import request_change, request_feature
 from mod_orchestra.provider import ClaudeCodeProvider, TaskEnvelope, _load_agent_definitions, _role_prompt
@@ -127,8 +128,24 @@ class Briefs(Base):
         tid = request_change(self.store, "s_mod", "gem", "right click throws it and it explodes with particles")["task"]
         self.assertEqual(build_envelope(self.store, "s_mod", self.task(tid)).skills, ["coder", "gametest", "events", "polish", "items"])
 
-    def test_tasks_the_tool_writes_itself_and_other_roles_keep_the_roles_own_list(self):
-        self.assertIsNone(skillset.for_task("coder", "Wire the painted art in: register the renderer for the projectile"))
+    def test_tasks_the_tool_writes_itself_load_what_their_brief_names(self):
+        from mod_orchestra import made, model3d
+        rules = "\n".join(CODER_SHAPE_RULE + CODER_ART_RULE)
+        self.assertEqual(skillset.for_task("coder", "Register the new mob in ModMain and give it its attributes.\n" + rules), ["coder", "gametest", "events"],
+                         "the fixed rules at the end of a brief are not read")
+        self.assertEqual(skillset.for_task("coder", "Register ore worldgen for ruby_ore: a configured feature and a placed feature."), ["coder", "gametest", "events", "worldgen"])
+        # a real one: the coder task that makes the game draw a projectile's 3D model
+        import test_item3d as t3
+        case = t3.Projectile("test_refusals"); case.setUp(); self.addCleanup(case.doCleanups)
+        tid = model3d.request_proj3d(case.store, "m_mod", "acid_glob")["task"]; case.deliver_p()
+        dispatch(case.store, "m_mod", task_id=tid, provider=FakeProvider(t3.handoff(tid)))
+        wire = case.tasks("PROJ3DWIRE")[0]
+        env = build_envelope(case.store, "m_mod", wire)
+        self.assertEqual(env.skills, ["coder", "gametest", "events", "client-ui", "items"], "the renderer on the client, a projectile and its item")
+        full = len(_load_agent_definitions("coder")["coder"]["prompt"]); mine = len(_load_agent_definitions("coder", env.skills)["coder"]["prompt"])
+        self.assertLess(mine, 0.45 * full)
+
+    def test_other_roles_and_a_task_with_no_instructions_keep_the_roles_own_list(self):
         self.assertIsNone(skillset.for_task("designer", self.store.task_instructions(self.feature)))
         self.assertIsNone(skillset.for_task("coder", ""))
         self.store.add_task("s_mod", "s_mod:WIRE:1", "coder", "Wire something")

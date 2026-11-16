@@ -2,6 +2,9 @@
 
 ## Unreleased (on `dev` after merge)
 
+- **The coder's skills by task, for the tasks the tool writes too**: wiring a model in, registering content and playing animations loaded all
+  fifteen coder skills. Their briefs say exactly what to do, so the same choice is now made from them (the core plus what the brief names;
+  the rest one tool call away).
 - **A projectile without art says what to do first**: asking for a 3D model of a projectile that has no sprite of its own was refused with
   "is not a projectile with its own art". The coordinator now sees which projectiles have art and which made things do not (and the feature
   that makes each), and is told to plan the art pass alone and offer the 3D model as the next plan; if a plan still names one, the problem
