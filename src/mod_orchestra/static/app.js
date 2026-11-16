@@ -10,6 +10,7 @@ const btn = (label, onClick, cls) => { const b = el("button", label, cls); b.onc
 const fmtMoney = (v) => v == null ? "" : "$" + Number(v).toFixed(2);
 const fmtDur = (s) => s == null ? "" : (s >= 60 ? Math.floor(s / 60) + "m " + Math.round(s % 60) + "s" : Math.round(s) + "s");
 const ago = (t) => { const d = Date.now() / 1000 - t; return d < 60 ? "just now" : d < 3600 ? Math.floor(d / 60) + " min ago" : d < 86400 ? Math.floor(d / 3600) + " h ago" : Math.floor(d / 86400) + " d ago"; };
+const isToolCommand = (text) => /^\s*(?:\$\s*)?(?:craftctl|python3?\s+-m\s+mod_orchestra(?:\.cli)?)(?:\s|$)/i.test(text);   // a CLI line: the tool offers those as buttons, the user is never handed one
 function codeLine(text) { const w = el("div", null, "codeline"); const c = el("code", text); const b = el("button", "copy", "mini secondary"); b.onclick = async (e) => { e.preventDefault(); try { await navigator.clipboard.writeText(text); b.textContent = "copied"; setTimeout(() => (b.textContent = "copy"), 1500); } catch { toast("Clipboard blocked; select and copy manually", "bad"); } }; w.append(c, b); return w; }
 const fileUrl = (pid, rel) => `/api/project/${encodeURIComponent(pid)}/file?path=${encodeURIComponent(rel)}&token=${encodeURIComponent(token)}&v=${Date.now()}`;
 
@@ -1312,10 +1313,11 @@ function renderRuns(p) {
       if (h.scope) card.append(el("div", h.scope, "muted"));
       if (h.changed_files?.length) card.append(el("div", "changed: " + h.changed_files.join(", "), "risk"));
       if (h.evidence) card.append(el("div", "evidence claimed: " + h.evidence.level + (h.evidence.pointer ? " — " + h.evidence.pointer : ""), "risk"));
-      if (h.needs_user?.length) {
+      const asked = (h.needs_user || []).filter((c) => typeof c === "string" && c.trim() && !isToolCommand(c));   // questions in the worker's words; commands are never shown (older runs listed them)
+      if (asked.length) {
         const superseded = (r.finished_at || r.created_at) < lastEvidenceAt || r.task_id.endsWith(":SPEC") && p.spec_state === "APPROVED";
-        const n = el("div", null, "needs" + (superseded ? " past" : "")); n.append(el("b", superseded ? "The worker asked you for (already handled since):" : "The worker asked you for — see Now for the button:"));
-        for (const c of h.needs_user) n.append(codeLine(c)); card.append(n);
+        const n = el("div", null, "needs" + (superseded ? " past" : "")); n.append(el("b", superseded ? "The worker asked you (already handled since):" : "The worker asked you:"));
+        for (const c of asked) n.append(el("div", c, "asked")); card.append(n);
       }
       if (h.risks?.length) card.append(el("div", "risks: " + h.risks.join(" · "), "risk"));
       if (h.sprites) { const sp = h.sprites; const d = el("div", null, "needs"); d.append(el("b", `Sprites installed: ${sp.installed.length}` + (Object.keys(sp.rejected || {}).length ? ` · rejected: ${Object.keys(sp.rejected).length}` : ""))); for (const rel of sp.installed) d.append(el("code", rel.split("/").pop())); for (const [k, why] of Object.entries(sp.rejected || {})) d.append(el("code", `✗ ${k}: ${why}`)); card.append(d); }

@@ -136,7 +136,7 @@ select option{background:var(--panel-2);color:var(--text)}
 .state{font-size:11px;font-weight:800;padding:2px 8px;border-radius:2px;background:var(--bg);border:1px solid var(--line-2);color:var(--muted);letter-spacing:.08em}
 .state.DONE{color:var(--ok);border-color:rgba(46,242,166,.4)}.state.FAILED{color:var(--bad);border-color:rgba(255,92,122,.4)}.state.WAITING_USER,.state.BLOCKED{color:var(--warn);border-color:rgba(255,181,71,.4)}.state.RUNNING,.state.LEASED{color:var(--info);border-color:rgba(124,216,255,.4);box-shadow:0 0 10px rgba(124,216,255,.2)}.state.READY{color:var(--accent);border-color:rgba(var(--cyan-rgb),.4)}
 .needs{background:rgba(255,181,71,.07);border-left:3px solid var(--warn);padding:8px 10px;margin-top:8px;border-radius:0 3px 3px 0}
-.needs b{display:block;margin-bottom:4px;font-size:12px;color:var(--warn);font-family:var(--display);letter-spacing:.04em}.needs code{display:block;margin:2px 0}
+.needs b{display:block;margin-bottom:4px;font-size:12px;color:var(--warn);font-family:var(--display);letter-spacing:.04em}.needs code{display:block;margin:2px 0}.needs .asked{margin:2px 0;line-height:1.45}
 .risk{color:var(--muted);font-size:12px;margin-top:6px}
 .events{display:flex;flex-direction:column;gap:3px;max-height:360px;overflow:auto}
 .event{display:grid;grid-template-columns:150px 120px 1fr;gap:10px;font-size:12px;padding:5px 8px;border-radius:2px;font-family:var(--mono)}

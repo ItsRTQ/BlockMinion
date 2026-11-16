@@ -12,9 +12,9 @@ description: Author Minecraft 1.21.1 recipes, block drops and a creative tab for
 - Lang: `assets/<mod_id>/lang/en_us.json` (`item.<mod>.<id>`, `block.<mod>.<id>`, `itemGroup.<mod>.<tab_id>`)
 
 ## Preferred path: fill the craftctl spec, let the generator render
-Before generation the user runs `craftctl add-recipe`, `add-drop`, `set-tab`; the generator writes correct JSON and Java.
-As an agent, propose the exact commands under `needs_user` (you may not run them). After generation, write the JSON
-files yourself following the formats below and report them in `changed_files`.
+Before generation the user adds recipes, drops and the tab to the spec in the tool; the generator writes correct JSON and Java.
+As an agent you do not edit the spec: when it lacks one, say in plain words under `needs_user` which recipe, drop or tab it
+needs (never a command). After generation, write the JSON files yourself following the formats below and report them in `changed_files`.
 
 ## Ingredient and result ids
 - Local content: `ruby`, `ruby_ore` (must exist in the mod). Namespaced: `minecraft:stick`. Tag: `#minecraft:planks`.

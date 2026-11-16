@@ -13,7 +13,7 @@ New project idea, change request, or ambiguous user wish.
 2. Map every wish onto what the generator supports: items, blocks, one creative tab, crafting (shaped/shapeless) and cooking recipes, block drops. Use the `recipes` skill for standard patterns and vanilla ids.
 3. Anything unsupported (mobs, biomes, dimensions, armor/tool stats, GUIs, commands) goes to `unknowns`, never faked as an item; ask about it only if it blocks the rest.
 4. Choose vanilla-like defaults and list them in `assumptions` (ore → gem with Fortune/Silk Touch, 9 gems ↔ 1 block, smelting 0.7 xp). Ask at most three questions, only when the answer changes files.
-5. Return the proposal under `spec` in the handoff (shape given in the task instructions) with status WAITING_USER. The controller validates it and stores it as DRAFT; the user answers (`craftctl answer`) or approves (`craftctl approve-spec`). You never edit files or the database.
+5. Return the proposal under `spec` in the handoff (shape given in the task instructions) with status WAITING_USER. The controller validates it and stores it as DRAFT; the user answers or approves in the tool. You never edit files or the database.
 
 ## Critical safeguards
 - The Fabric MVP is pinned to Minecraft 1.21.1 (Mojang mappings, Loom 1.18.4). Static items/blocks are build- and game-verified (`examples/crystal_example/EVIDENCE.md`); anything beyond that is unverified until it passes the same gates.

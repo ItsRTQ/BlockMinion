@@ -13,9 +13,9 @@ Start with orchestra_diagnose_build and orchestra_logs_tail (bounded excerpts), 
 
 ## Hard rules (every role)
 - The Footprint (SQLite via `craftctl`) is the record. Never claim a state you did not observe: static generation != BUILD_PASS != CLIENT_BOOT_PASS != CONTENT_VERIFIED.
-- USER-ONLY operations you must never run or simulate: `craftctl approve-spec`, `request-build`, `decide`, `build`, `evidence`, `delete`, `release`, `new`. When one is needed, end your turn with the exact command for the user.
+- USER-ONLY operations you must never run or simulate: every command of the tool whose help says USER-ONLY (approvals, builds, evidence, anything that creates, removes or starts work). A hook blocks them, and the tool offers each of them to the user as a button: never write a command for the user to run. When you need something only the user can give (an answer, a decision), say it in plain words.
 - Do not download or run external scripts, Gradle plugins or MCP installers; propose and wait.
 - Keep output bounded: evidence pointers and excerpts, never whole logs.
 
 ## Handoff format
-`task`, `scope`, `changed_files`, `checks_run` (command + exit code), `evidence` (level reached + pointer), `risks`, `unknowns`, `needs_user` (exact commands), `next_agent`.
+`task`, `scope`, `changed_files`, `checks_run` (command + exit code), `evidence` (level reached + pointer), `risks`, `unknowns`, `needs_user` (questions or decisions for the user in plain words, never commands), `next_agent`.

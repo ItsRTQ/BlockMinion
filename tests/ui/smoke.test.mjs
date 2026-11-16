@@ -76,6 +76,19 @@ test('the Environment view still draws, with the runtime selector', async () => 
   assert.ok([...page.$('#env-provider').options].some((o) => /Antigravity/.test(o.textContent)));
 });
 
+test('Activity never hands the user a command: a worker\'s commands are not shown, its questions are, in words', async () => {
+  const run = (id, needs_user) => ({id, state: 'DONE', role: 'coder', task_id: 'infect:CHANGE:x:' + id, created_at: 10 + id, finished_at: 20 + id, duration_s: 5, handoff: {scope: 'did it', needs_user}});
+  await page.eval(`renderRuns({runs_all: ${JSON.stringify([run(1, ['craftctl build infect', 'craftctl gametest infect']), run(2, ['python -m mod_orchestra.cli build infect', 'Which block should it drop from?']), run(3, [])])}, evidence: []})`);
+  const cards = [...page.$('#runs-list').querySelectorAll('.run')], of = (id) => cards.find((c) => c.dataset.run === String(id));
+  assert.equal(cards.length, 3);
+  assert.equal(of(1).querySelector('.needs'), null, 'a run that only listed commands shows no box at all');
+  assert.equal(of(3).querySelector('.needs'), null);
+  const box = of(2).querySelector('.needs');
+  assert.match(box.textContent, /The worker asked you:/); assert.match(box.textContent, /Which block should it drop from\?/);
+  assert.doesNotMatch(page.$('#runs-list').textContent, /craftctl|mod_orchestra\.cli|see Now for the button/);
+  assert.equal(box.querySelector('button'), null, 'nothing to copy: it is a question, not a command'); assert.equal(box.querySelector('code'), null);
+});
+
 test('Environment: a model for every role and one per role, saved for the runtime in force', async () => {
   page.click(page.$('#nav-env')); await page.waitFor(() => page.$('#env-role-rows') && page.$('#env-role-rows').querySelectorAll('input').length >= 6, 'a box per role');
   assert.ok(!page.hidden('#env-model-row'), 'the model for every role is offered for Claude Code too');

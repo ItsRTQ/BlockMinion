@@ -275,8 +275,7 @@ def apply_interpretation(store: Store, pid: str, handoff: dict, run_id: str) -> 
                "materials": [m.identifier for m in spec.materials], "foods": [f.identifier for f in spec.foods], "questions": questions,
                "assumptions": spec.assumptions}
     store.add_event(pid, "controller", "SPEC_PROPOSED", {"run": run_id, **summary})
-    next_steps = ([f'craftctl answer {pid} "<your answer to: {q}>"' for q in questions] or []) + [f"craftctl approve-spec {pid}"]
-    return summary | {"needs_user": next_steps}
+    return summary | {"needs_user": list(questions)}   # the questions themselves; answering and approving are buttons in the tool
 
 
 def answer(store: Store, pid: str, text: str) -> dict:

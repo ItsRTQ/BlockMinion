@@ -91,11 +91,27 @@ class AgentFiles(unittest.TestCase):
             coordinator = frontmatter(folder / "coordinator.md")
             self.assertFalse(re.search(r"\b(Edit|Write|Bash|PowerShell)\b", coordinator["tools"]), "the coordinator only reads")
             body = (folder / "coordinator.md").read_text(encoding="utf8")
-            self.assertNotIn("delegate to", body); self.assertIn("python -m mod_orchestra.cli", body)
+            self.assertNotIn("delegate to", body); self.assertIn("never as a command", body); self.assertNotIn("python -m mod_orchestra.cli", body)
             self.assertEqual(body, (shipped / "coordinator.md").read_text(encoding="utf8"), "both copies of the coordinator are the same")
             skill = (folder.parent / "skills/coordinator/SKILL.md").read_text(encoding="utf8")
             self.assertNotIn("Delegation envelopes", skill)
             self.assertEqual(skill, (shipped.parent / "skills/coordinator/SKILL.md").read_text(encoding="utf8"))
+
+    def test_no_agent_is_asked_to_hand_the_user_a_command(self):
+        # The user never runs the CLI: every next step is a button. An agent that ends with "run craftctl build" gives them
+        # a line they cannot use; what it may ask is a question or a decision, in plain words.
+        from mod_orchestra.provider import HANDOFF_INSTRUCTIONS
+        self.assertNotIn("exact craftctl command", HANDOFF_INSTRUCTIONS); self.assertNotIn("next craftctl steps", HANDOFF_INSTRUCTIONS)
+        self.assertIn("Never a\ncommand", HANDOFF_INSTRUCTIONS); self.assertIn("as a button", HANDOFF_INSTRUCTIONS)
+        shipped = ROOT / "src/mod_orchestra/resources/claude"
+        for base in (ROOT / ".claude", shipped):
+            for path in sorted((base / "agents").glob("*.md")) + sorted((base / "skills").glob("*/SKILL.md")):
+                text = path.read_text(encoding="utf8")
+                for phrase in ("exact command for the user", "(exact commands)", "propose the exact commands", "give the user the exact"):
+                    self.assertNotIn(phrase, text, f"{path}: still tells the agent to hand the user a command")
+                self.assertEqual(text, (shipped / path.relative_to(base)).read_text(encoding="utf8"), f"{path}: the two copies differ")
+            for path in (base / "agents").glob("*.md"):
+                self.assertRegex(path.read_text(encoding="utf8"), r"never write a command for the user|never as a command to run", path)
 
     def test_only_coder_class_roles_can_edit(self):
         editors = {p.stem for p in AGENTS.glob("*.md") if re.search(r"\b(Edit|Write)\b", frontmatter(p)["tools"])}

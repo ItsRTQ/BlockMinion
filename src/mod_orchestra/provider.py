@@ -96,8 +96,8 @@ def validate_handoff(obj: object) -> list[str]:
                  for c in obj.get("checks_run", []))
         if not ok:
             problems.append("evidence.level BUILD_PASS requires a gradle command with exit_code 0 in checks_run")
-    # DONE + needs_user is legitimate: the worker's part is finished and the user's next steps
-    # (request-build/decide/build/evidence) follow. WAITING_USER means the worker itself is blocked.
+    # DONE + needs_user is legitimate: the worker's part is finished and it has something to ask the user.
+    # WAITING_USER means the worker itself is blocked until the user answers.
     return problems
 
 
@@ -110,20 +110,22 @@ Finish your reply with exactly one fenced block tagged `handoff` containing a JS
  "checks_run": [{"command": "...", "exit_code": 0}],
  "evidence": {"level": "STATIC|BUILD_PASS|BUILD_FAILED|NONE", "pointer": "<log/jar/path or note>"},
  "risks": ["..."], "unknowns": ["..."],
- "needs_user": ["<exact craftctl command the user must run, if any>"],
+ "needs_user": ["<a question or a decision only the user can give, in plain words; empty when there is none>"],
  "needs": [{"role": "coder", "what": "<what must exist that does not>", "why": "<why your task needs it>", "target": "<the item/mob/block id or card it belongs to, if any>"}],
  "next_agent": "<role or none>"}
 ```
-Status: DONE = your part is complete (list the user's next craftctl steps under needs_user);
-WAITING_USER = you cannot continue until the user acts; BLOCKED = missing information; FAILED = you could not do it.
+Status: DONE = your part is complete; WAITING_USER = you cannot continue until the user answers what you put under needs_user;
+BLOCKED = missing information; FAILED = you could not do it.
+`needs_user` is for the user's own words only: a question, a choice between options, something to try and report. Never a
+command: the tool itself offers the user every next step (approve, build, test, release) as a button, so do not list them.
 A limitation is work, not a stop: when what you were asked to build on does not exist yet (a mechanic, an entity, a moment the
 code never emits, a thing to animate), do not fake it and do not stop silently: report status BLOCKED with `needs` saying what
 must exist and why; the controller has it made by the right role and runs you again right after, with it in place.
 Rules: you are running with the project workspace as your current directory. Only claim BUILD_PASS if you ran
 `./gradlew build` (or `gradlew.bat build`) here and it exited 0. Never claim client/server/in-game results.
 Never run `craftctl approve-spec|request-build|decide|build|evidence|delete|release|new`, nor the commands that ask for work in the user's name
-(`craftctl chat|ask|change|animate|make-3d|modify-model|dispatch|gametest` and the like: what the CLI help marks USER-ONLY); list them under
-needs_user instead. Do not modify files outside this workspace.
+(`craftctl chat|ask|change|animate|make-3d|modify-model|dispatch|gametest` and the like: what the CLI help marks USER-ONLY), under either
+name of the tool (`craftctl …` or `python -m mod_orchestra.cli …`). Do not modify files outside this workspace.
 """
 
 _HANDOFF_RE = re.compile(r"```handoff[ \t]*\n(.*?)```", re.S)

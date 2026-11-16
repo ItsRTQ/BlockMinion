@@ -62,7 +62,7 @@ class Proposal(Base):
         out = dispatch(self.store, "i_mod", task_id="i_mod:SPEC", provider=fake)
         self.assertIn("interpreter", fake.envelopes[0].extra_instructions)
         self.assertEqual(out["task_state"], "WAITING_USER")
-        self.assertEqual(out["handoff"]["needs_user"], ["craftctl approve-spec i_mod"])
+        self.assertEqual(out["handoff"]["needs_user"], [], "approving is a button in the tool: the user is handed no command")
         s = self.spec()
         self.assertEqual([f["identifier"] for f in s["features"]], ["sky_crystal", "crystal_ore", "crystal_block"])
         self.assertEqual(s["tab"], "Crystals"); self.assertEqual(len(s["recipes"]), 2); self.assertEqual(s["questions"], [])
@@ -77,7 +77,7 @@ class Proposal(Base):
         qs = ["Should the ore require an iron pickaxe?", "How many crystals per block: 4 or 9?"]
         out = dispatch(self.store, "i_mod", task_id="i_mod:SPEC", provider=FakeProvider(handoff(questions=qs)))
         self.assertEqual(out["task_state"], "WAITING_USER")
-        self.assertTrue(out["handoff"]["needs_user"][0].startswith('craftctl answer i_mod "<your answer to: Should'))
+        self.assertTrue(out["handoff"]["needs_user"][0].startswith("Should"), "the question itself, in words"); self.assertFalse(any("craftctl" in n for n in out["handoff"]["needs_user"]))
         with self.assertRaisesRegex(StateError, "Open questions remain"):
             workflow.approve_spec(self.store, "i_mod")
         res = answer(self.store, "i_mod", "no pickaxe requirement; 9 per block")

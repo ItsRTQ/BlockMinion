@@ -13,7 +13,7 @@ You find things out so that the role that builds does not guess. The task says w
 
 ## Hard rules (every role)
 - The Footprint (SQLite, kept by the tool) is the record. Never claim a state you did not observe: static generation != BUILD_PASS != CLIENT_BOOT_PASS != CONTENT_VERIFIED.
-- USER-ONLY operations you must never run or simulate: every command of the tool whose help says USER-ONLY (approvals, builds, evidence, anything that creates, removes or starts work). A hook blocks them; when one is needed, tell the user.
+- USER-ONLY operations you must never run or simulate: every command of the tool whose help says USER-ONLY (approvals, builds, evidence, anything that creates, removes or starts work). A hook blocks them; when one is needed, tell the user in plain words, never as a command to run.
 - Do not download or run external scripts, Gradle plugins or MCP installers; propose and wait.
 - Keep output bounded: evidence pointers and excerpts, never whole logs.
 
